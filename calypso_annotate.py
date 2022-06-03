@@ -61,7 +61,8 @@ def checkArguments(args):
   # Check that the input files exist and have the correct extensions
   if not exists(args.vcf): fail("The vcf file could not be found")
   elif not args.vcf.endswith(".vcf.gz"): fail("The input vcf file (--vcf, -v) must be a compressed, indexed vcf and have the extension '.vcf.gz'")
-  if args.ped:
+  if isFamily:
+    if not args.ped: fail("A ped file needs to specified (--ped, -p) for family type \"" + str(args.family_type) + "\"")
     if not exists(args.ped): fail("The ped file could not be found")
     elif not args.ped.endswith(".ped"): fail("The input ped file (--ped, -p) must have the extension '.ped'")
 
@@ -118,8 +119,12 @@ def checkResources(args):
 
     # If the resource is to be included in a toml file, the fields in the vcf INFO need to be specified
     if resourceInfo["resources"][resource]["toml"]:
-      try: resourceInfo["resources"][resource]["fields"] = resources[resource]["fields"]
-      except: fail("The resources json does not include the vcf INFO fields for resource \"" + str(resource) + "\"")
+      if "fields" in resources[resource]: resourceInfo["resources"][resource]["fields"] = resources[resource]["fields"]
+      if "columns" in resources[resource]: resourceInfo["resources"][resource]["columns"] = resources[resource]["columns"]
+      if "names" in resources[resource]: resourceInfo["resources"][resource]["names"] = resources[resource]["names"]
+
+    # Check that the file exists
+    if not exists(resourceInfo["resources"][resource]["file"]): fail("Resource file " + str(resourceInfo["resources"][resource]["file"]) + " does not exist")
 
 # Build the toml file
 def buildToml():
@@ -132,22 +137,41 @@ def buildToml():
   # Add each required resource to the toml file
   for resource in resourceInfo["resources"]:
     if resourceInfo["resources"][resource]["toml"]:
-      noFields = len(resourceInfo["resources"][resource]["fields"])
       print("[[annotation]]", file = tomlFile)
       print("file=\"", resourceInfo["resources"][resource]["file"], "\"", sep = "", file = tomlFile)
 
-      # Define the fields to use
-      fields = "fields=["
-      for index, field in enumerate(resourceInfo["resources"][resource]["fields"]):
-        fields += "\"" + str(field) + "\""
-        if (index + 1) < noFields: fields += ", "
-      fields += "]"
-      print(fields, file = tomlFile)
+      # Some of the annotations include "fields", "columns", and "names". Include these in the toml if they exist
+      if "fields" in resourceInfo["resources"][resource]:
+        text, noValues = tomlInfo(resource, "fields")
+        print(text, file = tomlFile)
+      if "columns" in resourceInfo["resources"][resource]:
+        text, noValues = tomlInfo(resource, "columns")
+        print(text, file = tomlFile)
+      if "names" in resourceInfo["resources"][resource]:
+        text, noValues = tomlInfo(resource, "names")
+        print(text, file = tomlFile)
+
+      # Write out the ops
       ops = "ops=["
-      for i in range(0, noFields - 1): ops += "\"self\", "
+      for i in range(0, noValues - 1): ops += "\"self\", "
       ops += "\"self\"]"
       print(ops, file = tomlFile)
       print(file = tomlFile)
+
+# Include information in the toml file
+def tomlInfo(resource, infoType):
+  global resourceInfo
+  noValues = len(resourceInfo["resources"][resource][infoType])
+
+  # Define the fields to use
+  text = infoType + "=["
+  for index, value in enumerate(resourceInfo["resources"][resource][infoType]):
+    if infoType == "columns": text += str(value)
+    else: text += "\"" + str(value) + "\""
+    if (index + 1) < noValues: text += ", "
+  text += "]"
+
+  return text, noValues
 
 # Generate the command line for the annoatation script
 def genBashScript(args):
