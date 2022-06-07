@@ -19,21 +19,41 @@ def main():
   # Check all resources
   checkResources(args)
 
+  # Parse the Mosaic json
+  parseMosaicJson(args)
+
   # Build the toml file for vcfanno
   buildToml()
 
   # Generate the bash script to run the annotation pipeline
   genBashScript(args)
 
+  # Write out any warnings
+  writeWarnings(args)
+
 # Input options
 def parseCommandLine():
+  global version
+
   parser = argparse.ArgumentParser(description='Process the command line')
+
+  # Required arguments
   parser.add_argument('--reference', '-r', required = True, metavar = "string", help = "The reference genome to use. Allowed values: '37', '38'")
   parser.add_argument('--family_type', '-f', required = True, metavar = "string", help = "The familty structure. Allowed values: 'singleton', 'duo', 'trio'")
-  parser.add_argument('--data', '-d', required = True, metavar = "string", help = "The path to the directory where the resources live")
-  parser.add_argument('--vcf', '-i', required = True, metavar = "string", help = "The input vcf file to annotate")
+  parser.add_argument('--data_directory', '-d', required = True, metavar = "string", help = "The path to the directory where the resources live")
+  parser.add_argument('--input_vcf', '-i', required = True, metavar = "string", help = "The input vcf file to annotate")
+
+  # Optional pipeline arguments
   parser.add_argument('--ped', '-p', required = False, metavar = "string", help = "The pedigree file for the family. Not required for singletons")
-  parser.add_argument('--version', '-v', action="version", version='%(prog)s 0.1.1')
+  parser.add_argument('--resource_json', '-j', required = False, metavar = "string", help = "The json file describing the annotation resources")
+
+  # Optional mosaic arguments
+  parser.add_argument('--mosaic_json', '-m', required = False, metavar = "string", help = "The json file describing the Mosaic parameters")
+  parser.add_argument('--config', '-c', required = False, metavar = "string", help = "The config file for Mosaic")
+  parser.add_argument('--project_id', '-t', required = False, metavar = "string", help = "The project id that variants will be uploaded to")
+
+  # Version
+  parser.add_argument('--version', '-v', action="version", version='Calypso annotation pipline version: ' + str(version))
 
   return parser.parse_args()
 
@@ -59,8 +79,8 @@ def checkArguments(args):
   if args.family_type == 'singleton': isFamily = False
 
   # Check that the input files exist and have the correct extensions
-  if not exists(args.vcf): fail("The vcf file could not be found")
-  elif not args.vcf.endswith(".vcf.gz"): fail("The input vcf file (--vcf, -v) must be a compressed, indexed vcf and have the extension '.vcf.gz'")
+  if not exists(args.input_vcf): fail("The vcf file could not be found")
+  elif not args.input_vcf.endswith(".vcf.gz"): fail("The input vcf file (--vcf, -v) must be a compressed, indexed vcf and have the extension '.vcf.gz'")
   if isFamily:
     if not args.ped: fail("A ped file needs to specified (--ped, -p) for family type \"" + str(args.family_type) + "\"")
     if not exists(args.ped): fail("The ped file could not be found")
@@ -72,31 +92,34 @@ def checkResources(args):
   global resourceInfo
 
   # Ensure the data path ends with a "/", then add the refrence directory
-  if args.data[-1] != "/": args.data += "/"
-  resourceInfo["path"] = args.data + "GRCh" + str(args.reference) + "/"
+  if args.data_directory[-1] != "/": args.data_directory += "/"
+  resourceInfo["path"] = args.data_directory + "GRCh" + str(args.reference) + "/"
 
-  # Define the name of the resource description json file
-  if args.reference == '37': resourceFilename = args.data + "resources_GRCh37.json"
-  elif args.reference == '38': resourceFilename = args.data + "resources_GRCh38.json"
+  # Define the name of the resource description json file. Use the file provided on the command
+  # line, and resort to the default file if not included
+  if args.resource_json: resourceFilename = args.resource_json
+  else:
+    if args.reference == '37': resourceFilename = args.data_directory + "resources_GRCh37.json"
+    elif args.reference == '38': resourceFilename = args.data_directory + "resources_GRCh38.json"
 
   # Try and open the file
   try: resourceFile = open(resourceFilename, "r")
-  except: fail("The file describing the resource files (" + str(resourceFilename) + ") could not be found in the data directory")
+  except: fail("The file describing the resource files (" + str(resourceFilename) + ") could not be found")
 
   # Extract the json information
   try: resourceData = json.loads(resourceFile.read())
-  except: fail("Not valid json")
+  except: fail("The json file (" + str(resourceFilename) + ") is not valid")
 
   # Store the data version
   try: resourceInfo["version"] = resourceData['version']
-  except: fail("The resource json does not include a version")
+  except: fail("The resource json file (" + str(resourceFilename) + ") does not include a version")
 
   # Check that the resource json reference matches the selected reference
   try: resourceReference = resourceData['reference']
   except: fail("The resource json does not include a reference genome")
   isRefMatch = False
-  if args.reference == '37' and resourceReference == 'GRCh37': isRefMatch = True
-  elif args.reference == '38' and resourceReference == 'GRCh38': isRefMatch = True
+  if args.reference == '37' and resourceReference == '37': isRefMatch = True
+  elif args.reference == '38' and resourceReference == '38': isRefMatch = True
   if not isRefMatch: fail("The selected reference (" + str(args.reference) + ") does not match the resource json reference (" + str(resourceReference) + ")")
 
   # Get the resources
@@ -115,7 +138,9 @@ def checkResources(args):
     try: resourceInfo["resources"][resource]["file"] = resourceInfo["path"] + resources[resource]["file"]
     except: fail("File for resource \"" + str(resource) + "\" was not included in the resources json")
     try: resourceInfo["resources"][resource]["toml"] = resources[resource]["toml"]
-    except: fail("The resources json did not indicate if resource \"" + str(resource) + "\" should be included in the toml file")
+    except: fail("File for resource \"" + str(resource) + "\" was not included in the resources json")
+    try: resourceInfo["resources"][resource]["upload"] = resources[resource]["upload_to_mosaic"]
+    except: fail("The resources json did not indicate if resource \"" + str(resource) + "\" should be uploaded to Mosaic")
 
     # If the resource is to be included in a toml file, the fields in the vcf INFO need to be specified
     if resourceInfo["resources"][resource]["toml"]:
@@ -125,6 +150,66 @@ def checkResources(args):
 
     # Check that the file exists
     if not exists(resourceInfo["resources"][resource]["file"]): fail("Resource file " + str(resourceInfo["resources"][resource]["file"]) + " does not exist")
+
+# Parse the Mosaic json file describing the mosaic information for uploading annotations
+def parseMosaicJson(args):
+  global mosaicInfo
+
+  # Ensure the data path ends with a "/", then add the refrence directory
+  if args.data_directory[-1] != "/": args.data_directory += "/"
+
+  # Define the name of the Mosaic json file. Use the file provided on the command
+  # line, and resort to the default file if not included
+  if args.mosaic_json: mosaicFilename = args.mosaic_json
+  else:
+    if args.reference == '37': mosaicFilename = args.data_directory + "resources_mosaic_GRCh37.json"
+    elif args.reference == '38': mosaicFilename = args.data_directory + "resources_mosaic_GRCh38.json"
+
+  # Try and open the file
+  try: mosaicFile = open(mosaicFilename, "r")
+  except: fail("The file describing Mosaic related information (" + str(mosaicFilename) + ") could not be found")
+
+  # Extract the json information
+  try: mosaicData = json.loads(mosaicFile.read())
+  except: fail("The json file (" + str(mosaicFilename) + ") is not valid")
+
+  # Store the data version
+  try: mosaicInfo["version"] = mosaicData['version']
+  except: fail("The Mosaic json (" + str(mosaicFilename) + ") does not include a version")
+
+  # Check that the resource json reference matches the selected reference
+  try: mosaicReference = mosaicData['reference']
+  except: fail("The Mosaic json does not include a reference genome")
+  isRefMatch = False
+  if args.reference == '37' and mosaicReference == '37': isRefMatch = True
+  elif args.reference == '38' and mosaicReference == '38': isRefMatch = True
+  if not isRefMatch: fail("The selected reference (" + str(args.reference) + ") does not match the Mosaic json reference (" + str(mosaicReference) + ")")
+
+  # Get the resources
+  try: resources = mosaicData["resources"]
+  except: fail("The Mosaic json (" + str(mosaicFilename) + ") does not include a list of resources")
+  mosaicInfo["resources"] = {}
+  for resource in resources:
+
+    # If a resource is duplicated, throw an error
+    if resource in mosaicInfo["resources"]: fail(str(resource) + " appears multiple times in the Mosaic json. Ensure each resource appears only once.")
+    mosaicInfo["resources"][resource] = {}
+
+    try: annotation_type = resources[resource]["annotation_type"]
+    except: fail("The Mosaic json file does not include the 'annotation_type' for resource: " + str(resource))
+    mosaicInfo["resources"][resource]["annotation_type"] = annotation_type
+    if annotation_type != "private" and annotation_type != "public": fail("Annotation_type for " + str(resource) + " must be 'public' or 'private'")
+
+    # Loop over the annotation information
+    mosaicInfo["resources"][resource]["annotations"] = {}
+    for annotation in resources[resource]["annotations"]:
+
+      # Read in the required fields
+      try: uid = resources[resource]["annotations"][annotation]["uid"]
+      except: fail("The Mosaic json does not contain the 'uid' field for annotation '" + str(annotation) + "' for resource '" + str(resource) + "'")
+      try: annType = resources[resource]["annotations"][annotation]["type"]
+      except: fail("The Mosaic json does not contain the 'type' field for annotation '" + str(annotation) + "' for resource '" + str(resource) + "'")
+      mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType}
 
 # Build the toml file
 def buildToml():
@@ -176,6 +261,7 @@ def tomlInfo(resource, infoType):
 # Generate the command line for the annoatation script
 def genBashScript(args):
   global resourceInfo
+  global tsvFiles
 
   # Create a script file
   try: bashFile = open("calypso_annotation_pipeline.sh", "w")
@@ -188,17 +274,18 @@ def genBashScript(args):
 
   # Define the names of the input and output files
   print("# Following are the input VCF and output files created by the pipeline", file = bashFile)
-  vcfFile = os.path.abspath(args.vcf)
+  vcfFile = os.path.abspath(args.input_vcf)
   print("VCF=", vcfFile, sep = "", file = bashFile)
 
   # Generate the names of the intermediate and final vcf files
-  vcfBase = os.getcwd() + "/" + os.path.abspath(args.vcf).split("/")[-1].rstrip("vcf.gz")
+  vcfBase = os.getcwd() + "/" + os.path.abspath(args.input_vcf).split("/")[-1].rstrip("vcf.gz")
   print("NORMVCF=" + str(vcfBase) + "_norm.vcf.gz", sep = "", file = bashFile)
   print("CLEANVCF=" + str(vcfBase) + "_clean.vcf.gz", sep = "", file = bashFile)
   print("ANNOTATEDVCF=" + str(vcfBase) + "_annotated.vcf.gz", sep = "", file = bashFile)
   if isFamily: print("SLIVAR1VCF=" + str(vcfBase) + "_slivar1.vcf.gz", sep = "", file = bashFile)
   if isFamily: print("SLIVAR2VCF=" + str(vcfBase) + "_slivar2.vcf.gz", sep = "", file = bashFile)
   print("FINALVCF=" + str(vcfBase) + "_calypso.vcf.gz", sep = "", file = bashFile)
+  print("FILTEREDVCF=" + str(vcfBase) + "_calypso_filtered.vcf.gz", sep = "", file = bashFile)
 
   # Write the ped file, if necessary
   if isFamily: print("PED=", os.path.abspath(args.ped), sep = "", file = bashFile)
@@ -322,9 +409,108 @@ def genBashScript(args):
   print("  rm -f \"$SLIVAR2VCF\".tbi", file = bashFile)
   print(file = bashFile)
   print("  echo \"Everything completed! Annotated VCF written to $FINALVCF\"", file = bashFile)
+  print(file = bashFile)
+
+  # Filter the VCF file to generate variants to pass to Mosaic
+  print("# Filter the VCF file to generate variants to pass to Mosaic", file = bashFile)
+  print("  echo \"Filtering final VCF file\"", file = bashFile)
+  print("  slivar_static expr --vcf $FINALVCF \\", file = bashFile)
+  print("  --info 'INFO.gnomad_popmax_af < 0.01 && variant.FILTER == \"PASS\" && variant.ALT[0] != \"*\"' \\", file = bashFile)
+  print("  --pass-only \\", file = bashFile)
+  print("  -o $FILTEREDVCF", file = bashFile)
+  print(file = bashFile)
+
+  # Generate the tsv files to pass annotations to Mosaic
+  print("  # Generate the tsv files to pass annotations to Mosaic", file = bashFile)
+  print("  echo \"Generating annotations tsv files for Mosaic\"", file = bashFile)
+  print(file = bashFile)
+  generateTsv(args, bashFile)
 
   # Make the annotation script executable
   makeExecutable = os.popen("chmod +x calypso_annotation_pipeline.sh").read()
+
+# Generate the tsv files to pass annotations to Mosaic
+def generateTsv(args, bashFile):
+  global resourceInfo
+  global mosaicInfo
+  global tsvFiles
+  privateAnnotations = []
+
+  # Loop over all the annotations to pass to Mosaic
+  for resource in resourceInfo["resources"]:
+
+    # Check if this resource is to be uploaded to Mosaic, and if it can be (e.g. does it appear
+    # in the Mosaic json
+    upload    = resourceInfo["resources"][resource]["upload"]
+    canUpload = True if resource in mosaicInfo["resources"] else False
+
+    # If the resource is listed as to be uploaded to Mosaic, but there are no instructions on how
+    # to, fail
+    if upload and not canUpload: fail("Resource '" + str(resource) + "' is marked as to be uploaded to Mosaic, but it is not included in the Mosaic json")
+
+    # If the resource is not listed as to be uploaded to Mosaic, but it can be, provide a warning.
+    elif not upload and canUpload:
+      warningTitle = "Resource omitted"
+      description  = "The following resources were listed as to be uploaded to Mosaic in the resources json, "
+      description += "but no instructions are provided in the Mosaic json, so they will not be uploaded"
+      if warningTitle not in warnings: warnings[warningTitle] = {"description": description, "messages": [resource]}
+      else: warnings[warningTitle]["messages"].append(resource)
+
+    # For resources to upload, check if they are public or private Mosaic annotations. All private
+    # annotations should be included in the same tsv, but public annotation will get their own tsv.
+    elif upload and canUpload:
+      annotation_type = mosaicInfo["resources"][resource]["annotation_type"]
+      if annotation_type == "private": privateAnnotations.append(resource)
+      else: buildTsv(args, [resource], True, bashFile)
+
+  # Build the tsv for private annotations
+  buildTsv(args, privateAnnotations, False, bashFile)
+
+# Build the tsv file
+def buildTsv(args, resources, isPublic, bashFile):
+  global mosaicInfo
+
+  # First create the header line
+  header = "CHROM\\tSTART\\tEND\\tREF\\tALT"
+  for resource in resources:
+    for annotation in sorted(mosaicInfo["resources"][resource]["annotations"]):
+      header += "\\t" + mosaicInfo["resources"][resource]["annotations"][annotation]["uid"]
+
+  # Print the header
+  if isPublic:
+    print("  # Public annotation: ", resource, sep = "", file = bashFile)
+    outputFile = resource + "_annotations_mosaic.tsv"
+  else:
+    print("  # Private annotations", sep = "", file = bashFile)
+    outputFile = "private_annotations_mosaic.tsv"
+  tempFile   = outputFile + ".tmp"
+  print("  echo -e \"", header, "\" > ", outputFile, sep = "", file = bashFile)
+
+  # Include all annotations for all resources
+  annotations = "%CHROM\\t%POS\\t%END\\t%REF\\t%ALT"
+  for resource in resources:
+    for annotation in sorted(mosaicInfo["resources"][resource]["annotations"]):
+      annotations += "\\t%INFO/" + annotation
+  print("  bcftools query -f '", annotations, "\\n' \\", sep = "", file = bashFile)
+  print("  $FILTEREDVCF >> ", outputFile, sep = "", file = bashFile)
+  print(file = bashFile)
+  print("  # Update the tsv file to Mosaic specifications", file = bashFile)
+  print("  awk '{FS=\"\\t\"; OFS=\"\\t\"} {if ($1 != \"CHROM\") {if ($1 ~ \"chr\") {$1=substr($1, 4)}; $3 = $3+1; for(i=6; i<=NF; i++) {$i = ($i == \".\" ? \"\" : $i)}}; print $0}' \\", file = bashFile)
+  print(" ", outputFile, ">", tempFile, file = bashFile)
+  print("  mv", tempFile, outputFile, file = bashFile)
+  print(file = bashFile)
+
+# Write out any warnings
+def writeWarnings(args):
+  global warnings
+
+  if len(warnings) > 0:
+    for warning in warnings:
+      print("### WARNINGS ###")
+      print()
+      print("## ", warning, sep = "")
+      print("  ", warnings[warning]["description"], sep = "")
+      for value in warnings[warning]["messages"]: print("    ", value, sep = "")
 
 # If the script fails, provide an error message and exit
 def fail(message):
@@ -332,6 +518,14 @@ def fail(message):
   exit(1)
 
 # Initialise global variables
+
+# Pipeline version
+version = "0.1.1"
+
+# Store warnings to be output at the end
+warnings = {}
+
+# Store info on allowed values
 isFamily          = True
 allowedFamily     = ['singleton', 'duo', 'trio']
 allowedReferences = ['37', '38']
@@ -339,6 +533,10 @@ allowedReferences = ['37', '38']
 # Store information about the resource files
 resourceVersion = False
 resourceInfo    = {}
+mosaicInfo      = {}
+
+# Store the tsv files that upload annotations to Mosaic
+tsvFiles = {}
 
 if __name__ == "__main__":
   main()
