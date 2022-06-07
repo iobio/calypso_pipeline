@@ -1,0 +1,6 @@
+# Config file for uploaded variants and annotations to Mosaic
+# Set the URL to the desired Mosaic instance
+# Set the token to a Mosaic access token
+
+MOSAIC_URL=https://mosaic.chpc.utah.edu/
+MOSAIC_TOKEN=***
