@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 from __future__ import print_function
+from datetime import date
 from os.path import exists
 
 import os
@@ -27,6 +28,15 @@ def main():
 
   # Generate the bash script to run the annotation pipeline
   genBashScript(args)
+
+  # Parse the Mosaic config file to get the token and url for the api calls
+  parseConfig(args)
+
+  # Generate script to upload filtered variants to Mosaic
+  uploadVariants(args)
+
+  # Generate scripts to upload annotations
+  uploadAnnotations(args)
 
   # Write out any warnings
   writeWarnings(args)
@@ -86,7 +96,7 @@ def checkArguments(args):
     if not exists(args.ped): fail("The ped file could not be found")
     elif not args.ped.endswith(".ped"): fail("The input ped file (--ped, -p) must have the extension '.ped'")
 
-# Parse the config file describing the resources for the selected genome build,
+# Parse the json file describing the resources for the selected genome build,
 # check the files exist, and store the versions.
 def checkResources(args):
   global resourceInfo
@@ -199,6 +209,12 @@ def parseMosaicJson(args):
     except: fail("The Mosaic json file does not include the 'annotation_type' for resource: " + str(resource))
     mosaicInfo["resources"][resource]["annotation_type"] = annotation_type
     if annotation_type != "private" and annotation_type != "public": fail("Annotation_type for " + str(resource) + " must be 'public' or 'private'")
+
+    # Check for the "project_id". This is required for public annotations
+    try: project_id = resources[resource]["project_id"]
+    except: project_id = False
+    mosaicInfo["resources"][resource]["project_id"] = project_id
+    if annotation_type == "public" and not project_id: fail("The Mosaic json file does not include a 'project_id' for public resource: " + str(resource))
 
     # Loop over the annotation information
     mosaicInfo["resources"][resource]["annotations"] = {}
@@ -426,6 +442,9 @@ def genBashScript(args):
   print(file = bashFile)
   generateTsv(args, bashFile)
 
+  # Close the file
+  bashFile.close()
+
   # Make the annotation script executable
   makeExecutable = os.popen("chmod +x calypso_annotation_pipeline.sh").read()
 
@@ -433,7 +452,6 @@ def genBashScript(args):
 def generateTsv(args, bashFile):
   global resourceInfo
   global mosaicInfo
-  global tsvFiles
   privateAnnotations = []
 
   # Loop over all the annotations to pass to Mosaic
@@ -469,6 +487,7 @@ def generateTsv(args, bashFile):
 # Build the tsv file
 def buildTsv(args, resources, isPublic, bashFile):
   global mosaicInfo
+  global tsvFiles
 
   # First create the header line
   header = "CHROM\\tSTART\\tEND\\tREF\\tALT"
@@ -480,9 +499,11 @@ def buildTsv(args, resources, isPublic, bashFile):
   if isPublic:
     print("  # Public annotation: ", resource, sep = "", file = bashFile)
     outputFile = resource + "_annotations_mosaic.tsv"
+    tsvFiles[resource] = outputFile
   else:
     print("  # Private annotations", sep = "", file = bashFile)
     outputFile = "private_annotations_mosaic.tsv"
+    tsvFiles["private"] = outputFile
   tempFile   = outputFile + ".tmp"
   print("  echo -e \"", header, "\" > ", outputFile, sep = "", file = bashFile)
 
@@ -499,6 +520,92 @@ def buildTsv(args, resources, isPublic, bashFile):
   print(" ", outputFile, ">", tempFile, file = bashFile)
   print("  mv", tempFile, outputFile, file = bashFile)
   print(file = bashFile)
+
+# Parse the config file and get the Mosaic token and url
+def parseConfig(args):
+  global mosaicToken
+  global mosaicUrl
+
+  # Check the config file exists, if it was defined
+  if args.config:
+    if not exists(args.config): fail("Config file '" + str(args.config) + "' does not exist")
+
+    # Parse the config file and store the token and url
+    try: configFile = open(args.config, "r")
+    except: fail("Failed to open config file '" + str(args.config) + "'")
+    for line in configFile.readlines():
+      fields = line.rstrip().split("=")
+      if fields[0].startswith("MOSAIC_TOKEN"): mosaicToken = fields[1]
+      elif fields[0].startswith("MOSAIC_URL"): mosaicUrl = fields[1]
+
+    # Fail if the config file did not contain the required fields
+    if not mosaicToken: fail("Config file '" + str(args.config) + "' does not contain the token (MOSAIC_TOKEN=***)")
+    if not mosaicUrl: fail("Config file '" + str(args.config) + "' does not contain the url (MOSAIC_URL=***)")
+
+    # Ensure the url terminates with a '/'
+    if not mosaicUrl.endswith("/"): mosaicUrl += "/"
+
+# Output a script to upload variants to Mosaic
+def uploadVariants(args):
+  global mosaicInfo
+
+  # Open a script file
+  uploadFileName  = "calypso_upload_variants_to_mosaic.sh"
+  try: uploadFile = open(uploadFileName, "w")
+  except: fail("Could not open " + str(uploadFileName) + " to write to")
+
+  # Define the name of the variant set that will be create
+  description = "Calypso_v" + str(mosaicInfo["version"]) + "_variants_" + str(date.today())
+
+  # Write the command to file
+  print("# Upload variants to Mosaic", file = uploadFile)
+  print("python ", os.path.dirname( __file__ ), "/mosaic_commands/upload_annotations_to_mosaic.py \\", sep = "", file = uploadFile)
+  print("  -i ", str(os.path.abspath(args.input_vcf)), " \\", sep = "", file = uploadFile)
+  print("  -a ", os.path.dirname( __file__), "/mosaic_commands \\", sep = "", file = uploadFile)
+  print("  -d \"", description, "\" \\", sep = "", file = uploadFile)
+  if args.config: print("  -c", str(args.config), "\\", file = uploadFile)
+  else: print("  -c \"Insert config file here\" \\", sep = "", file = uploadFile)
+  if args.project_id: print("  -p", str(args.project_id), file = uploadFile)
+  else: print("  -p \"Insert Mosaic project id here\"", file = uploadFile)
+
+  # Close the file
+  uploadFile.close()
+
+  # Make the annotation script executable
+  makeExecutable = os.popen("chmod +x " + str(uploadFileName)).read()
+
+# Output scripts to upload annotations to Mosaic
+def uploadAnnotations(args):
+  global tsvFiles
+  global mosaicInfo
+
+  for resource in tsvFiles:
+
+    # Open a script file
+    uploadFileName  = "calypso_upload_" + str(resource) + "_annotations_to_mosaic.sh"
+    try: uploadFile = open(uploadFileName, "w")
+    except: fail("Could not open " + str(uploadFileName) + " to write to")
+
+    # Write the command to file
+    print("# Upload ", resource, " annotations to Mosaic", file = uploadFile)
+    print("python ", os.path.dirname( __file__ ), "/mosaic_commands/upload_annotations_to_mosaic.py \\", sep = "", file = uploadFile)
+    print("  -i ", str(tsvFiles[resource]), " \\", sep = "", file = uploadFile)
+    print("  -a ", os.path.dirname( __file__), "/mosaic_commands \\", sep = "", file = uploadFile)
+    if args.config: print("  -c", str(args.config), "\\", file = uploadFile)
+    else: print("  -c \"Insert config file here\" \\", sep = "", file = uploadFile)
+
+    # Public annotations need to be uploaded to the project that contains them, private
+    # annotations are uploaded to the defined project.
+    if resource == "private":
+      if args.project_id: print("  -p", str(args.project_id), file = uploadFile)
+      else: print("  -p \"Insert Mosaic project id here\"", file = uploadFile)
+    else: print("  -p ", mosaicInfo["resources"][resource]["project_id"], sep = "", file = uploadFile)
+
+    # Close the file
+    uploadFile.close()
+
+    # Make the annotation script executable
+    makeExecutable = os.popen("chmod +x " + str(uploadFileName)).read()
 
 # Write out any warnings
 def writeWarnings(args):
@@ -533,7 +640,11 @@ allowedReferences = ['37', '38']
 # Store information about the resource files
 resourceVersion = False
 resourceInfo    = {}
-mosaicInfo      = {}
+
+# Store information related to Mosaic
+mosaicToken = False
+mosaicUrl   = False
+mosaicInfo  = {}
 
 # Store the tsv files that upload annotations to Mosaic
 tsvFiles = {}
