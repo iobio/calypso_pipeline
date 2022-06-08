@@ -63,8 +63,10 @@ def uploadVariants(args):
   global token
   global apiUrl
 
+  outFile  = "calypso_upload_variants.stdout"
+  errFile  = "calypso_upload_variants.stderr"
   command  = args.api_commands + "/upload_variants.sh " + str(token) + " \"" + str(apiUrl) + "\" \"" + str(args.project) + "\" \""
-  command += str(args.vcf_file) + "\" \"allele\" \"" + str(args.description) + "\""
+  command += str(args.vcf_file) + "\" \"allele\" \"" + str(args.description) + "\" > " + str(outFile) + " 2> " + str(errFile)
   data     = os.popen(command).read()
 
 # Initialise global variables. These annotations are in the order they should be output to file

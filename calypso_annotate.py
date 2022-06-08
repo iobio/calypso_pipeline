@@ -27,13 +27,13 @@ def main():
   buildToml()
 
   # Generate the bash script to run the annotation pipeline
-  finalVcf = genBashScript(args)
+  finalVcf, filteredVcf = genBashScript(args)
 
   # Parse the Mosaic config file to get the token and url for the api calls
   parseConfig(args)
 
   # Generate script to upload filtered variants to Mosaic
-  uploadVariants(args)
+  uploadVariants(args, filteredVcf)
 
   # Generate scripts to upload annotations
   uploadAnnotations(args)
@@ -454,7 +454,7 @@ def genBashScript(args):
   makeExecutable = os.popen("chmod +x calypso_annotation_pipeline.sh").read()
 
   # Return the output vcf
-  return finalVcf
+  return finalVcf, filteredVcf
 
 # Generate the tsv files to pass annotations to Mosaic
 def generateTsv(args, bashFile):
@@ -554,7 +554,7 @@ def parseConfig(args):
     if not mosaicUrl.endswith("/"): mosaicUrl += "/"
 
 # Output a script to upload variants to Mosaic
-def uploadVariants(args):
+def uploadVariants(args, filteredVcf):
   global mosaicInfo
 
   # Open a script file
@@ -567,8 +567,8 @@ def uploadVariants(args):
 
   # Write the command to file
   print("# Upload variants to Mosaic", file = uploadFile)
-  print("python ", os.path.dirname( __file__ ), "/mosaic_commands/upload_annotations_to_mosaic.py \\", sep = "", file = uploadFile)
-  print("  -i ", str(os.path.abspath(args.input_vcf)), " \\", sep = "", file = uploadFile)
+  print("python ", os.path.dirname( __file__ ), "/mosaic_commands/upload_variants_to_mosaic.py \\", sep = "", file = uploadFile)
+  print("  -i ", str(filteredVcf), " \\", sep = "", file = uploadFile)
   print("  -a ", os.path.dirname( __file__), "/mosaic_commands \\", sep = "", file = uploadFile)
   print("  -d \"", description, "\" \\", sep = "", file = uploadFile)
   if args.config: print("  -c", str(args.config), "\\", file = uploadFile)
