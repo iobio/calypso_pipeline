@@ -27,7 +27,7 @@ def main():
   buildToml()
 
   # Generate the bash script to run the annotation pipeline
-  genBashScript(args)
+  finalVcf = genBashScript(args)
 
   # Parse the Mosaic config file to get the token and url for the api calls
   parseConfig(args)
@@ -37,6 +37,9 @@ def main():
 
   # Generate scripts to upload annotations
   uploadAnnotations(args)
+
+  # Output summary file
+  calypsoSummary(args, finalVcf)
 
   # Write out any warnings
   writeWarnings(args)
@@ -300,8 +303,10 @@ def genBashScript(args):
   print("ANNOTATEDVCF=" + str(vcfBase) + "_annotated.vcf.gz", sep = "", file = bashFile)
   if isFamily: print("SLIVAR1VCF=" + str(vcfBase) + "_slivar1.vcf.gz", sep = "", file = bashFile)
   if isFamily: print("SLIVAR2VCF=" + str(vcfBase) + "_slivar2.vcf.gz", sep = "", file = bashFile)
-  print("FINALVCF=" + str(vcfBase) + "_calypso.vcf.gz", sep = "", file = bashFile)
-  print("FILTEREDVCF=" + str(vcfBase) + "_calypso_filtered.vcf.gz", sep = "", file = bashFile)
+  finalVcf    = str(vcfBase) + "_calypso.vcf.gz"
+  filteredVcf = str(vcfBase) + "_calypso_filtered.vcf.gz"
+  print("FINALVCF=" + finalVcf, sep = "", file = bashFile)
+  print("FILTEREDVCF=" + filteredVcf, sep = "", file = bashFile)
 
   # Write the ped file, if necessary
   if isFamily: print("PED=", os.path.abspath(args.ped), sep = "", file = bashFile)
@@ -447,6 +452,9 @@ def genBashScript(args):
 
   # Make the annotation script executable
   makeExecutable = os.popen("chmod +x calypso_annotation_pipeline.sh").read()
+
+  # Return the output vcf
+  return finalVcf
 
 # Generate the tsv files to pass annotations to Mosaic
 def generateTsv(args, bashFile):
@@ -606,6 +614,34 @@ def uploadAnnotations(args):
 
     # Make the annotation script executable
     makeExecutable = os.popen("chmod +x " + str(uploadFileName)).read()
+
+# Output summary file
+def calypsoSummary(args, finalVcf):
+  global resourceInfo
+  global version
+  today = date.today()
+
+  # Open an output summary file
+  try: summaryFile = open("calypso_" + str(today) + ".txt", "w")
+  except: fail("Failed to open summary file")
+
+  # Write relevant information to file
+  print("### Output from Calypso pipeline ###", file = summaryFile)
+  print(file = summaryFile)
+  print("Calypso pipeline version: ", version, sep = "", file = summaryFile)
+  print("Created on:               ", today, sep = "", file = summaryFile)
+  print("Generated VCF file:       ", finalVcf, sep = "", file = summaryFile)
+  print(file = summaryFile)
+
+  # Loop over all the used resources and output their versions
+  for resource in resourceInfo["resources"]:
+    print(resource, file = summaryFile)
+    print("  version: ", resourceInfo["resources"][resource]["version"], sep = "", file = summaryFile)
+    print("  file:    ", resourceInfo["resources"][resource]["file"], sep = "", file = summaryFile)
+    print(file = summaryFile)
+
+  # Close the file
+  summaryFile.close()
 
 # Write out any warnings
 def writeWarnings(args):
