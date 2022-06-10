@@ -62,8 +62,8 @@ def uploadAnnotations(args):
   global token
   global apiUrl
 
-  outFile  = "calypso_upload_variants.stdout"
-  errFile  = "calypso_upload_variants.stderr"
+  outFile  = "calypso_upload_annotations.stdout"
+  errFile  = "calypso_upload_annotations.stderr"
   command  = args.api_commands + "/upload_variant_annotations.sh " + str(token) + " \"" + str(apiUrl) + "\" \"" + str(args.project) + "\" \""
   command += str(args.tsv_file) + "\" > " + str(outFile) + " 2> " + str(errFile)
   data     = os.popen(command).read()
