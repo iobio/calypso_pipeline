@@ -631,33 +631,125 @@ def uploadAnnotations(args):
   global tsvFiles
   global mosaicInfo
 
+  # Loop over all resources
   for resource in tsvFiles:
+    annotation_type = mosaicInfo["resources"][resource]["annotation_type"]
+    isComplete      = False
 
-    # Open a script file
-    uploadFileName  = "calypso_upload_" + str(resource) + "_annotations_to_mosaic.sh"
-    try: uploadFile = open(uploadFileName, "w")
-    except: fail("Could not open " + str(uploadFileName) + " to write to")
+    # Public annotations need to be imported into the Mosaic project
+    uids = {}
+    if annotation_type == "public": isComplete = getPublicAnnotation(args, resource)
+    elif annotation_type == "private": isComplete = getPrivateAnnotation(args, resource)
 
-    # Write the command to file
-    print("# Upload ", resource, " annotations to Mosaic", file = uploadFile)
-    print("python ", os.path.dirname( __file__ ), "/mosaic_commands/upload_annotations_to_mosaic.py \\", sep = "", file = uploadFile)
-    print("  -i ", str(tsvFiles[resource]), " \\", sep = "", file = uploadFile)
-    print("  -a ", os.path.dirname( __file__), "/mosaic_commands \\", sep = "", file = uploadFile)
-    if args.config: print("  -c", str(args.config), "\\", file = uploadFile)
-    else: print("  -c \"Insert config file here\" \\", sep = "", file = uploadFile)
+    # Only create the script file if the annotation(s) exists in Mosaic
+    if isComplete: 
 
-    # Public annotations need to be uploaded to the project that contains them, private
-    # annotations are uploaded to the defined project.
-    if resource == "private":
-      if args.project_id: print("  -p", str(args.project_id), file = uploadFile)
-      else: print("  -p \"Insert Mosaic project id here\"", file = uploadFile)
-    else: print("  -p ", mosaicInfo["resources"][resource]["project_id"], sep = "", file = uploadFile)
+      # Open a script file
+      uploadFileName  = "calypso_upload_" + str(resource) + "_annotations_to_mosaic.sh"
+      try: uploadFile = open(uploadFileName, "w")
+      except: fail("Could not open " + str(uploadFileName) + " to write to")
 
-    # Close the file
-    uploadFile.close()
+      # Write the command to file
+      print("# Upload ", resource, " annotations to Mosaic", file = uploadFile)
+      print("python ", os.path.dirname( __file__ ), "/mosaic_commands/upload_annotations_to_mosaic.py \\", sep = "", file = uploadFile)
+      print("  -i ", str(tsvFiles[resource]), " \\", sep = "", file = uploadFile)
+      print("  -a ", os.path.dirname( __file__), "/mosaic_commands \\", sep = "", file = uploadFile)
+      if args.config: print("  -c", str(args.config), "\\", file = uploadFile)
+      else: print("  -c \"Insert config file here\" \\", sep = "", file = uploadFile)
+  
+      # Public annotations need to be uploaded to the project that contains them, private
+      # annotations are uploaded to the defined project.
+      if annotation_type == "public":
+        if args.project_id: print("  -p", str(args.project_id), file = uploadFile)
+        else: print("  -p \"Insert Mosaic project id here\"", file = uploadFile)
+      else: print("  -p ", mosaicInfo["resources"][resource]["project_id"], sep = "", file = uploadFile)
+  
+      # Close the file
+      uploadFile.close()
+  
+      # Make the annotation script executable
+      makeExecutable = os.popen("chmod +x " + str(uploadFileName)).read()
 
-    # Make the annotation script executable
-    makeExecutable = os.popen("chmod +x " + str(uploadFileName)).read()
+# Check the public annotations exist, and get their ids
+def getPublicAnnotation(args, resource):
+  global mosaicInfo
+  global warnings
+  page = 1
+  uids = {}
+
+  # Find the annotation id for the public annotation. Get the first page of annotations and check
+  # if there are additional pages required
+  for annotation in mosaicInfo["resources"][resource]["annotations"]:
+    uids[mosaicInfo["resources"][resource]["annotations"][annotation]["uid"]] = False
+
+  # Get the first page of public attributes, and how many pages there are
+  noPages    = getAnnotationsPages(args)
+  isComplete, uids = getAnnotations(args, page, uids)
+
+  # If some ids are not found, go to the next page. If there are no more pages, throw a warning
+  while page < noPages:
+    page += 1
+    isComplete, uids = getAnnotations(args, page, uids)
+    if isComplete: break
+
+  # If the annotations weren't found, throw a warning
+  if not isComplete:
+    warningTitle = "Annotation not found"
+    description  = "Public annotations need to be imported into the Mosaic project, but these annotations weren't found"
+    description += "and so cannot be imported"
+    if warningTitle not in warnings: warnings[warningTitle] = {"description": description, "messages": False}
+    for annotation in uids:
+      if not uids[annotation]: warnings[warningTitle].append("  " + annotation)
+
+  # If the annotations can be imported, import them
+  else:
+    for annotation in uids: importAnnotation(args, annotation, uids[annotation])
+
+  # Return the isComplete variable
+  return isComplete
+
+# Determine how many pages of public attributes there are
+def getAnnotationsPages(args):
+  global mosaicToken
+  global mosaicUrl
+
+  # Get a page of public annotations from Mosaic (100 annotations per page)
+  command  = os.path.dirname( __file__) + "/mosaic_commands/get_variant_annotations.sh " + str(mosaicToken) + " \"" + str(mosaicUrl) + "api\" \""
+  command += str(args.project_id) + "\" 100 1"
+  data     = json.loads(os.popen(command).read())
+  noPages  = math.ceil(int(data["count"]) / int(100))
+
+  # Return the number of pages of annotations
+  return noPages
+
+# Get a page of public attributes
+def getAnnotations(args, page, uids):
+  global mosaicToken
+  global mosaicUrl
+
+  # Get a page of public annotations from Mosaic (100 annotations per page)
+  command  = os.path.dirname( __file__) + "/mosaic_commands/get_variant_annotations.sh " + str(mosaicToken) + " \"" + str(mosaicUrl) + "api\" \""
+  command += str(args.project_id) + "\" 100 " + str(page)
+  data     = json.loads(os.popen(command).read())
+
+  for annotation in data["data"]:
+    if annotation["uid"] in uids.keys(): uids[annotation["uid"]] = annotation["id"]
+
+  # Check if all required attributes have been found and the id stored
+  isComplete = True
+  for annotation in uids:
+    if not uids[annotation]: isComplete = False
+
+  # Return the Mosaic uids and whether they were all found
+  return isComplete, uids
+
+# Import a public annotation into the Mosaic project
+def importAnnotation(args, annotation, uid):
+
+  # Create the command to import the annotation
+  command  = os.path.dirname( __file__) + "/mosaic_commands/import_variant_annotation.sh " + str(mosaicToken) + " \"" + str(mosaicUrl) + "api\" "
+  command += str(args.project_id) + " " + str(uid)
+  data     = json.loads(os.popen(command).read())
 
 # Output summary file
 def calypsoSummary(args, finalVcf):
