@@ -234,6 +234,24 @@ def parseMosaicJson(args):
       mosaicInfo["resources"][resource]["info"] = resources[resource]["INFO"]
       hasInfo = True
     else: mosaicInfo["resources"][resource]["info"] = False
+
+    # Some annotations will require postprocessing with specific tools. Store this information
+    mosaicInfo["resources"][resource]["postprocess"] = False
+    if "postprocess" in resources[resource]:
+      mosaicInfo["resources"][resource]["postprocess"] = resources[resource]["postprocess"]
+      if "postprocess_command" not in resources[resource]: fail("Resource \"" + resource + "\" requires postprocessing, but no tool has been specified")
+
+      # Store information on the postprocessing command
+      try: precommand = resources[resource]["postprocess_command"]["precommand"]
+      except: fail("Resource \"" + resource + "\" postprocess_command is missing \"precommand\"")
+      try: tool = resources[resource]["postprocess_command"]["tool"]
+      except: fail("Resource \"" + resource + "\" postprocess_command is missing \"tool\"")
+      try: splitTie = resources[resource]["postprocess_command"]["split_tie"]
+      except: fail("Resource \"" + resource + "\" postprocess_command is missing \"split_tie\"")
+      try: arguments = resources[resource]["postprocess_command"]["args"]
+      except: fail("Resource \"" + resource + "\" postprocess_command is missing \"args\"")
+      mosaicInfo["resources"][resource]["post_command"] = {"precommand": precommand, "tool": tool, "args": arguments, "split_tie": splitTie}
+
     if hasDelimiter and not hasInfo: fail("'" + str(resource) + "' has 'delimiter' set, but no 'INFO'. Both or neither of these need to be set")
     if hasInfo and not hasDelimiter: fail("'" + str(resource) + "' has 'INFO' set, but no 'delimiter'. Both or neither of these need to be set")
 
@@ -247,13 +265,30 @@ def parseMosaicJson(args):
       try: annType = resources[resource]["annotations"][annotation]["type"]
       except: fail("The Mosaic json does not contain the 'type' field for annotation '" + str(annotation) + "' for resource '" + str(resource) + "'")
 
+      # Some annotations require an operation to be performed, e.g. find the maximum of the annotations. If this is the case
+      # the check on required fields due to the presence of a delimiter can be ignored, since this annotation is not pulling
+      # from the INFO field, but is constructing it
+      if "operation" in resources[resource]["annotations"][annotation]:
+        operation = resources[resource]["annotations"][annotation]["operation"]
+
+        # If the operation to be performed is finding the max of certain values, a list of positions to find the max of must be supplied
+        if operation == "max":
+          try: maxPositions = resources[resource]["annotations"][annotation]["positions"]
+          except: fail("Annotation '" + str(annotation) + "' for '" + str(resource) + "' requires the \"positions\" list defining the fields to find the max of")
+
+          # Check the positions is a list
+          if isinstance(maxPositions, list):
+            mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType, "operation": operation, "positions": maxPositions}
+          else: fail("Annotation '" + str(annotation) + "' for '" + str(resource) + "' include \"positions\" defining the fields to find the max of, but this needs to be a list")
+
       # If the delimiter is set, a "position" field must be present with a numerical value.
-      if mosaicInfo["resources"][resource]["delimiter"]:
-        try: position = resources[resource]["annotations"][annotation]["position"]
-        except: fail("Annotation '" + str(annotation) + "' for '" + str(resource) + "' requires the \"position\" field as the delimiter is set")
-        if not isinstance(position, int): fail("Annotation '" + annotation + "' for '" + str(resource) + "' has a position field that is not an integer")
-        mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType, "position": position}
-      else: mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType}
+      else:
+        if mosaicInfo["resources"][resource]["delimiter"]:
+          try: position = resources[resource]["annotations"][annotation]["position"]
+          except: fail("Annotation '" + str(annotation) + "' for '" + str(resource) + "' requires the \"position\" field as the delimiter is set")
+          if not isinstance(position, int): fail("Annotation '" + annotation + "' for '" + str(resource) + "' has a position field that is not an integer")
+          mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType, "position": position}
+        else: mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType}
 
 # Build the toml file
 def buildToml():
@@ -512,63 +547,84 @@ def generateTsv(args, bashFile):
     elif upload and canUpload:
       annotation_type = mosaicInfo["resources"][resource]["annotation_type"]
       if annotation_type == "private": privateAnnotations.append(resource)
-      else: buildTsv(args, [resource], True, bashFile)
+      else: buildPublicTsv(args, resource, bashFile)
 
   # Build the tsv for private annotations
-  buildTsv(args, privateAnnotations, False, bashFile)
+  if len(privateAnnotations) > 0: print("UPDATE FOR MULTIPLE RESOURCES"); exit(0)#buildTsv(args, privateAnnotations, False, bashFile)
 
 # Build the tsv file
-def buildTsv(args, resources, isPublic, bashFile):
+def buildPublicTsv(args, resource, bashFile):
   global mosaicInfo
   global tsvFiles
 
-  # Only create a private tsv file if there are private annotations
-  if len(resources) != 0:
+  # First create the header line
+  header = "CHROM\\tSTART\\tEND\\tREF\\tALT"
+  for annotation in sorted(mosaicInfo["resources"][resource]["annotations"]):
+    header += "\\t" + mosaicInfo["resources"][resource]["annotations"][annotation]["uid"]
 
-    # First create the header line
-    header = "CHROM\\tSTART\\tEND\\tREF\\tALT"
-    for resource in sorted(resources):
-      for annotation in sorted(mosaicInfo["resources"][resource]["annotations"]):
-        header += "\\t" + mosaicInfo["resources"][resource]["annotations"][annotation]["uid"]
-  
-    # Print the header
-    if isPublic:
-      print("  # Public annotation: ", resource, sep = "", file = bashFile)
-      outputFile = resource + "_annotations_mosaic.tsv"
-      tsvFiles[resource] = outputFile
-    else:
-      print("  # Private annotations", sep = "", file = bashFile)
-      outputFile = "private_annotations_mosaic.tsv"
-      tsvFiles["private"] = outputFile
-    tempFile   = outputFile + ".tmp"
-    print("  echo -e \"", header, "\" > ", outputFile, sep = "", file = bashFile)
-  
-    # Include all annotations for all resources
-    annotations = "%CHROM\\t%POS\\t%END\\t%REF\\t%ALT"
+  # Print the header
+  print("  # Public annotation: ", resource, sep = "", file = bashFile)
+  outputFile = resource + "_calypso_annotations_mosaic.tsv"
+  tsvFiles[resource] = outputFile
+  tempFile   = outputFile + ".tmp"
+  print("  echo -e \"", header, "\" > ", outputFile, sep = "", file = bashFile)
 
-    # Check if a delimiter is set. If so, this tsv needs to be handled differently
-    delimiter = mosaicInfo["resources"][resource]["delimiter"]
-    awkCommand = ""
-    if delimiter:
-      for resource in sorted(resources):
-        for index, annotation in enumerate(sorted(mosaicInfo["resources"][resource]["annotations"])):
-          position = mosaicInfo["resources"][resource]["annotations"][annotation]["position"]
-          annotations += "\\t%INFO/" + mosaicInfo["resources"][resource]["info"]
-          awkCommand += "split($" + str(index + 6) + ",a,\"" + str(delimiter) + "\"); $" + str(index + 6) + "=a[" + str(position) + "]; "
-    else:
-      for resource in sorted(resources):
-        for annotation in sorted(mosaicInfo["resources"][resource]["annotations"]):
-          annotations += "\\t%INFO/" + annotation
-  
-    # Build the query command
-    print("  bcftools query -f '", annotations, "\\n' \\", sep = "", file = bashFile)
-    print("  $FILTEREDVCF >> ", outputFile, sep = "", file = bashFile)
+  # Include all annotations for all resources
+  annotations = "%CHROM\\t%POS\\t%END\\t%REF\\t%ALT"
+
+  delimiter     = mosaicInfo["resources"][resource]["delimiter"]
+  isPostprocess = mosaicInfo["resources"][resource]["postprocess"]
+
+  # Loop over the annotations and add to the command line
+  for annotation in sorted(mosaicInfo["resources"][resource]["annotations"]):
+    if delimiter: annotations += "\\t%INFO/" + mosaicInfo["resources"][resource]["info"]
+    else: annotations += "\\t%INFO/" + annotation
+
+#    # Check if a delimiter is set. If so, this tsv needs to be handled differently
+#    for resource in sorted(resources):
+#      delimiter = mosaicInfo["resources"][resource]["delimiter"]
+#      awkCommand = ""
+#      if delimiter:
+#        for index, annotation in enumerate(sorted(mosaicInfo["resources"][resource]["annotations"])):
+#
+#          # Determine if this annotation is an operation. If not, the position field must be set
+#          try: operation = mosaicInfo["resources"][resource]["annotations"][annotation]["operation"]
+#          except:
+#            position = mosaicInfo["resources"][resource]["annotations"][annotation]["position"]
+#            awkCommand  += "split($" + str(index + 6) + ",a,\"" + str(delimiter) + "\"); $" + str(index + 6) + "=a[" + str(position) + "]; "
+#          annotations += "\\t%INFO/" + mosaicInfo["resources"][resource]["info"]
+#      else:
+#        for annotation in sorted(mosaicInfo["resources"][resource]["annotations"]):
+#          annotations += "\\t%INFO/" + annotation
+
+  # Build the query command
+  print("  bcftools query -f '", annotations, "\\n' \\", sep = "", file = bashFile)
+  print("  $FILTEREDVCF >> ", outputFile, sep = "", file = bashFile)
+  print(file = bashFile)
+
+  # If the resources need post processing (e.g. with additional scripts), do not modify the tsv
+  if isPostprocess:
+    print("  # Postprocess the annotation tsv", file = bashFile)
+    postCommand = mosaicInfo["resources"][resource]["post_command"]
+    command = (postCommand["precommand"] + " ") if postCommand["precommand"] else ""
+    command += os.path.dirname( __file__) + "/" + postCommand["tool"]
+    for argument in postCommand["args"]:
+      argValue = postCommand["args"][argument]
+
+      # Process the different arguments for standard values
+      if argValue == "TSV": argValue = outputFile
+      elif argValue == "data_directory": argValue = args.data_directory
+      elif argValue == "reference": argValue = args.reference
+      command += " " + argument + " " + argValue
+    print("  ", command, sep = "", file = bashFile)
     print(file = bashFile)
+  else:
 
-    # If the delimited has been set, the tsv contains the full annotation (e.g. A|B|C), for each
+    # If the delimiter has been set, the tsv contains the full annotation (e.g. A|B|C), for each
     # annotation. This needs to be modified to break the annotation up.
     print("  # Update the tsv file to Mosaic specifications", file = bashFile)
-    print("  awk '{FS=\"\\t\"; OFS=\"\\t\"} {if ($1 != \"CHROM\") {if ($1 ~ \"chr\") {$1=substr($1, 4)}; $3 = $3+1; " + awkCommand + "for(i=6; i<=NF; i++) {$i=($i==\".\" ? \"\":$i)}}; print $0}' \\", file = bashFile)
+#    print("  awk '{FS=\"\\t\"; OFS=\"\\t\"} {if ($1 != \"CHROM\") {if ($1 ~ \"chr\") {$1=substr($1, 4)}; $3 = $3+1; " + awkCommand + "for(i=6; i<=NF; i++) {$i=($i==\".\" ? \"\":$i)}}; print $0}' \\", file = bashFile)
+    print("  awk '{FS=\"\\t\"; OFS=\"\\t\"} {if ($1 != \"CHROM\") {if ($1 ~ \"chr\") {$1=substr($1, 4)}; $3 = $3+1; for(i=6; i<=NF; i++) {$i=($i==\".\" ? \"\":$i)}}; print $0}' \\", file = bashFile)
     print(" ", outputFile, ">", tempFile, file = bashFile)
     print("  mv", tempFile, outputFile, file = bashFile)
     print(file = bashFile)
@@ -659,7 +715,7 @@ def uploadAnnotations(args):
   
       # Public annotations need to be uploaded to the project that contains them, private
       # annotations are uploaded to the defined project.
-      if annotation_type == "public":
+      if annotation_type == "private":
         if args.project_id: print("  -p", str(args.project_id), file = uploadFile)
         else: print("  -p \"Insert Mosaic project id here\"", file = uploadFile)
       else: print("  -p ", mosaicInfo["resources"][resource]["project_id"], sep = "", file = uploadFile)
@@ -695,11 +751,11 @@ def getPublicAnnotation(args, resource):
   # If the annotations weren't found, throw a warning
   if not isComplete:
     warningTitle = "Annotation not found"
-    description  = "Public annotations need to be imported into the Mosaic project, but these annotations weren't found"
+    description  = "Public annotations need to be imported into the Mosaic project, but these annotations weren't found "
     description += "and so cannot be imported"
-    if warningTitle not in warnings: warnings[warningTitle] = {"description": description, "messages": False}
+    if warningTitle not in warnings: warnings[warningTitle] = {"description": description, "messages": []}
     for annotation in uids:
-      if not uids[annotation]: warnings[warningTitle].append("  " + annotation)
+      if not uids[annotation]: warnings[warningTitle]["messages"].append("  " + annotation)
 
   # If the annotations can be imported, import them
   else:
@@ -799,7 +855,7 @@ def fail(message):
 # Initialise global variables
 
 # Pipeline version
-version = "0.1.1"
+version = "0.1.2"
 
 # Store warnings to be output at the end
 warnings = {}
