@@ -23,6 +23,9 @@ def main():
   # Parse the Mosaic json
   parseMosaicJson(args)
 
+  # Determine the id of the proband
+  getProband(args)
+
   # Build the toml file for vcfanno
   buildToml()
 
@@ -290,6 +293,51 @@ def parseMosaicJson(args):
           mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType, "position": position}
         else: mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType}
 
+# Determine the id of the proband
+def getProband(args):
+  global proband
+
+  # Open the ped file and get the samples
+  try: pedFile = open(args.ped, "r")
+  except: fail("Couldn't open the ped file (" + args.ped + ")")
+
+  # Get information on all the samples
+  samples = {}
+  noAffectted = 0
+  for line in pedFile:
+
+    # Ignore the header line
+    if not line.startswith("#"):
+      fields   = line.rstrip().split("\t")
+      sample   = fields[1]
+
+      # Determine if the sample has parents
+      father = False if fields[2] == "0" else True
+      mother = False if fields[3] == "0" else True
+      if mother and father: noParents = 2
+      elif not mother and not father: noParents = 0
+      else: noParents = 1
+
+      # Determine if the sample is affected
+      if int(fields[5]) == 2:
+        isAffected = True 
+        noAffectted += 1
+        proband = sample
+      else: isAffected = False
+      samples[sample] = {"noParents": noParents, "isAffected": isAffected}
+
+  # Check that the ped file conforms to the supplied family type
+  if args.family_type == "singleton":
+    if len(samples) != 1: fail("Family type was specified as a singleton, but the ped file contains multiple samples")
+  elif args.family_type == "duo":
+    if len(samples) != 2: fail("Family type was specified as a duo, but the ped file doesn't contain two samples")
+  elif args.family_type == "trio":
+    if len(samples) != 3: fail("Family type was specified as a trio, but the ped file doesn't contain three samples")
+
+  # If multiple samples are affected, throw a warning
+  if noAffectted == 0: warnings["Cannot determine proband"] = ["No samples were listed as affected in the ped file"]
+  elif noAffectted > 1: warnings["Cannot determine proband"] = ["Multiple samples were listed as affected in the ped file"]
+
 # Build the toml file
 def buildToml():
   global resourceInfo
@@ -481,6 +529,7 @@ def genBashScript(args):
   print("# Combine the slivar vcf files", file = bashFile)
   print("  bcftools concat -a -d none $SLIVAR1VCF $SLIVAR2VCF -O z -o $FINALVCF", file = bashFile)
   print("  bcftools index -t $FINALVCF", file = bashFile)
+  print(file = bashFile)
 
   # Delete the slivar vcf files
   print("# Remove the Slivar VCF files", file = bashFile)
@@ -501,8 +550,12 @@ def genBashScript(args):
   print("  -o $FILTEREDVCF", file = bashFile)
   print(file = bashFile)
 
+  # Extract vcf files of the de novo, x de novo, and recessive variants to add as variant sets. This can only be performed
+  # for trios with a known proband
+  if args.family_type == "trio" and proband: modeOfInheritance(vcfBase, bashFile)
+
   # Generate the tsv files to pass annotations to Mosaic
-  print("  # Generate the tsv files to pass annotations to Mosaic", file = bashFile)
+  print("# Generate the tsv files to pass annotations to Mosaic", file = bashFile)
   print("  echo \"Generating annotations tsv files for Mosaic\"", file = bashFile)
   print(file = bashFile)
   generateTsv(args, bashFile)
@@ -515,6 +568,37 @@ def genBashScript(args):
 
   # Return the output vcf
   return finalVcf, filteredVcf
+
+# Extract vcf files of the de novo, x de novo, and recessive variants to add as variant sets. This can only be performed
+# for trios with a known proband
+def modeOfInheritance(vcfBase, bashFile):
+  global moiFiles
+
+  moiFiles["denovoVcf"]    = {"file": str(vcfBase) + "_calypso_filtered_denovo.vcf.gz", "description": "Slivar de novo variants"}
+  moiFiles["xdenovoVcf"]   = {"file": str(vcfBase) + "_calypso_filtered_xdenovo.vcf.gz", "description": "Slivar X de novo variants"}
+  moiFiles["recessiveVcf"] = {"file": str(vcfBase) + "_calypso_filtered_recessive.vcf.gz", "description": "Slivar recessive variants"}
+  print("# Generate vcf files containing variants of different modes of inheritance", file = bashFile)
+
+  # Generate a vcf of de novo variants
+  print("  # De novo variants", file = bashFile)
+  print("  echo \"Generating vcf of de novo variants...\"", file = bashFile)
+  print("  DENOVO_VCF=", moiFiles["denovoVcf"]["file"], sep = "", file = bashFile)
+  print("  bcftools view -i 'INFO/denovo=\"", proband, "\"' -O z -o $DENOVO_VCF $FILTEREDVCF", sep = "", file = bashFile)
+  print(file = bashFile)
+
+  # Generate a vcf of X de novo variants
+  print("  # X de novo variants", file = bashFile)
+  print("  echo \"Generating vcf of x de novo variants...\"", file = bashFile)
+  print("  X_DENOVO_VCF=", moiFiles["xdenovoVcf"]["file"], sep = "", file = bashFile)
+  print("  bcftools view -i 'INFO/x_denovo=\"", proband, "\"' -O z -o $X_DENOVO_VCF $FILTEREDVCF", sep = "", file = bashFile)
+  print(file = bashFile)
+
+  # Generate a vcf of de novo variants
+  print("  # De novo variants", file = bashFile)
+  print("  echo \"Generating vcf of recessive variants...\"", file = bashFile)
+  print("  RECESSIVE_VCF=", moiFiles["recessiveVcf"]["file"], sep = "", file = bashFile)
+  print("  bcftools view -i 'INFO/recessive=\"", proband, "\"' -O z -o $RECESSIVE_VCF $FILTEREDVCF", sep = "", file = bashFile)
+  print(file = bashFile)
 
 # Generate the tsv files to pass annotations to Mosaic
 def generateTsv(args, bashFile):
@@ -656,6 +740,7 @@ def parseConfig(args):
 # Output a script to upload variants to Mosaic
 def uploadVariants(args, filteredVcf):
   global mosaicInfo
+  global proband
 
   # Open a script file
   uploadFileName  = "calypso_upload_variants_to_mosaic.sh"
@@ -675,6 +760,21 @@ def uploadVariants(args, filteredVcf):
   else: print("  -c \"Insert config file here\" \\", sep = "", file = uploadFile)
   if args.project_id: print("  -p", str(args.project_id), file = uploadFile)
   else: print("  -p \"Insert Mosaic project id here\"", file = uploadFile)
+  print(file = uploadFile)
+
+  # If vcf files of different modes of inheritance were generated, upload these too
+  if args.family_type == "trio" and proband:
+    print("# Upload the mode of inheritance files as variant sets", file = uploadFile)
+    for moiFile in moiFiles:
+      print("python ", os.path.dirname( __file__ ), "/mosaic_commands/upload_variants_to_mosaic.py \\", sep = "", file = uploadFile)
+      print("  -i ", str(moiFiles[moiFile]["file"]), " \\", sep = "", file = uploadFile)
+      print("  -a ", os.path.dirname( __file__), "/mosaic_commands \\", sep = "", file = uploadFile)
+      print("  -d \"", moiFiles[moiFile]["description"], "\" \\", sep = "", file = uploadFile)
+      if args.config: print("  -c", str(args.config), "\\", file = uploadFile)
+      else: print("  -c \"Insert config file here\" \\", sep = "", file = uploadFile)
+      if args.project_id: print("  -p", str(args.project_id), file = uploadFile)
+      else: print("  -p \"Insert Mosaic project id here\"", file = uploadFile)
+      print(file = uploadFile)
 
   # Close the file
   uploadFile.close()
@@ -855,7 +955,7 @@ def fail(message):
 # Initialise global variables
 
 # Pipeline version
-version = "0.1.2"
+version = "0.1.3"
 
 # Store warnings to be output at the end
 warnings = {}
@@ -864,6 +964,12 @@ warnings = {}
 isFamily          = True
 allowedFamily     = ['singleton', 'duo', 'trio']
 allowedReferences = ['37', '38']
+
+# Store the proband id
+proband = False
+
+# Store the mode of inheritance file names
+moiFiles = {}
 
 # Store information about the resource files
 resourceVersion = False
