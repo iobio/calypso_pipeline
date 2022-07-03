@@ -9,7 +9,17 @@ import argparse
 import json
 import math
 
+# Add the path of the common functions and import them
+from sys import path
+path.append(os.path.dirname(__file__) + "/mosaic_commands")
+import mosaic_config
+import api_variant_annotations as api_va
+#import api_projects as api_p
+import api_project_attributes as api_pa
+#import api_sample_attributes as api_sa
+
 def main():
+  global mosaicConfig
 
   # Parse the command line
   args = parseCommandLine()
@@ -20,20 +30,21 @@ def main():
   # Check all resources
   checkResources(args)
 
+  # Parse the Mosaic config file to get the token and url for the api calls
+  mosaicRequired = {"token": True, "url": True, "attributeProjectId": False}
+  mosaicConfig   = mosaic_config.parseConfig(args, mosaicRequired)
+
   # Parse the Mosaic json
   parseMosaicJson(args)
 
   # Determine the id of the proband
-  getProband(args)
+  if args.ped: getProband(args)
 
   # Build the toml file for vcfanno
   buildToml()
 
   # Generate the bash script to run the annotation pipeline
   finalVcf, filteredVcf = genBashScript(args)
-
-  # Parse the Mosaic config file to get the token and url for the api calls
-  parseConfig(args)
 
   # Generate script to upload filtered variants to Mosaic
   uploadVariants(args, filteredVcf)
@@ -43,6 +54,9 @@ def main():
 
   # Output summary file
   calypsoSummary(args, finalVcf)
+
+  # Set project attributes to indicate when and which version of Calypso has been run
+  updateCalypsoAttributes(args)
 
   # Write out any warnings
   writeWarnings(args)
@@ -60,13 +74,16 @@ def parseCommandLine():
   parser.add_argument('--input_vcf', '-i', required = True, metavar = "string", help = "The input vcf file to annotate")
 
   # Optional pipeline arguments
-  parser.add_argument('--ped', '-p', required = False, metavar = "string", help = "The pedigree file for the family. Not required for singletons")
+  parser.add_argument('--ped', '-e', required = False, metavar = "string", help = "The pedigree file for the family. Not required for singletons")
   parser.add_argument('--resource_json', '-j', required = False, metavar = "string", help = "The json file describing the annotation resources")
 
   # Optional mosaic arguments
-  parser.add_argument('--mosaic_json', '-m', required = False, metavar = "string", help = "The json file describing the Mosaic parameters")
   parser.add_argument('--config', '-c', required = False, metavar = "string", help = "The config file for Mosaic")
-  parser.add_argument('--project_id', '-t', required = False, metavar = "string", help = "The project id that variants will be uploaded to")
+  parser.add_argument('--token', '-t', required = False, metavar = "string", help = "The Mosaic authorization token")
+  parser.add_argument('--url', '-u', required = False, metavar = "string", help = "The base url for Mosaic")
+  parser.add_argument('--attributes_project', '-a', required = False, metavar = "integer", help = "The Mosaic project id that contains public attributes")
+  parser.add_argument('--mosaic_json', '-m', required = False, metavar = "string", help = "The json file describing the Mosaic parameters")
+  parser.add_argument('--project_id', '-p', required = False, metavar = "string", help = "The project id that variants will be uploaded to")
 
   # Version
   parser.add_argument('--version', '-v', action="version", version='Calypso annotation pipline version: ' + str(version))
@@ -151,7 +168,9 @@ def checkResources(args):
     # Get required information for each resource
     try: resourceInfo["resources"][resource]["version"] = resources[resource]["version"]
     except: fail("Version for resource \"" + str(resource) + "\" was not included in the resources json")
-    try: resourceInfo["resources"][resource]["file"] = resourceInfo["path"] + resources[resource]["file"]
+    try:
+      resourceInfo["resources"][resource]["file"] = resources[resource]["file"]
+      if resourceInfo["resources"][resource]["file"]: resourceInfo["resources"][resource]["file"] = resourceInfo["path"] + resources[resource]["file"]
     except: fail("File for resource \"" + str(resource) + "\" was not included in the resources json")
     try: resourceInfo["resources"][resource]["toml"] = resources[resource]["toml"]
     except: fail("File for resource \"" + str(resource) + "\" was not included in the resources json")
@@ -166,6 +185,41 @@ def checkResources(args):
 
     # Check that the file exists
     if not exists(resourceInfo["resources"][resource]["file"]): fail("Resource file " + str(resourceInfo["resources"][resource]["file"]) + " does not exist")
+
+    # If the resource is vep, handle this separately
+    if resource == "vep": processVep(resources)
+
+    # If this is a resource that uses VEP to generate, process the VEP fields
+    if "vep_commands" in resources[resource]: processVepCommands(resources, resource)
+    else: resourceInfo["resources"][resource]["isVepAnnotation"] = False
+
+    # Check if this resource is to be applied to the full file, or only applied to the filtered file. If the
+    # annotation takes a long time to process, and does not need to be tracked longitudinally (e.g. HGVS), the
+    # annotation can be applied to the filtered file only, to generate values to upload to Mosaic.
+    isFiiltered = resources[resource]["apply_to_filtered"] = True if "apply_to_filtered" in resources[resource] else False
+    resourceInfo["resources"][resource]["apply_to_filtered"] = isFiiltered
+
+# Process the vep information
+def processVep(resources):
+  global resourceInfo
+
+  # VEP requires a cache and plugins directory to run. Get these directories and check they exist
+  try: resourceInfo["resources"]["vep"]["cache"] = resources["vep"]["cache"]
+  except: fail("The VEP resource description does not include the \"cache\"")
+  try: resourceInfo["resources"]["vep"]["plugins"] = resources["vep"]["plugins"]
+  except: fail("The VEP resource description does not include \"plugins\"")
+
+  if not exists(resourceInfo["resources"]["vep"]["cache"]): fail("VEP cache does not exist")
+  if not exists(resourceInfo["resources"]["vep"]["plugins"]): fail("VEP plugins directory does not exist")
+
+# For resources that use VEP to generate annotations, process the VEP information
+def processVepCommands(resources, resource):
+  global resourceInfo
+
+  # Get the VEP specific information for this resource
+  resourceInfo["resources"][resource]["isVepAnnotation"] = True
+  if "commands" in resources[resource]["vep_commands"]: resourceInfo["resources"][resource]["vep_commands"] = resources[resource]["vep_commands"]["commands"]
+  if "fields" in resources[resource]["vep_commands"]: resourceInfo["resources"][resource]["vep_fields"] = resources[resource]["vep_commands"]["fields"]
 
 # Parse the Mosaic json file describing the mosaic information for uploading annotations
 def parseMosaicJson(args):
@@ -268,6 +322,10 @@ def parseMosaicJson(args):
       try: annType = resources[resource]["annotations"][annotation]["type"]
       except: fail("The Mosaic json does not contain the 'type' field for annotation '" + str(annotation) + "' for resource '" + str(resource) + "'")
 
+      # Some annotations are pulled directly from native VCF genotype fields (e.g. FORMAT). This will be indicated with
+      # the "isGenotype" field.
+      isGenotype = resources[resource]["annotations"][annotation]["is_genotype"] if "is_genotype" in resources[resource]["annotations"][annotation] else False
+
       # Some annotations require an operation to be performed, e.g. find the maximum of the annotations. If this is the case
       # the check on required fields due to the presence of a delimiter can be ignored, since this annotation is not pulling
       # from the INFO field, but is constructing it
@@ -281,7 +339,7 @@ def parseMosaicJson(args):
 
           # Check the positions is a list
           if isinstance(maxPositions, list):
-            mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType, "operation": operation, "positions": maxPositions}
+            mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType, "operation": operation, "positions": maxPositions, "isGenotype": isGenotype}
           else: fail("Annotation '" + str(annotation) + "' for '" + str(resource) + "' include \"positions\" defining the fields to find the max of, but this needs to be a list")
 
       # If the delimiter is set, a "position" field must be present with a numerical value.
@@ -290,8 +348,8 @@ def parseMosaicJson(args):
           try: position = resources[resource]["annotations"][annotation]["position"]
           except: fail("Annotation '" + str(annotation) + "' for '" + str(resource) + "' requires the \"position\" field as the delimiter is set")
           if not isinstance(position, int): fail("Annotation '" + annotation + "' for '" + str(resource) + "' has a position field that is not an integer")
-          mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType, "position": position}
-        else: mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType}
+          mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType, "position": position, "isGenotype": isGenotype}
+        else: mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType, "isGenotype": isGenotype}
 
 # Determine the id of the proband
 def getProband(args):
@@ -302,8 +360,7 @@ def getProband(args):
   except: fail("Couldn't open the ped file (" + args.ped + ")")
 
   # Get information on all the samples
-  samples = {}
-  noAffectted = 0
+  noAffected = 0
   for line in pedFile:
 
     # Ignore the header line
@@ -312,8 +369,8 @@ def getProband(args):
       sample   = fields[1]
 
       # Determine if the sample has parents
-      father = False if fields[2] == "0" else True
-      mother = False if fields[3] == "0" else True
+      father = False if fields[2] == "0" else fields[2]
+      mother = False if fields[3] == "0" else fields[3]
       if mother and father: noParents = 2
       elif not mother and not father: noParents = 0
       else: noParents = 1
@@ -321,10 +378,11 @@ def getProband(args):
       # Determine if the sample is affected
       if int(fields[5]) == 2:
         isAffected = True 
-        noAffectted += 1
+        noAffected += 1
         proband = sample
       else: isAffected = False
-      samples[sample] = {"noParents": noParents, "isAffected": isAffected}
+      samples[sample] = {"noParents": noParents, "father": father, "mother": mother, "isAffected": isAffected, "relationship": False}
+      if isAffected: samples[sample]["relationship"] = "proband"
 
   # Check that the ped file conforms to the supplied family type
   if args.family_type == "singleton":
@@ -333,10 +391,22 @@ def getProband(args):
     if len(samples) != 2: fail("Family type was specified as a duo, but the ped file doesn't contain two samples")
   elif args.family_type == "trio":
     if len(samples) != 3: fail("Family type was specified as a trio, but the ped file doesn't contain three samples")
+  elif args.family_type == "quad":
+    if len(samples) != 4: fail("Family type was specified as a quad, but the ped file doesn't contain three samples")
 
   # If multiple samples are affected, throw a warning
-  if noAffectted == 0: warnings["Cannot determine proband"] = ["No samples were listed as affected in the ped file"]
-  elif noAffectted > 1: warnings["Cannot determine proband"] = ["Multiple samples were listed as affected in the ped file"]
+  if noAffected != 1: fail("Cannot determine proband")
+
+  # Identify the mother and father of the proband
+  mother = samples[proband]["mother"]
+  father = samples[proband]["father"]
+  if samples[proband]["mother"]: samples[mother]["relationship"] = "mother"
+  if samples[proband]["father"]: samples[father]["relationship"] = "father"
+
+  # Identify siblings
+  for sample in samples:
+    if samples[sample]["mother"] == mother and samples[sample]["father"] and not samples[sample]["isAffected"]: samples[sample]["relationship"] = "sibling"
+    if not samples[sample]["relationship"]: fail("Sample " + str(sample) + " has an unknown relationship to the proband")
 
 # Build the toml file
 def buildToml():
@@ -415,6 +485,8 @@ def genBashScript(args):
   filteredVcf = str(vcfBase) + "_calypso_filtered.vcf.gz"
   print("FINALVCF=" + finalVcf, sep = "", file = bashFile)
   print("FILTEREDVCF=" + filteredVcf, sep = "", file = bashFile)
+  print("STDOUT=calypso_annotation_pipeline.stdout", file = bashFile)
+  print("STDERR=calypso_annotation_pipeline.stderr", file = bashFile)
 
   # Write the ped file, if necessary
   if isFamily: print("PED=", os.path.abspath(args.ped), sep = "", file = bashFile)
@@ -443,19 +515,22 @@ def genBashScript(args):
   if isFamily: print("  tail -n+2 $PED | cut -f 2 | sort -u > samples.txt", file = bashFile)
   else: fail("Can't handle singletons yet. Need to build samples file in case there are background samples")
   print("  bcftools norm -m - -w 10000 -f $REF $VCF \\", file = bashFile)
-  print("  | bcftools view -a -c 1 -S samples.txt -O z -o $NORMVCF", file = bashFile)
+  print("  2> $STDERR \\", file = bashFile)
+  print("  | bcftools view -a -c 1 -S samples.txt -O z -o $NORMVCF \\", file = bashFile)
+  print("  > $STDOUT 2>> $STDERR", file = bashFile)
   print(file = bashFile)
 
   # Index the normalized vcf file
   print("# Index the normalized VCF file", file = bashFile)
-  print("  bcftools index -t $NORMVCF", file = bashFile)
+  print("  bcftools index -t $NORMVCF \\", file = bashFile)
   print(file = bashFile)
 
   # Strip all existing annotations from the VCF file
   print("# Strip existing VCF annotations", file = bashFile)
   print("  echo \"Removing any existing annotations from input VCF...\"", file = bashFile)
   print(file = bashFile)
-  print("  bcftools annotate -x INFO $NORMVCF -O z -o $CLEANVCF", file = bashFile)
+  print("  bcftools annotate -x INFO $NORMVCF -O z -o $CLEANVCF \\", file = bashFile)
+  print("  >> $STDOUT 2>> $STDERR", file = bashFile)
   print("  bcftools index -t $CLEANVCF", file = bashFile)
   print(file = bashFile)
 
@@ -471,8 +546,11 @@ def genBashScript(args):
   print("  echo \"Annotating cleaned VCF...\"", file = bashFile)
   print(file = bashFile)
   print("  bcftools csq -f $REF --ncsq 40 -l -g $GFF $CLEANVCF \\", file = bashFile)
+  print("  2>> $STDERR \\", file = bashFile)
   print("  | vcfanno -p 16 $TOML /dev/stdin \\", file = bashFile)
-  print("  | bcftools view -O z -o $ANNOTATEDVCF -", file = bashFile)
+  print("  2>> $STDERR \\", file = bashFile)
+  print("  | bcftools view -O z -o $ANNOTATEDVCF - \\", file = bashFile)
+  print("  >> $STDOUT 2>> $STDERR", file = bashFile)
   print(file = bashFile)
 
   # Delete the clean vcf
@@ -495,7 +573,8 @@ def genBashScript(args):
   print("  --family-expr 'x_denovo:(variant.CHROM == \"X\" || variant.CHROM == \"chrX\") && fam.every(segregating_denovo_x) && INFO.gnomad_popmax_af < 0.001' \\", file = bashFile)
   print("  --family-expr 'recessive:fam.every(segregating_recessive)' \\", file = bashFile)
   print("  --family-expr 'dominant:fam.every(segregating_dominant)' \\", file = bashFile)
-  print("  -o $SLIVAR1VCF", file = bashFile)
+  print("  -o $SLIVAR1VCF \\", file = bashFile)
+  print("  >> $STDOUT 2>> $STDERR", file = bashFile)
   print("  bcftools index -t $SLIVAR1VCF", file = bashFile)
   print(file = bashFile)
 
@@ -515,7 +594,8 @@ def genBashScript(args):
   print("  -s comphet_side \\", file = bashFile)
   print("  -s denovo \\", file = bashFile)
   print("  -p $PED \\", file = bashFile)
-  print("  -o $SLIVAR2VCF", file = bashFile)
+  print("  -o $SLIVAR2VCF \\", file = bashFile)
+  print("  >> $STDOUT 2>> $STDERR", file = bashFile)
   print("  bcftools index -t $SLIVAR2VCF", file = bashFile)
   print(file = bashFile)
 
@@ -527,7 +607,8 @@ def genBashScript(args):
 
   # Combine the slivar vcf files
   print("# Combine the slivar vcf files", file = bashFile)
-  print("  bcftools concat -a -d none $SLIVAR1VCF $SLIVAR2VCF -O z -o $FINALVCF", file = bashFile)
+  print("  bcftools concat -a -d none $SLIVAR1VCF $SLIVAR2VCF -O z -o $FINALVCF \\", file = bashFile)
+  print("  >> $STDOUT 2>> $STDERR", file = bashFile)
   print("  bcftools index -t $FINALVCF", file = bashFile)
   print(file = bashFile)
 
@@ -547,12 +628,44 @@ def genBashScript(args):
   print("  slivar_static expr --vcf $FINALVCF \\", file = bashFile)
   print("  --info 'INFO.gnomad_popmax_af < 0.01 && variant.FILTER == \"PASS\" && variant.ALT[0] != \"*\"' \\", file = bashFile)
   print("  --pass-only \\", file = bashFile)
-  print("  -o $FILTEREDVCF", file = bashFile)
+
+  # Loop over all resources and see if any of them use VEP
+  vepCommands = []
+  vepFields   = []
+  useVep      = False
+  for resource in resourceInfo["resources"]:
+    if resourceInfo["resources"][resource]["isVepAnnotation"] and resourceInfo["resources"][resource]["apply_to_filtered"]:
+      useVep = True
+      for command in resourceInfo["resources"][resource]["vep_commands"]: vepCommands.append(command)
+      for field in resourceInfo["resources"][resource]["vep_fields"]: vepFields.append(field)
+
+  # If so, include the VEP commands
+  if useVep:
+    print("  | vep \\", file = bashFile)
+    print("    --vcf \\", file = bashFile)
+    print("    --force \\", file = bashFile)
+    print("    --check_existing \\", file = bashFile)
+    print("    --coding_only \\", file = bashFile)
+    print("    --quiet \\", file = bashFile)
+    print("    --fork 40 \\", file = bashFile)
+    print("    --format vcf \\", file = bashFile)
+    print("    --force_overwrite \\", file = bashFile)
+    print("    --cache \\", file = bashFile)
+    print("    --no_stats \\", file = bashFile)
+    print("    --fasta $REF \\", file = bashFile)
+    print("    --dir_cache ", resourceInfo["resources"]["vep"]["cache"], " \\", sep = "", file = bashFile)
+    print("    --dir_plugins ", resourceInfo["resources"]["vep"]["plugins"], " \\", sep = "", file = bashFile)
+    print("    --assembly GRCh", str(args.reference), " \\", sep = "", file = bashFile)
+    for command in vepCommands: print("    ", command, " \\", sep = "", file = bashFile)
+    if len(vepFields) > 0: print("    --fields \"", ",".join(vepFields), "\" \\", sep = "", file = bashFile)
+    print("  2>> $STDERR \\", file = bashFile)
+  print("  -o $FILTEREDVCF \\", file = bashFile)
+  print("  >> $STDOUT 2>> $STDERR", file = bashFile)
   print(file = bashFile)
 
   # Extract vcf files of the de novo, x de novo, and recessive variants to add as variant sets. This can only be performed
   # for trios with a known proband
-  if args.family_type == "trio" and proband: modeOfInheritance(vcfBase, bashFile)
+  if (args.family_type == "trio" or args.family_type == "quad") and proband: modeOfInheritance(vcfBase, bashFile)
 
   # Generate the tsv files to pass annotations to Mosaic
   print("# Generate the tsv files to pass annotations to Mosaic", file = bashFile)
@@ -604,7 +717,7 @@ def modeOfInheritance(vcfBase, bashFile):
 def generateTsv(args, bashFile):
   global resourceInfo
   global mosaicInfo
-  privateAnnotations = []
+  privateResources = []
 
   # Loop over all the annotations to pass to Mosaic
   for resource in resourceInfo["resources"]:
@@ -630,11 +743,20 @@ def generateTsv(args, bashFile):
     # annotations should be included in the same tsv, but public annotation will get their own tsv.
     elif upload and canUpload:
       annotation_type = mosaicInfo["resources"][resource]["annotation_type"]
-      if annotation_type == "private": privateAnnotations.append(resource)
+      if annotation_type == "private": privateResources.append(resource)
       else: buildPublicTsv(args, resource, bashFile)
 
   # Build the tsv for private annotations
-  if len(privateAnnotations) > 0: print("UPDATE FOR MULTIPLE RESOURCES"); exit(0)#buildTsv(args, privateAnnotations, False, bashFile)
+  if len(privateResources) > 0:
+
+    # All of the private annotations need to be created in the project
+  ##########################
+  ########################## ACTIVATE WHEN ROUTE IS AVAILABLE
+  ##########################
+    temp = 1
+    #fail("NEED TO FINISH PRIVATE ANNOTATIONS")
+    #annotationUids = createAnnotations(args, privateResources)
+    #buildPrivateAnnotationTsv(args, privateResources, annotationUids)
 
 # Build the tsv file
 def buildPublicTsv(args, resource, bashFile):
@@ -648,9 +770,9 @@ def buildPublicTsv(args, resource, bashFile):
 
   # Print the header
   print("  # Public annotation: ", resource, sep = "", file = bashFile)
-  outputFile = resource + "_calypso_annotations_mosaic.tsv"
+  outputFile         = resource + "_calypso_annotations_mosaic.tsv"
   tsvFiles[resource] = outputFile
-  tempFile   = outputFile + ".tmp"
+  tempFile           = outputFile + ".tmp"
   print("  echo -e \"", header, "\" > ", outputFile, sep = "", file = bashFile)
 
   # Include all annotations for all resources
@@ -713,29 +835,108 @@ def buildPublicTsv(args, resource, bashFile):
     print("  mv", tempFile, outputFile, file = bashFile)
     print(file = bashFile)
 
-# Parse the config file and get the Mosaic token and url
-def parseConfig(args):
-  global mosaicToken
-  global mosaicUrl
+# Creat new annotations
+def createAnnotations(args, privateResources):
+  global mosaicConfig
+  global mosaicInfo
+  global samples
+  annotationUids = {}
 
-  # Check the config file exists, if it was defined
-  if args.config:
-    if not exists(args.config): fail("Config file '" + str(args.config) + "' does not exist")
+  # Get all the annotations in the project
+  ##########################
+  ########################## NEED API ROUTE
+  ##########################
+  #command            = api_va.XXX
+  #projectAnnotations = json.loads(os.popen(command).read())
 
-    # Parse the config file and store the token and url
-    try: configFile = open(args.config, "r")
-    except: fail("Failed to open config file '" + str(args.config) + "'")
-    for line in configFile.readlines():
-      fields = line.rstrip().split("=")
-      if fields[0].startswith("MOSAIC_TOKEN"): mosaicToken = fields[1]
-      elif fields[0].startswith("MOSAIC_URL"): mosaicUrl = fields[1]
+  # Loop over the private resources
+  for resource in sorted(privateResources):
+    annotationUids[resource] = {}
 
-    # Fail if the config file did not contain the required fields
-    if not mosaicToken: fail("Config file '" + str(args.config) + "' does not contain the token (MOSAIC_TOKEN=***)")
-    if not mosaicUrl: fail("Config file '" + str(args.config) + "' does not contain the url (MOSAIC_URL=***)")
+    # Loop over all the annotations for this resource
+    for annotation in mosaicInfo["resources"][resource]["annotations"]:
 
-    # Ensure the url terminates with a '/'
-    if not mosaicUrl.endswith("/"): mosaicUrl += "/"
+      # If this is a genotype annotation, create an attribute for each sample
+      isGenotype = mosaicInfo["resources"][resource]["annotations"][annotation]["isGenotype"]
+  ##########################
+  ########################## GET THE ORDER OF THE SAMPLES FROM THE HEADER. NEED TO KNOW AS BCFTOOLS
+  ########################## QUERY WILL OUTPUT IN THIS ORDER, SO THE UIDS MUST BE IN THIS ORDER
+  ##########################
+      #annotationUids[resource][annotation] = {"isGenotype": isGenotype, "uids": {}}
+      if isGenotype:
+
+        # Loop over all samples in the project and get the annotations for each sample
+        for sample in samples:
+          annotationName = str(annotation) + " " + str(samples[sample]["relationship"])
+
+          # Check if an annotation with this name already exists
+  ##########################
+  ########################## NEED API ROUTE
+  ##########################
+          #annotationUid = projectAnnotations[] if annotationName in projectAnnotations else False
+
+          # If the annotation does not exist, create it
+          if not annotationUid:
+            valueType = mosaicInfo["resources"][resource]["annotations"][annotation]["type"]
+            privacy   = "private"
+            command   = api_va.postCreateVariantAnnotations(mosaicConfig, annotationName, valueType, privacy, projectId)
+  ##########################
+  ########################## RUN API COMMAND
+  ##########################
+            #data      = json.loads(os.popen(command).read())
+
+            # Get the uid of the newly created annotation
+  ##########################
+  ########################## GET UID from data
+  ##########################
+            #annotationUid = data[]
+
+          # Store the annotation uids
+  ##########################
+  ########################## NEED UIDS
+  ##########################
+          annotationUids[resource][annotation]["uids"].append(annotationUid)
+          print()
+          print(resource, annotation, mosaicInfo["resources"][resource]["annotations"][annotation], annotationName)
+
+      # Other types of private annotations are not yet handled
+      else: fail("PRIVATE ANNOTAION TYPE NOT HANDLED")
+
+  ##########################
+  ########################## RETURN THE UIDS
+  ##########################
+  #return annotationUids
+
+# Build the tsv containing the private annotations
+def buildPrivateAnnotationTsv(args, resources, annotationUids):
+  global mosaicConfig
+  global tsvFiles
+
+  # First create the header line
+  header = "CHROM\\tSTART\\tEND\\tREF\\tALT"
+  for resource in sorted(resources):
+    for annotation in sorted(annotationUids[resource]):
+      header += "\\t" + annotationUids[resource][annotation]["uid"]
+
+  print(header)
+  exit(0)
+  # Print the header
+  print("  # Public annotation: ", resource, sep = "", file = bashFile)
+  outputFile         = resource + "_calypso_annotations_mosaic.tsv"
+  tsvFiles[resource] = outputFile
+  tempFile           = outputFile + ".tmp"
+  print("  echo -e \"", header, "\" > ", outputFile, sep = "", file = bashFile)
+
+  # Include all annotations for all resources
+  annotations = "%CHROM\\t%POS\\t%END\\t%REF\\t%ALT"
+
+  delimiter     = mosaicInfo["resources"][resource]["delimiter"]
+  isPostprocess = mosaicInfo["resources"][resource]["postprocess"]
+
+  # Loop over the annotations and add to the command line
+  for annotation in sorted(mosaicInfo["resources"][resource]["annotations"]):
+    if delimiter: annotations += "\\t%INFO/" + mosaicInfo["resources"][resource]["info"]
+    else: annotations += "\\t%INFO/" + annotation
 
 # Output a script to upload variants to Mosaic
 def uploadVariants(args, filteredVcf):
@@ -763,7 +964,7 @@ def uploadVariants(args, filteredVcf):
   print(file = uploadFile)
 
   # If vcf files of different modes of inheritance were generated, upload these too
-  if args.family_type == "trio" and proband:
+  if (args.family_type == "trio" or args.family_type == "quad") and proband:
     print("# Upload the mode of inheritance files as variant sets", file = uploadFile)
     for moiFile in moiFiles:
       print("python ", os.path.dirname( __file__ ), "/mosaic_commands/upload_variants_to_mosaic.py \\", sep = "", file = uploadFile)
@@ -839,13 +1040,13 @@ def getPublicAnnotation(args, resource):
     uids[mosaicInfo["resources"][resource]["annotations"][annotation]["uid"]] = False
 
   # Get the first page of public attributes, and how many pages there are
-  noPages    = getAnnotationsPages(args)
+  noPages          = getAnnotationsPages(args)
   isComplete, uids = getAnnotations(args, page, uids)
 
   # If some ids are not found, go to the next page. If there are no more pages, throw a warning
-  while page < noPages:
-    page += 1
+  while page <= noPages:
     isComplete, uids = getAnnotations(args, page, uids)
+    page += 1
     if isComplete: break
 
   # If the annotations weren't found, throw a warning
@@ -866,27 +1067,23 @@ def getPublicAnnotation(args, resource):
 
 # Determine how many pages of public attributes there are
 def getAnnotationsPages(args):
-  global mosaicToken
-  global mosaicUrl
+  global mosaicConfig
 
   # Get a page of public annotations from Mosaic (100 annotations per page)
-  command  = os.path.dirname( __file__) + "/mosaic_commands/get_variant_annotations.sh " + str(mosaicToken) + " \"" + str(mosaicUrl) + "api\" \""
-  command += str(args.project_id) + "\" 100 1"
-  data     = json.loads(os.popen(command).read())
-  noPages  = math.ceil(int(data["count"]) / int(100))
+  command = api_va.getVariantAnnotations(mosaicConfig, args.project_id, 100, 1)
+  data    = json.loads(os.popen(command).read())
+  noPages = math.ceil(int(data["count"]) / int(100))
 
   # Return the number of pages of annotations
   return noPages
 
 # Get a page of public attributes
 def getAnnotations(args, page, uids):
-  global mosaicToken
-  global mosaicUrl
+  global mosaicConfig
 
   # Get a page of public annotations from Mosaic (100 annotations per page)
-  command  = os.path.dirname( __file__) + "/mosaic_commands/get_variant_annotations.sh " + str(mosaicToken) + " \"" + str(mosaicUrl) + "api\" \""
-  command += str(args.project_id) + "\" 100 " + str(page)
-  data     = json.loads(os.popen(command).read())
+  command = api_va.getVariantAnnotations(mosaicConfig, args.project_id, 100, page)
+  data    = json.loads(os.popen(command).read())
 
   for annotation in data["data"]:
     if annotation["uid"] in uids.keys(): uids[annotation["uid"]] = annotation["id"]
@@ -901,11 +1098,11 @@ def getAnnotations(args, page, uids):
 
 # Import a public annotation into the Mosaic project
 def importAnnotation(args, annotation, uid):
+  global mosaicConfig
 
   # Create the command to import the annotation
-  command  = os.path.dirname( __file__) + "/mosaic_commands/import_variant_annotation.sh " + str(mosaicToken) + " \"" + str(mosaicUrl) + "api\" "
-  command += str(args.project_id) + " " + str(uid)
-  data     = json.loads(os.popen(command).read())
+  command = api_va.postImportVariantAnnotations(mosaicConfig, uid, args.project_id)
+  data    = json.loads(os.popen(command).read())
 
 # Output summary file
 def calypsoSummary(args, finalVcf):
@@ -935,6 +1132,78 @@ def calypsoSummary(args, finalVcf):
   # Close the file
   summaryFile.close()
 
+# Set project attributes to indicate when and which version of Calypso has been run
+def updateCalypsoAttributes(args):
+  global mosaicConfig
+  global version
+
+  # Define the public attributes we want to import or update
+  calypso = {}
+  calypso["Calypso version"]  = {"uid": False, "id": False, "value": version, "inProject": False}
+  calypso["Calypso date run"] = {"uid": False, "id": False, "value": date.today(), "inProject": False}
+  calypso["Calypso history"]  = {"uid": False, "id": False, "value": str(version) + ":" + str(date.today()), "inProject": False}
+
+  # Get all project attributes to check if the Calypso attributes have already been imported and set
+  command = api_pa.getPublicProjectAttributes(mosaicConfig, 100, 1)
+  data    = json.loads(os.popen(command).read())
+  noPages = math.ceil(int(data["count"]) / int(100))
+
+  # There may be multiple pages of attributes, so loop over all pages looking for the attributes we need
+  page = 1
+  while page <= noPages:
+    command = api_pa.getPublicProjectAttributes(mosaicConfig, 100, 1)
+    data    = json.loads(os.popen(command).read())
+    page   += 1
+
+    # Loop over the attributes and look for the Calypso attributes
+    for attribute in data["data"]:
+      if attribute["name"] in calypso: 
+        calypso[attribute["name"]]["uid"]   = attribute["uid"]
+        calypso[attribute["name"]]["id"]    = attribute["id"]
+
+  # Loop over the attributes in the current project and check for the Calypso attributes
+  command = api_pa.getProjectAttributes(mosaicConfig, args.project_id)
+  data    = json.loads(os.popen(command).read())
+  for attribute in data:
+
+    # If an attribute with the right name exists, check the Mosaic id matches the public attribute, and
+    # update the value
+    if attribute["name"] in calypso:
+      if attribute["id"] == calypso[attribute["name"]]["id"]:
+
+        # If this is the history, the current version and date should be appended. If the last execution of the
+        # Calypso pipeline was today and with the current version, however, do not update.
+        if attribute["name"] == "Calypso history": calypso[attribute["name"]]["value"] = updateHistory(args, attribute["values"])
+        command = api_pa.putProjectAttribute(mosaicConfig, calypso[attribute["name"]]["value"], args.project_id, attribute["id"])
+        data    = json.loads(os.popen(command).read())
+        calypso[attribute["name"]]["inProject"] = True
+
+  # Import all attributes that are not in the project
+  for attribute in calypso:
+    if not calypso[attribute]["inProject"]:
+      command = api_pa.postImportProjectAttribute(mosaicConfig, calypso[attribute]["id"], calypso[attribute]["value"], args.project_id)
+      data    = json.loads(os.popen(command).read())
+
+# Update the Calypso history value
+def updateHistory(args, valueRecords):
+  global version
+
+  # Get the history string for this project
+  for record in valueRecords:
+    value = record["value"] if str(record["project_id"]) == str(args.project_id) else False
+
+  # If there was no history value, return todays date and version
+  if not value: return str(version) + ":" + str(date.today())
+
+  # Get the most recent update to the history
+  mostRecent  = value.split(",")[-1] if "," in value else value
+  lastVersion = mostRecent.split(":")[0]
+  lastDate    = mostRecent.split(":")[1]
+
+  # If the date and version at execution are the same as at the last execution, do not update
+  if str(lastVersion) == str(version) and str(lastDate) == str(date.today()): return value
+  else: return str(value) + "," + str(version) + ":" + str(date.today())
+
 # Write out any warnings
 def writeWarnings(args):
   global warnings
@@ -962,7 +1231,7 @@ warnings = {}
 
 # Store info on allowed values
 isFamily          = True
-allowedFamily     = ['singleton', 'duo', 'trio']
+allowedFamily     = ['singleton', 'duo', 'trio', 'quad', 'quintet']
 allowedReferences = ['37', '38']
 
 # Store the proband id
@@ -976,9 +1245,11 @@ resourceVersion = False
 resourceInfo    = {}
 
 # Store information related to Mosaic
-mosaicToken = False
-mosaicUrl   = False
-mosaicInfo  = {}
+mosaicConfig = {}
+mosaicInfo   = {}
+
+# Store information on the project samples
+samples = {}
 
 # Store the tsv files that upload annotations to Mosaic
 tsvFiles = {}
