@@ -12,6 +12,16 @@ def getVariantAnnotations(mosaicConfig, projectId, limit, page):
   url   = mosaicConfig["url"]
 
   command  = 'curl -S -s -X GET -H "Authorization: Bearer ' + str(token) + '" ' + str(url) + 'api/v1/projects/'
+  command += str(projectId) + '/variants/annotations'
+
+  return command
+
+# Get variant annotations availebl to import
+def getVariantAnnotationsImport(mosaicConfig, projectId, limit, page):
+  token = mosaicConfig["token"]
+  url   = mosaicConfig["url"]
+
+  command  = 'curl -S -s -X GET -H "Authorization: Bearer ' + str(token) + '" ' + str(url) + 'api/v1/projects/'
   command += str(projectId) + '/variants/annotations/import?limit=' + str(limit) + '&page=' + str(page)
 
   return command

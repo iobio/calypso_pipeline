@@ -40,6 +40,9 @@ def main():
   # Determine the id of the proband
   if args.ped: getProband(args)
 
+  # Get the order that the samples appear in, in the vcf header
+  getSampleOrder(args)
+
   # Build the toml file for vcfanno
   buildToml()
 
@@ -353,6 +356,7 @@ def parseMosaicJson(args):
 
 # Determine the id of the proband
 def getProband(args):
+  global samples
   global proband
 
   # Open the ped file and get the samples
@@ -382,7 +386,7 @@ def getProband(args):
         proband = sample
       else: isAffected = False
       samples[sample] = {"noParents": noParents, "father": father, "mother": mother, "isAffected": isAffected, "relationship": False}
-      if isAffected: samples[sample]["relationship"] = "proband"
+      if isAffected: samples[sample]["relationship"] = "Proband"
 
   # Check that the ped file conforms to the supplied family type
   if args.family_type == "singleton":
@@ -400,13 +404,27 @@ def getProband(args):
   # Identify the mother and father of the proband
   mother = samples[proband]["mother"]
   father = samples[proband]["father"]
-  if samples[proband]["mother"]: samples[mother]["relationship"] = "mother"
-  if samples[proband]["father"]: samples[father]["relationship"] = "father"
+  if samples[proband]["mother"]: samples[mother]["relationship"] = "Mother"
+  if samples[proband]["father"]: samples[father]["relationship"] = "Father"
 
   # Identify siblings
   for sample in samples:
-    if samples[sample]["mother"] == mother and samples[sample]["father"] and not samples[sample]["isAffected"]: samples[sample]["relationship"] = "sibling"
+    if samples[sample]["mother"] == mother and samples[sample]["father"] and not samples[sample]["isAffected"]: samples[sample]["relationship"] = "Sibling"
     if not samples[sample]["relationship"]: fail("Sample " + str(sample) + " has an unknown relationship to the proband")
+
+# Get the order that the samples appear in, in the vcf header
+def getSampleOrder(args):
+  global samples
+  global sampleOrder
+
+  command = "bcftools view -h " + str(args.input_vcf) + " | tail -1"
+  data    = os.popen(command).read().rstrip().split("\t")
+  for index, sample in enumerate(data[9:]):
+    if sample in samples: sampleOrder.append(sample)
+
+  # Check that every sample in samples is in sampleOrder
+  for sample in samples:
+    if sample not in sampleOrder: fail("Sample " + str(sample) + "is listed in the ped file, but does not appear in the vcf header")
 
 # Build the toml file
 def buildToml():
@@ -658,8 +676,12 @@ def genBashScript(args):
     print("    --assembly GRCh", str(args.reference), " \\", sep = "", file = bashFile)
     for command in vepCommands: print("    ", command, " \\", sep = "", file = bashFile)
     if len(vepFields) > 0: print("    --fields \"", ",".join(vepFields), "\" \\", sep = "", file = bashFile)
-    print("  2>> $STDERR \\", file = bashFile)
-  print("  -o $FILTEREDVCF \\", file = bashFile)
+    print("    --output_file STDOUT \\", sep = "", file = bashFile)
+    print("    2>> $STDERR \\", file = bashFile)
+    print("  | bcftools view -O z -o $FILTEREDVCF - \\", file = bashFile)
+
+  # If VEP is not used, finish the Slivar command
+  else: print("  -o $FILTEREDVCF \\", file = bashFile)
   print("  >> $STDOUT 2>> $STDERR", file = bashFile)
   print(file = bashFile)
 
@@ -690,6 +712,7 @@ def modeOfInheritance(vcfBase, bashFile):
   moiFiles["denovoVcf"]    = {"file": str(vcfBase) + "_calypso_filtered_denovo.vcf.gz", "description": "Slivar de novo variants"}
   moiFiles["xdenovoVcf"]   = {"file": str(vcfBase) + "_calypso_filtered_xdenovo.vcf.gz", "description": "Slivar X de novo variants"}
   moiFiles["recessiveVcf"] = {"file": str(vcfBase) + "_calypso_filtered_recessive.vcf.gz", "description": "Slivar recessive variants"}
+  moiFiles["comphetVcf"]   = {"file": str(vcfBase) + "_calypso_filtered_comphet.vcf.gz", "description": "Slivar compound heterozygous variants"}
   print("# Generate vcf files containing variants of different modes of inheritance", file = bashFile)
 
   # Generate a vcf of de novo variants
@@ -711,6 +734,13 @@ def modeOfInheritance(vcfBase, bashFile):
   print("  echo \"Generating vcf of recessive variants...\"", file = bashFile)
   print("  RECESSIVE_VCF=", moiFiles["recessiveVcf"]["file"], sep = "", file = bashFile)
   print("  bcftools view -i 'INFO/recessive=\"", proband, "\"' -O z -o $RECESSIVE_VCF $FILTEREDVCF", sep = "", file = bashFile)
+  print(file = bashFile)
+
+  # Generate a vcf of comp het variants
+  print("  # Compound heterozygous variants", file = bashFile)
+  print("  echo \"Generating vcf of compound heterozygous variants...\"", file = bashFile)
+  print("  COMPHET_VCF=", moiFiles["comphetVcf"]["file"], sep = "", file = bashFile)
+  print("  bcftools view -i 'INFO/slivar_comphet=\"", proband, "\"' -O z -o $COMPHET_VCF $FILTEREDVCF", sep = "", file = bashFile)
   print(file = bashFile)
 
 # Generate the tsv files to pass annotations to Mosaic
@@ -750,13 +780,9 @@ def generateTsv(args, bashFile):
   if len(privateResources) > 0:
 
     # All of the private annotations need to be created in the project
-  ##########################
-  ########################## ACTIVATE WHEN ROUTE IS AVAILABLE
-  ##########################
     temp = 1
-    #fail("NEED TO FINISH PRIVATE ANNOTATIONS")
-    #annotationUids = createAnnotations(args, privateResources)
-    #buildPrivateAnnotationTsv(args, privateResources, annotationUids)
+    annotationUids = createAnnotations(args, privateResources)
+    buildPrivateAnnotationTsv(args, privateResources, annotationUids, bashFile)
 
 # Build the tsv file
 def buildPublicTsv(args, resource, bashFile):
@@ -840,14 +866,16 @@ def createAnnotations(args, privateResources):
   global mosaicConfig
   global mosaicInfo
   global samples
+  global sampleOrder
   annotationUids = {}
 
   # Get all the annotations in the project
-  ##########################
-  ########################## NEED API ROUTE
-  ##########################
-  #command            = api_va.XXX
-  #projectAnnotations = json.loads(os.popen(command).read())
+  command = api_va.getVariantAnnotations(mosaicConfig, args.project_id, 100, 1)
+  data    = json.loads(os.popen(command).read())
+
+  # Store the annotations in the project by name
+  projectAnnotations = {}
+  for annotation in data: projectAnnotations[str(annotation["name"])] = annotation
 
   # Loop over the private resources
   for resource in sorted(privateResources):
@@ -858,70 +886,48 @@ def createAnnotations(args, privateResources):
 
       # If this is a genotype annotation, create an attribute for each sample
       isGenotype = mosaicInfo["resources"][resource]["annotations"][annotation]["isGenotype"]
-  ##########################
-  ########################## GET THE ORDER OF THE SAMPLES FROM THE HEADER. NEED TO KNOW AS BCFTOOLS
-  ########################## QUERY WILL OUTPUT IN THIS ORDER, SO THE UIDS MUST BE IN THIS ORDER
-  ##########################
-      #annotationUids[resource][annotation] = {"isGenotype": isGenotype, "uids": {}}
+      annotationUids[resource][annotation] = {"isGenotype": isGenotype, "uids": []}
       if isGenotype:
 
         # Loop over all samples in the project and get the annotations for each sample
-        for sample in samples:
+        for sample in sampleOrder:
           annotationName = str(annotation) + " " + str(samples[sample]["relationship"])
 
           # Check if an annotation with this name already exists
-  ##########################
-  ########################## NEED API ROUTE
-  ##########################
-          #annotationUid = projectAnnotations[] if annotationName in projectAnnotations else False
+          annotationUid = projectAnnotations[annotationName]["uid"] if annotationName in projectAnnotations else False
 
           # If the annotation does not exist, create it
           if not annotationUid:
             valueType = mosaicInfo["resources"][resource]["annotations"][annotation]["type"]
             privacy   = "private"
-            command   = api_va.postCreateVariantAnnotations(mosaicConfig, annotationName, valueType, privacy, projectId)
-  ##########################
-  ########################## RUN API COMMAND
-  ##########################
-            #data      = json.loads(os.popen(command).read())
+            command   = api_va.postCreateVariantAnnotations(mosaicConfig, annotationName, valueType, privacy, args.project_id)
+            data      = json.loads(os.popen(command).read())
 
             # Get the uid of the newly created annotation
-  ##########################
-  ########################## GET UID from data
-  ##########################
-            #annotationUid = data[]
+            annotationUid = data["uid"]
 
           # Store the annotation uids
-  ##########################
-  ########################## NEED UIDS
-  ##########################
           annotationUids[resource][annotation]["uids"].append(annotationUid)
-          print()
-          print(resource, annotation, mosaicInfo["resources"][resource]["annotations"][annotation], annotationName)
 
       # Other types of private annotations are not yet handled
       else: fail("PRIVATE ANNOTAION TYPE NOT HANDLED")
 
-  ##########################
-  ########################## RETURN THE UIDS
-  ##########################
-  #return annotationUids
+  return annotationUids
 
 # Build the tsv containing the private annotations
-def buildPrivateAnnotationTsv(args, resources, annotationUids):
+def buildPrivateAnnotationTsv(args, resources, annotationUids, bashFile):
   global mosaicConfig
   global tsvFiles
+  global sampleOrder
 
   # First create the header line
   header = "CHROM\\tSTART\\tEND\\tREF\\tALT"
   for resource in sorted(resources):
     for annotation in sorted(annotationUids[resource]):
-      header += "\\t" + annotationUids[resource][annotation]["uid"]
+      for uid in annotationUids[resource][annotation]["uids"]: header += "\\t" + uid
 
-  print(header)
-  exit(0)
   # Print the header
-  print("  # Public annotation: ", resource, sep = "", file = bashFile)
+  print("  # Private annotation: ", resource, sep = "", file = bashFile)
   outputFile         = resource + "_calypso_annotations_mosaic.tsv"
   tsvFiles[resource] = outputFile
   tempFile           = outputFile + ".tmp"
@@ -935,8 +941,43 @@ def buildPrivateAnnotationTsv(args, resources, annotationUids):
 
   # Loop over the annotations and add to the command line
   for annotation in sorted(mosaicInfo["resources"][resource]["annotations"]):
-    if delimiter: annotations += "\\t%INFO/" + mosaicInfo["resources"][resource]["info"]
+
+    # Determine if this is a genotype annotation, loop over the samples in the correct order, and add the annotation
+    if mosaicInfo["resources"][resource]["annotations"][annotation]["isGenotype"]: annotations += "[\\t%GQ]"
+    elif delimiter: annotations += "\\t%INFO/" + mosaicInfo["resources"][resource]["info"]
     else: annotations += "\\t%INFO/" + annotation
+
+  # Build the query command
+  print("  bcftools query -f '", annotations, "\\n' \\", sep = "", file = bashFile)
+  print("  $FILTEREDVCF >> ", outputFile, sep = "", file = bashFile)
+  print(file = bashFile)
+
+  # If the resources need post processing (e.g. with additional scripts), do not modify the tsv
+  if isPostprocess:
+    print("  # Postprocess the annotation tsv", file = bashFile)
+    postCommand = mosaicInfo["resources"][resource]["post_command"]
+    command = (postCommand["precommand"] + " ") if postCommand["precommand"] else ""
+    command += os.path.dirname( __file__) + "/" + postCommand["tool"]
+    for argument in postCommand["args"]:
+      argValue = postCommand["args"][argument]
+
+      # Process the different arguments for standard values
+      if argValue == "TSV": argValue = outputFile
+      elif argValue == "data_directory": argValue = args.data_directory
+      elif argValue == "reference": argValue = args.reference
+      command += " " + argument + " " + argValue
+    print("  ", command, sep = "", file = bashFile)
+    print(file = bashFile)
+  else:
+
+    # If the delimiter has been set, the tsv contains the full annotation (e.g. A|B|C), for each
+    # annotation. This needs to be modified to break the annotation up.
+    print("  # Update the tsv file to Mosaic specifications", file = bashFile)
+#    print("  awk '{FS=\"\\t\"; OFS=\"\\t\"} {if ($1 != \"CHROM\") {if ($1 ~ \"chr\") {$1=substr($1, 4)}; $3 = $3+1; " + awkCommand + "for(i=6; i<=NF; i++) {$i=($i==\".\" ? \"\":$i)}}; print $0}' \\", file = bashFile)
+    print("  awk '{FS=\"\\t\"; OFS=\"\\t\"} {if ($1 != \"CHROM\") {if ($1 ~ \"chr\") {$1=substr($1, 4)}; $3 = $3+1; for(i=6; i<=NF; i++) {$i=($i==\".\" ? \"\":$i)}}; print $0}' \\", file = bashFile)
+    print(" ", outputFile, ">", tempFile, file = bashFile)
+    print("  mv", tempFile, outputFile, file = bashFile)
+    print(file = bashFile)
 
 # Output a script to upload variants to Mosaic
 def uploadVariants(args, filteredVcf):
@@ -990,13 +1031,13 @@ def uploadAnnotations(args):
 
   # Loop over all resources
   for resource in tsvFiles:
-    annotation_type = mosaicInfo["resources"][resource]["annotation_type"]
-    isComplete      = False
+    annotationType = mosaicInfo["resources"][resource]["annotation_type"]
+    isComplete     = False
 
     # Public annotations need to be imported into the Mosaic project
     uids = {}
-    if annotation_type == "public": isComplete = getPublicAnnotation(args, resource)
-    elif annotation_type == "private": isComplete = getPrivateAnnotation(args, resource)
+    if annotationType == "public": isComplete = getPublicAnnotation(args, resource)
+    elif annotationType == "private": isComplete = True
 
     # Only create the script file if the annotation(s) exists in Mosaic
     if isComplete: 
@@ -1016,7 +1057,7 @@ def uploadAnnotations(args):
   
       # Public annotations need to be uploaded to the project that contains them, private
       # annotations are uploaded to the defined project.
-      if annotation_type == "private":
+      if annotationType == "private":
         if args.project_id: print("  -p", str(args.project_id), file = uploadFile)
         else: print("  -p \"Insert Mosaic project id here\"", file = uploadFile)
       else: print("  -p ", mosaicInfo["resources"][resource]["project_id"], sep = "", file = uploadFile)
@@ -1070,7 +1111,7 @@ def getAnnotationsPages(args):
   global mosaicConfig
 
   # Get a page of public annotations from Mosaic (100 annotations per page)
-  command = api_va.getVariantAnnotations(mosaicConfig, args.project_id, 100, 1)
+  command = api_va.getVariantAnnotationsImport(mosaicConfig, args.project_id, 100, 1)
   data    = json.loads(os.popen(command).read())
   noPages = math.ceil(int(data["count"]) / int(100))
 
@@ -1082,7 +1123,7 @@ def getAnnotations(args, page, uids):
   global mosaicConfig
 
   # Get a page of public annotations from Mosaic (100 annotations per page)
-  command = api_va.getVariantAnnotations(mosaicConfig, args.project_id, 100, page)
+  command = api_va.getVariantAnnotationsImport(mosaicConfig, args.project_id, 100, page)
   data    = json.loads(os.popen(command).read())
 
   for annotation in data["data"]:
@@ -1224,7 +1265,7 @@ def fail(message):
 # Initialise global variables
 
 # Pipeline version
-version = "0.1.3"
+version = "0.1.4"
 
 # Store warnings to be output at the end
 warnings = {}
@@ -1249,7 +1290,8 @@ mosaicConfig = {}
 mosaicInfo   = {}
 
 # Store information on the project samples
-samples = {}
+samples     = {}
+sampleOrder = []
 
 # Store the tsv files that upload annotations to Mosaic
 tsvFiles = {}
