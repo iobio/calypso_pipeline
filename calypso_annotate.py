@@ -16,7 +16,7 @@ import mosaic_config
 import api_variant_annotations as api_va
 #import api_projects as api_p
 import api_project_attributes as api_pa
-#import api_sample_attributes as api_sa
+import api_samples as api_s
 
 def main():
   global mosaicConfig
@@ -39,6 +39,9 @@ def main():
 
   # Determine the id of the proband
   if args.ped: getProband(args)
+
+  # Create Mosaic filters
+  variantFilters(args)
 
   # Get the order that the samples appear in, in the vcf header
   getSampleOrder(args)
@@ -75,6 +78,7 @@ def parseCommandLine():
   parser.add_argument('--family_type', '-f', required = True, metavar = "string", help = "The familty structure. Allowed values: 'singleton', 'duo', 'trio'")
   parser.add_argument('--data_directory', '-d', required = True, metavar = "string", help = "The path to the directory where the resources live")
   parser.add_argument('--input_vcf', '-i', required = True, metavar = "string", help = "The input vcf file to annotate")
+  parser.add_argument('--project_id', '-p', required = True, metavar = "string", help = "The project id that variants will be uploaded to")
 
   # Optional pipeline arguments
   parser.add_argument('--ped', '-e', required = False, metavar = "string", help = "The pedigree file for the family. Not required for singletons")
@@ -86,7 +90,6 @@ def parseCommandLine():
   parser.add_argument('--url', '-u', required = False, metavar = "string", help = "The base url for Mosaic")
   parser.add_argument('--attributes_project', '-a', required = False, metavar = "integer", help = "The Mosaic project id that contains public attributes")
   parser.add_argument('--mosaic_json', '-m', required = False, metavar = "string", help = "The json file describing the Mosaic parameters")
-  parser.add_argument('--project_id', '-p', required = False, metavar = "string", help = "The project id that variants will be uploaded to")
 
   # Version
   parser.add_argument('--version', '-v', action="version", version='Calypso annotation pipline version: ' + str(version))
@@ -356,12 +359,18 @@ def parseMosaicJson(args):
 
 # Determine the id of the proband
 def getProband(args):
+  global mosaicConfig
   global samples
   global proband
 
   # Open the ped file and get the samples
   try: pedFile = open(args.ped, "r")
   except: fail("Couldn't open the ped file (" + args.ped + ")")
+
+  # Get the samples Mosaic id and store
+  mosaicSamples = {}
+  for sample in json.loads(os.popen(api_s.getSamples(mosaicConfig, args.project_id)).read()):
+    mosaicSamples[sample["name"]] = sample["id"]
 
   # Get information on all the samples
   noAffected = 0
@@ -388,6 +397,10 @@ def getProband(args):
       samples[sample] = {"noParents": noParents, "father": father, "mother": mother, "isAffected": isAffected, "relationship": False}
       if isAffected: samples[sample]["relationship"] = "Proband"
 
+      # Attach the Mosaic sample id
+      try: samples[sample]["mosaicId"] = mosaicSamples[sample]
+      except: fail("Sample " + str(sample) + " is not present in the Mosaic project")
+
   # Check that the ped file conforms to the supplied family type
   if args.family_type == "singleton":
     if len(samples) != 1: fail("Family type was specified as a singleton, but the ped file contains multiple samples")
@@ -411,6 +424,64 @@ def getProband(args):
   for sample in samples:
     if samples[sample]["mother"] == mother and samples[sample]["father"] and not samples[sample]["isAffected"]: samples[sample]["relationship"] = "Sibling"
     if not samples[sample]["relationship"]: fail("Sample " + str(sample) + " has an unknown relationship to the proband")
+
+# Create variant filters in Mosaic
+def variantFilters(args):
+  global mosaicConfig
+  global samples
+  global rootPath
+  global genotypeOptions
+
+  # Get information about the samples
+  probandId = False
+  motherId  = False
+  fatherId  = False
+  jsonPath  = rootPath + str("/mosaic_filters/")
+
+  # Define the base command
+  command  = "curl -S -s -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer " + mosaicConfig["token"] + "\""
+
+  # Get the id of the proband and the parents
+  for sample in samples:
+    if samples[sample]["relationship"] == "Proband": probandId = samples[sample]["mosaicId"]
+    elif samples[sample]["relationship"] == "Mother": motherId = samples[sample]["mosaicId"]
+    elif samples[sample]["relationship"] == "Father": fatherId = samples[sample]["mosaicId"]
+
+  # Loop over all the filter json files
+  for filterJson in os.listdir(jsonPath):
+    if filterJson.endswith(".json"):
+      filterFile = open(jsonPath + filterJson, "r")
+      data = json.load(filterFile)
+      filterFile.close()
+
+      # Check what genotype filters need to be applied
+      try: genotypes = data["genotypes"]
+      except: fail("Mosaic variant filter json file, " + str(filterJson) + ", does not contain the \"genotypes\" field")
+      for geno in genotypes:
+        if geno not in genotypeOptions: fail("Mosaic variant filter json file, " + str(filterJson) + ", contains unknown genotype options: " + str(geno))
+        if not genotypes[geno]: continue
+
+        # Check which samples need to have the requested genotype and add to the command
+        sampleList = []
+        for sample in genotypes[geno]:
+          if sample == "proband": sampleList.append(probandId)
+          elif sample == "mother":
+            if motherId: sampleList.append(motherId)
+          elif sample == "father":
+            if fatherId: sampleList.append(fatherId)
+          elif sample == "sibling":
+            fail("Can't handle siblings in filters yet")
+          else: fail("Unknown sample, " + str(sample) + " in genotypes for Mosaic variant filter (" + str(filterJson) + ")")
+
+        # Add the genotype filter to the filters listed in the json
+        data["filters"][geno] = sampleList
+
+      # Finish building the command
+      filterCommand  = command + " -d '{\"name\": \"" + data["name"] + "\", \"filter\": "
+      filterCommand += json.dumps(data["filters"]) + "}' " + mosaicConfig["url"] + "api/v1/projects/" + args.project_id + "/variants/filters"
+
+      # Create the filter
+      execute = json.loads(os.popen(filterCommand).read())
 
 # Get the order that the samples appear in, in the vcf header
 def getSampleOrder(args):
@@ -1265,7 +1336,7 @@ def fail(message):
 # Initialise global variables
 
 # Pipeline version
-version = "0.1.4"
+version = "0.2.0"
 
 # Store warnings to be output at the end
 warnings = {}
@@ -1295,6 +1366,16 @@ sampleOrder = []
 
 # Store the tsv files that upload annotations to Mosaic
 tsvFiles = {}
+
+# Store the path to the Calypso directory
+rootPath = os.path.dirname( __file__)
+
+# Store the allowed genotype options for saved filters
+genotypeOptions = []
+genotypeOptions.append("ref_samples")
+genotypeOptions.append("alt_samples")
+genotypeOptions.append("het_samples")
+genotypeOptions.append("hom_samples")
 
 if __name__ == "__main__":
   main()

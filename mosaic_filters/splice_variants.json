@@ -1,0 +1,28 @@
+{
+	"name": "Splice Variants",
+	"genotypes": {
+		"ref_samples": false,
+		"alt_samples": ["proband"],
+		"het_samples": false,
+		"hom_samples": false
+	},
+	"filters": {
+		"annotation_filters": [
+			{
+				"uid": "gene_consequence_GRCh38",
+				"values": [
+					"splice_donor",
+					"splice_acceptor"
+				],
+				"value_type": "string",
+				"include_nulls": false
+			},
+			{
+				"min": "0.2",
+				"uid": "spliceai_max_score_dc965c66",
+				"value_type": "float",
+				"include_nulls": false
+			}
+		]
+	}
+}

@@ -1,0 +1,22 @@
+{
+	"name": "Frameshift/Nonsense Variants",
+	"genotypes": {
+		"ref_samples": ["mother", "father"],
+		"alt_samples": false,
+		"het_samples": ["proband"],
+		"hom_samples": false
+	},
+	"filters": {
+		"annotation_filters": [
+			{
+				"uid": "gene_consequence_GRCh38",
+				"values": [
+					"frameshift",
+					"stop_gained"
+				],
+				"value_type": "string",
+				"include_nulls": false
+			}
+		]
+	}
+}
