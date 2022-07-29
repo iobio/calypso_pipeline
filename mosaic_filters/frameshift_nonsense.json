@@ -1,9 +1,9 @@
 {
 	"name": "Frameshift/Nonsense Variants",
 	"genotypes": {
-		"ref_samples": ["mother", "father"],
-		"alt_samples": false,
-		"het_samples": ["proband"],
+		"ref_samples": false,
+		"alt_samples": ["proband"],
+		"het_samples": false,
 		"hom_samples": false
 	},
 	"filters": {

@@ -17,8 +17,8 @@
 				"include_nulls": false
 			},
 			{
-				"min": "0.7",
 				"uid": "revel_grch38_4b79421f",
+				"min": "0.7",
 				"value_type": "float",
 				"include_nulls": false
 			}

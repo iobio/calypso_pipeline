@@ -17,6 +17,7 @@ import api_variant_annotations as api_va
 #import api_projects as api_p
 import api_project_attributes as api_pa
 import api_samples as api_s
+import api_variant_filters as api_vf
 
 def main():
   global mosaicConfig
@@ -40,9 +41,6 @@ def main():
   # Determine the id of the proband
   if args.ped: getProband(args)
 
-  # Create Mosaic filters
-  variantFilters(args)
-
   # Get the order that the samples appear in, in the vcf header
   getSampleOrder(args)
 
@@ -57,6 +55,9 @@ def main():
 
   # Generate scripts to upload annotations
   uploadAnnotations(args)
+
+  # Create Mosaic filters
+  variantFilters(args)
 
   # Output summary file
   calypsoSummary(args, finalVcf)
@@ -179,9 +180,14 @@ def checkResources(args):
       if resourceInfo["resources"][resource]["file"]: resourceInfo["resources"][resource]["file"] = resourceInfo["path"] + resources[resource]["file"]
     except: fail("File for resource \"" + str(resource) + "\" was not included in the resources json")
     try: resourceInfo["resources"][resource]["toml"] = resources[resource]["toml"]
-    except: fail("File for resource \"" + str(resource) + "\" was not included in the resources json")
+    except: fail("The resources json did not indicate if resource \"" + str(resource) + "\" should be included in the toml file")
     try: resourceInfo["resources"][resource]["upload"] = resources[resource]["upload_to_mosaic"]
     except: fail("The resources json did not indicate if resource \"" + str(resource) + "\" should be uploaded to Mosaic")
+
+    # Only check for the "ops" field if this is to be included in the toml file
+    if resourceInfo["resources"][resource]["toml"]:
+      try: resourceInfo["resources"][resource]["ops"] = resources[resource]["ops"]
+      except: fail("The resources json did not indicate the toml \"ops\" commands for resource \"" + str(resource) + "\"")
 
     # If the resource is to be included in a toml file, the fields in the vcf INFO need to be specified
     if resourceInfo["resources"][resource]["toml"]:
@@ -204,6 +210,16 @@ def checkResources(args):
     # annotation can be applied to the filtered file only, to generate values to upload to Mosaic.
     isFiiltered = resources[resource]["apply_to_filtered"] = True if "apply_to_filtered" in resources[resource] else False
     resourceInfo["resources"][resource]["apply_to_filtered"] = isFiiltered
+
+    # Check if there are any postannotation commands for vcfanno
+    if "post_annotation" in resources[resource]:
+      resourceInfo["resources"][resource]["post_annotation"] = {}
+      for postAnnoField in resources[resource]["post_annotation"]:
+        if postAnnoField == "name": resourceInfo["resources"][resource]["post_annotation"]["name"] = resources[resource]["post_annotation"]["name"]
+        elif postAnnoField == "fields": resourceInfo["resources"][resource]["post_annotation"]["fields"] = resources[resource]["post_annotation"]["fields"]
+        elif postAnnoField == "op": resourceInfo["resources"][resource]["post_annotation"]["op"] = resources[resource]["post_annotation"]["op"]
+        elif postAnnoField == "type": resourceInfo["resources"][resource]["post_annotation"]["type"] = resources[resource]["post_annotation"]["type"]
+        else: fail("Unexpected post_annotation field in the resources json for resource \"" + str(resource) + "\"")
 
 # Process the vep information
 def processVep(resources):
@@ -431,6 +447,7 @@ def variantFilters(args):
   global samples
   global rootPath
   global genotypeOptions
+  global createAnnotations
 
   # Get information about the samples
   probandId = False
@@ -438,21 +455,36 @@ def variantFilters(args):
   fatherId  = False
   jsonPath  = rootPath + str("/mosaic_filters/")
 
-  # Define the base command
-  command  = "curl -S -s -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer " + mosaicConfig["token"] + "\""
-
   # Get the id of the proband and the parents
   for sample in samples:
     if samples[sample]["relationship"] == "Proband": probandId = samples[sample]["mosaicId"]
     elif samples[sample]["relationship"] == "Mother": motherId = samples[sample]["mosaicId"]
     elif samples[sample]["relationship"] == "Father": fatherId = samples[sample]["mosaicId"]
 
+  # Get all of the filters that exist in the project
+  existingFilters = {}
+  try:
+    for existingFilter in json.loads(os.popen(api_vf.getVariantFilters(mosaicConfig, args.project_id)).read()): existingFilters[existingFilter["name"]] = existingFilter["id"]
+  except: fail("Unable to get existing variant filters for project " + str(args.project_id))
+  
   # Loop over all the filter json files
   for filterJson in os.listdir(jsonPath):
     if filterJson.endswith(".json"):
-      filterFile = open(jsonPath + filterJson, "r")
-      data = json.load(filterFile)
+
+      try: filterFile = open(jsonPath + filterJson, "r")
+      except: fail("File, " + jsonPath + filterJson + ", could not be opened")
+      try: data = json.load(filterFile)
+      except: fail("File, " + jsonPath + filterJson + ", is not a valid json file")
       filterFile.close()
+
+      # Get the name of the filter to create
+      try: filterName = data["name"]
+      except: fail("Varianr filter file, " + str(filterJson) + ", defines a filter with no name. A name needs to be supplied")
+
+      # Check if the filter already exists in the project. If so, remove it
+      if filterName in existingFilters:
+        try: deleteFilter = os.popen(api_vf.deleteVariantFilter(mosaicConfig, args.project_id, existingFilters[filterName])).read()
+        except: fail("Unable to delete variant filter, " + str(filterName) + " from project " + str(args.project_id))
 
       # Check what genotype filters need to be applied
       try: genotypes = data["genotypes"]
@@ -476,12 +508,39 @@ def variantFilters(args):
         # Add the genotype filter to the filters listed in the json
         data["filters"][geno] = sampleList
 
-      # Finish building the command
-      filterCommand  = command + " -d '{\"name\": \"" + data["name"] + "\", \"filter\": "
-      filterCommand += json.dumps(data["filters"]) + "}' " + mosaicConfig["url"] + "api/v1/projects/" + args.project_id + "/variants/filters"
+      # Check the filters provided in the json. The annotation filters need to extract the
+      # uids for the annotations
+      removeAnnotations = []
+      for index, annotationFilter in enumerate(data["filters"]["annotation_filters"]):
 
-      # Create the filter
-      execute = json.loads(os.popen(filterCommand).read())
+###################
+###################
+################### ADD CHECKS ON THE FILTER JSON
+###################
+###################
+
+        # If the uid is provided with the filter, this annotation is complete. If not, the name
+        # field must be present, and this must point to a created annotation uid. Remove the name
+        # field and replace it with the uid.
+        if "uid" not in annotationFilter:
+          try: annotationName = annotationFilter["name"]
+          except: fail("Annotation " + str(filterJson) + " does not have a uid, but also no name")
+          annotationFilter.pop("name")
+
+          # If the annotation is listed as optional and the name doesn't point to a created annotation
+          # delete this annotation from the filter. This could be, for example, a filter on genotype
+          # quality for the mother, but the mother isn't present in the project
+          isOptional = annotationFilter.pop("optional") if "optional" in annotationFilter else False
+          try: annotationFilter["uid"] = createdAnnotations[annotationName]
+          except: 
+            if isOptional: removeAnnotations.append(index)
+            else: fail("Annotation, " + str(annotationName) + ", in " + str(filterJson) + " does not have a uid, and the name does not point to a created annotation")
+
+      # Remove any optional filters that did not have uids
+      for index in reversed(removeAnnotations): data["filters"]["annotation_filters"].pop(index)
+
+      # Post a new filter
+      execute = json.loads(os.popen(api_vf.postVariantFilter(mosaicConfig, data["name"], data["filters"], args.project_id)).read())
 
 # Get the order that the samples appear in, in the vcf header
 def getSampleOrder(args):
@@ -523,11 +582,26 @@ def buildToml():
         print(text, file = tomlFile)
 
       # Write out the ops
-      ops = "ops=["
-      for i in range(0, noValues - 1): ops += "\"self\", "
-      ops += "\"self\"]"
+      ops   = 'ops=["'
+      noOps = len(resourceInfo["resources"][resource]["ops"])
+      for i in range(0, noOps - 1): ops += str(resourceInfo["resources"][resource]["ops"][i]) + '", "'
+      ops += str(resourceInfo["resources"][resource]["ops"][-1]) + '"]'
       print(ops, file = tomlFile)
       print(file = tomlFile)
+
+      # If there is post annotation information to include in the toml, include it
+      if "post_annotation" in resourceInfo["resources"][resource]:
+        post = resourceInfo["resources"][resource]["post_annotation"]
+        print("[[postannotation]]", file = tomlFile)
+        if "name" in post: print('name="', post["name"], '"', sep = "", file = tomlFile)
+        if "fields" in post:
+          fieldString = 'fields=["'
+          for i in range(0, len(post["fields"]) - 1): fieldString += str(post["fields"][i]) + '", "'
+          fieldString += str(post["fields"][-1]) + '"]'
+          print(fieldString, file = tomlFile)
+        if "op" in post: print('op="', post["op"], '"', sep = "", file = tomlFile)
+        if "type" in post: print('type="', post["type"], '"', sep = "", file = tomlFile)
+        print(file = tomlFile)
 
 # Include information in the toml file
 def tomlInfo(resource, infoType):
@@ -587,7 +661,7 @@ def genBashScript(args):
   except: fail("The resources json does not define a reference fasta file")
   try: print("GFF=", resourceInfo["resources"]["gff"]["file"], sep = "", file = bashFile)
   except: fail("The resources json does not define a gff file")
-  try: print("GNOMAD=", resourceInfo["resources"]["gnomAD"]["file"], sep = "", file = bashFile)
+  try: print("SLIVAR_GNOMAD=", resourceInfo["resources"]["slivar_gnomAD"]["file"], sep = "", file = bashFile)
   except: fail("The resources json does not define a gnomAD zip file")
   try: print("JS=", resourceInfo["resources"]["slivar_js"]["file"], sep = "", file = bashFile)
   except: fail("The resources json does not define the Slivar functions js file")
@@ -656,7 +730,7 @@ def genBashScript(args):
   print("  --vcf $ANNOTATEDVCF \\", file = bashFile)
   print("  --ped $PED \\", file = bashFile)
   print("  --js $JS \\", file = bashFile)
-  print("  -g $GNOMAD \\", file = bashFile)
+  print("  -g $SLIVAR_GNOMAD \\", file = bashFile)
   print("  --info 'INFO.gnomad_popmax_af < 0.01 && variant.FILTER == \"PASS\" && variant.ALT[0] != \"*\"' \\", file = bashFile)
   print("  --family-expr 'denovo:fam.every(segregating_denovo) && INFO.gnomad_popmax_af < 0.001' \\", file = bashFile)
   print("  --family-expr 'x_denovo:(variant.CHROM == \"X\" || variant.CHROM == \"chrX\") && fam.every(segregating_denovo_x) && INFO.gnomad_popmax_af < 0.001' \\", file = bashFile)
@@ -674,7 +748,7 @@ def genBashScript(args):
   print("  --vcf $ANNOTATEDVCF \\", file = bashFile)
   print("  --ped $PED \\", file = bashFile)
   print("  --js $JS \\", file = bashFile)
-  print("  -g $GNOMAD \\", file = bashFile)
+  print("  -g $SLIVAR_GNOMAD \\", file = bashFile)
   print("  --family-expr 'denovo:fam.every(segregating_denovo) && INFO.gnomad_popmax_af < 0.001' \\", file = bashFile)
   print("  --trio 'comphet_side:comphet_side(kid, mom, dad) && INFO.gnomad_popmax_af < 0.005' \\", file = bashFile)
   print("  | slivar_static compound-hets \\", file = bashFile)
@@ -938,6 +1012,7 @@ def createAnnotations(args, privateResources):
   global mosaicInfo
   global samples
   global sampleOrder
+  global createdAnnotations
   annotationUids = {}
 
   # Get all the annotations in the project
@@ -970,15 +1045,14 @@ def createAnnotations(args, privateResources):
           # If the annotation does not exist, create it
           if not annotationUid:
             valueType = mosaicInfo["resources"][resource]["annotations"][annotation]["type"]
-            privacy   = "private"
-            command   = api_va.postCreateVariantAnnotations(mosaicConfig, annotationName, valueType, privacy, args.project_id)
-            data      = json.loads(os.popen(command).read())
+            data      = json.loads(os.popen(api_va.postCreateVariantAnnotations(mosaicConfig, annotationName, valueType, "private", args.project_id)).read())
 
             # Get the uid of the newly created annotation
             annotationUid = data["uid"]
 
           # Store the annotation uids
           annotationUids[resource][annotation]["uids"].append(annotationUid)
+          createdAnnotations[annotationName] = annotationUid
 
       # Other types of private annotations are not yet handled
       else: fail("PRIVATE ANNOTAION TYPE NOT HANDLED")
@@ -1099,6 +1173,8 @@ def uploadVariants(args, filteredVcf):
 def uploadAnnotations(args):
   global tsvFiles
   global mosaicInfo
+  uploadFileName  = "calypso_upload_annotations_to_mosaic.sh"
+  isScript        = False
 
   # Loop over all resources
   for resource in tsvFiles:
@@ -1113,10 +1189,11 @@ def uploadAnnotations(args):
     # Only create the script file if the annotation(s) exists in Mosaic
     if isComplete: 
 
-      # Open a script file
-      uploadFileName  = "calypso_upload_" + str(resource) + "_annotations_to_mosaic.sh"
-      try: uploadFile = open(uploadFileName, "w")
-      except: fail("Could not open " + str(uploadFileName) + " to write to")
+      # Create a single script file to upload all variants
+      if not isScript: 
+        try: uploadFile = open(uploadFileName, "w")
+        except: fail("Could not open " + str(uploadFileName) + " to write to")
+        isScript = True
 
       # Write the command to file
       print("# Upload ", resource, " annotations to Mosaic", file = uploadFile)
@@ -1132,12 +1209,16 @@ def uploadAnnotations(args):
         if args.project_id: print("  -p", str(args.project_id), file = uploadFile)
         else: print("  -p \"Insert Mosaic project id here\"", file = uploadFile)
       else: print("  -p ", mosaicInfo["resources"][resource]["project_id"], sep = "", file = uploadFile)
+      print(file = uploadFile)
   
-      # Close the file
-      uploadFile.close()
+  # If a script files was created, close it and make it executable
+  if isScript:
+
+    # Close the file
+    uploadFile.close()
   
-      # Make the annotation script executable
-      makeExecutable = os.popen("chmod +x " + str(uploadFileName)).read()
+    # Make the annotation script executable
+    makeExecutable = os.popen("chmod +x " + str(uploadFileName)).read()
 
 # Check the public annotations exist, and get their ids
 def getPublicAnnotation(args, resource):
@@ -1376,6 +1457,9 @@ genotypeOptions.append("ref_samples")
 genotypeOptions.append("alt_samples")
 genotypeOptions.append("het_samples")
 genotypeOptions.append("hom_samples")
+
+# Store annotations created for this project
+createdAnnotations = {}
 
 if __name__ == "__main__":
   main()

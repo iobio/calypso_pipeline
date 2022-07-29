@@ -18,8 +18,8 @@
 				"include_nulls": false
 			},
 			{
-				"min": "0.2",
 				"uid": "spliceai_max_score_dc965c66",
+				"min": "0.2",
 				"value_type": "float",
 				"include_nulls": false
 			}

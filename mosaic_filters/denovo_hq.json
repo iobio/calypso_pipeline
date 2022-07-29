@@ -1,0 +1,34 @@
+{
+	"name": "De Novo (High Quality) Variants",
+	"genotypes": {
+		"ref_samples": ["mother", "father"],
+		"alt_samples": ["proband"],
+		"het_samples": false,
+		"hom_samples": false
+	},
+	"filters": {
+		"annotation_filters": [
+			{
+				"name": "GQ Proband",
+				"min": "60",
+				"value_type": "float",
+				"include_nulls": false,
+				"optional": false
+			},
+			{
+				"name": "GQ Mother",
+				"min": "60",
+				"value_type": "float",
+				"include_nulls": false,
+				"optional": true
+			},
+			{
+				"name": "GQ Father",
+				"min": "60",
+				"value_type": "float",
+				"include_nulls": false,
+				"optional": true
+			}
+		]
+	}
+}
