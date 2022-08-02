@@ -42,6 +42,9 @@ def main():
   # Parse the Mosaic json
   parseMosaicJson(args)
 
+  # If a previous Calypso vcf file was set, get the version assigned to the vcf
+  if args.previous_vcf: getPreviousVcfInfo(args)
+
   # Determine the id of the proband
   if args.ped: getProband(args)
 
@@ -100,7 +103,7 @@ def parseCommandLine():
   parser.add_argument('--mosaic_json', '-m', required = False, metavar = "string", help = "The json file describing the Mosaic parameters")
 
   # Version
-  parser.add_argument('--version', '-v', action="version", version='Calypso annotation pipline version: ' + str(version))
+  parser.add_argument('--version', '-v', action="version", version='Calypso annotation pipeline version: ' + str(version))
 
   return parser.parse_args()
 
@@ -395,6 +398,48 @@ def parseMosaicJson(args):
           if not isinstance(position, int): fail("Annotation '" + annotation + "' for '" + str(resource) + "' has a position field that is not an integer")
           mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType, "position": position, "isGenotype": isGenotype}
         else: mosaicInfo["resources"][resource]["annotations"][annotation] = {"uid": uid, "type": annType, "isGenotype": isGenotype}
+
+# If a previous Calypso vcf file was set, get the version assigned to the vcf
+def getPreviousVcfInfo(args):
+  global resourceInfo
+  global workingDir
+  global version
+  headerVcf = workingDir + "calypso_previous_header.vcf"
+  previousVersions = []
+  previousFiles    = []
+
+  # Check that the previous vcf file exists
+  if not exists(args.previous_vcf): fail("Previous Calypso vcf file, " + args.previous_vcf + ", does not exist.")
+
+  # Grab the vcf header and extract the previous versions
+  try: os.popen("bcftools view -h -O v -o " + headerVcf + " " + args.previous_vcf).read()
+  except: fail("Unable to extract header from vcf file, " + args.previous_vcf)
+  try: headerInfo = open(headerVcf, "r")
+  except: fail("Unable to read header information from file " + arg.previous_vcf)
+  for line in  headerInfo.readlines():
+    if line.rstrip().startswith("##calypsoVersion="): previousVersions.append(line.rstrip().split("=")[1])
+    if line.rstrip().startswith("##calypsoSourceVcf="): previousFiles.append(line.rstrip().split("=")[1])
+
+  # If there are multiple Calypso versions in the header, instruct the user to clean this up to only include the most recent
+  if len(previousVersions) != 1: fail("The previous Calypso vcf file, " + args.previous_vcf + ", either has no, or multiple \"##calypsoVersion=VERSION\" header lines. Ensure it only has one")
+  if len(previousFiles) != 1: fail("The previous Calypso vcf file, " + args.previous_vcf + ", either has no, or multiple \"##calypsoSourceVcf=VCFFILE\" header lines. Ensure it only has one")
+
+  # Get the previous Calypso and the resource version
+  versions = previousVersions[0].split("r")
+  resourceInfo['previous_version'] = versions[1]
+  previousVersion = versions[0].strip('v')
+  previousFile    = previousFiles[0].split('/')[-1]
+
+  # If both the Calypso and the resource versions are the same as for the previously generated vcf, and the source
+  # vcf files are the same, no changes have been made, so there is no need to rerun the pipeline
+  if str(resourceInfo['version']) == str(resourceInfo['previous_version']) and str(previousVersion) == str(version) and str(args.input_vcf) == str(previousFile):
+    failString  = "Running the same Calypso version (" + version + "), with the same resource version (" + resourceInfo['version'] + "), on the same\nsource vcf ("
+    failString += args.input_vcf + ") will result in the same output, so Calypso will not be run"
+    fail(failString)
+
+  # Delete the created header file
+  try: os.remove(headerVcf)
+  except: fail("Failed to delete created header vcf, " + headerVcf)
 
 # Determine the id of the proband
 def getProband(args):
@@ -798,10 +843,11 @@ def genBashScript(args):
   print(file = bashFile)
 
   # Combine the slivar vcf files
+  versionLine = "##calypsoVersion=v" + version + "r" + resourceInfo['version']
+  vcfLine     = "##calypsoSourceVcf=" + vcfFile
   print("# Combine the slivar vcf files", file = bashFile)
-  #print("  bcftools concat -a -d none $SLIVAR1VCF $SLIVAR2VCF -O z -o $FINALVCF \\", file = bashFile)
   print("  bcftools concat -a -d none $SLIVAR1VCF $SLIVAR2VCF \\", file = bashFile)
-  print("  | bcftools annotate -H '##calypso=v" + version + "r" + resourceInfo['version'] + "' -O z -o $FINALVCF \\", sep = "", file = bashFile)
+  print("  | bcftools annotate -H '" + versionLine + "' -H '" + vcfLine + "' -O z -o $FINALVCF \\", sep = "", file = bashFile)
   print("  >> $STDOUT 2>> $STDERR", file = bashFile)
   print("  bcftools index -t $FINALVCF", file = bashFile)
   print(file = bashFile)
