@@ -8,6 +8,7 @@ import os
 import argparse
 import json
 import math
+import glob
 
 # Add the path of the common functions and import them
 from sys import path
@@ -30,6 +31,9 @@ def main():
 
   # Check all resources
   checkResources(args)
+
+  # Create a directory to store all created files
+  setWorkingDir()
 
   # Parse the Mosaic config file to get the token and url for the api calls
   mosaicRequired = {"token": True, "url": True, "attributeProjectId": False}
@@ -130,17 +134,23 @@ def checkArguments(args):
 # check the files exist, and store the versions.
 def checkResources(args):
   global resourceInfo
+  global workingDir
 
   # Ensure the data path ends with a "/", then add the refrence directory
   if args.data_directory[-1] != "/": args.data_directory += "/"
   resourceInfo["path"] = args.data_directory + "GRCh" + str(args.reference) + "/"
 
   # Define the name of the resource description json file. Use the file provided on the command
-  # line, and resort to the default file if not included
+  # line, and resort to the default file if not included. The version of the resource file is
+  # unknown, so look for any json with the correct prefix and if there is more than one such
+  # file, throw an error.
   if args.resource_json: resourceFilename = args.resource_json
   else:
-    if args.reference == '37': resourceFilename = args.data_directory + "resources_GRCh37.json"
-    elif args.reference == '38': resourceFilename = args.data_directory + "resources_GRCh38.json"
+    if args.reference == '37': resourceFilename = args.data_directory + "resources_GRCh37"
+    elif args.reference == '38': resourceFilename = args.data_directory + "resources_GRCh38"
+    resourceFiles = glob.glob(resourceFilename + "*json")
+    if len(resourceFiles) != 1: fail("There are zero, or more than one resource files for GRCh" + args.reference + " in " + args.data_directory)
+    resourceFilename = resourceFiles[0]
 
   # Try and open the file
   try: resourceFile = open(resourceFilename, "r")
@@ -150,7 +160,7 @@ def checkResources(args):
   try: resourceData = json.loads(resourceFile.read())
   except: fail("The json file (" + str(resourceFilename) + ") is not valid")
 
-  # Store the data version
+  # Store the resource data version
   try: resourceInfo["version"] = resourceData['version']
   except: fail("The resource json file (" + str(resourceFilename) + ") does not include a version")
 
@@ -221,6 +231,16 @@ def checkResources(args):
         elif postAnnoField == "type": resourceInfo["resources"][resource]["post_annotation"]["type"] = resources[resource]["post_annotation"]["type"]
         else: fail("Unexpected post_annotation field in the resources json for resource \"" + str(resource) + "\"")
 
+# Create a working directory
+def setWorkingDir():
+  global resourceInfo
+  global workingDir
+
+  workingDir += resourceInfo['version'] + "/"
+
+  # If the directory doesn't exist, create it
+  if not os.path.exists(workingDir): os.makedirs(workingDir)
+  
 # Process the vep information
 def processVep(resources):
   global resourceInfo
@@ -559,9 +579,10 @@ def getSampleOrder(args):
 # Build the toml file
 def buildToml():
   global resourceInfo
+  global workingDir
 
   # Create a toml file
-  try: tomlFile = open("calypso_annotations.toml", "w")
+  try: tomlFile = open(workingDir + "calypso_annotations.toml", "w")
   except: fail("There was a problem opening a file (calypso_annotations.toml) to write to")
 
   # Add each required resource to the toml file
@@ -621,10 +642,12 @@ def tomlInfo(resource, infoType):
 # Generate the command line for the annoatation script
 def genBashScript(args):
   global resourceInfo
+  global workingDir
   global tsvFiles
 
   # Create a script file
-  try: bashFile = open("calypso_annotation_pipeline.sh", "w")
+  bashFilename  = workingDir + "calypso_annotation_pipeline.sh"
+  try: bashFile = open(bashFilename, "w")
   except: fail("There was a problem opening a file (calypso_annotation_pipeline.sh) to write to")
 
   # Initial information
@@ -844,7 +867,7 @@ def genBashScript(args):
   bashFile.close()
 
   # Make the annotation script executable
-  makeExecutable = os.popen("chmod +x calypso_annotation_pipeline.sh").read()
+  makeExecutable = os.popen("chmod +x " + bashFilename).read()
 
   # Return the output vcf
   return finalVcf, filteredVcf
@@ -1127,15 +1150,17 @@ def buildPrivateAnnotationTsv(args, resources, annotationUids, bashFile):
 # Output a script to upload variants to Mosaic
 def uploadVariants(args, filteredVcf):
   global mosaicInfo
+  global workingDir
   global proband
+  global date
 
   # Open a script file
-  uploadFileName  = "calypso_upload_variants_to_mosaic.sh"
+  uploadFileName  = workingDir + "calypso_upload_variants_to_mosaic.sh"
   try: uploadFile = open(uploadFileName, "w")
   except: fail("Could not open " + str(uploadFileName) + " to write to")
 
   # Define the name of the variant set that will be create
-  description = "Calypso_v" + str(mosaicInfo["version"]) + "_variants_" + str(date.today())
+  description = "Calypso_v" + str(mosaicInfo["version"]) + "_variants_" + date
 
   # Write the command to file
   print("# Upload variants to Mosaic", file = uploadFile)
@@ -1173,7 +1198,8 @@ def uploadVariants(args, filteredVcf):
 def uploadAnnotations(args):
   global tsvFiles
   global mosaicInfo
-  uploadFileName  = "calypso_upload_annotations_to_mosaic.sh"
+  global workingDir
+  uploadFileName  = workingDir + "calypso_upload_annotations_to_mosaic.sh"
   isScript        = False
 
   # Loop over all resources
@@ -1300,18 +1326,22 @@ def importAnnotation(args, annotation, uid):
 # Output summary file
 def calypsoSummary(args, finalVcf):
   global resourceInfo
+  global workingDir
   global version
-  today = date.today()
+  global date
 
   # Open an output summary file
-  try: summaryFile = open("calypso_" + str(today) + ".txt", "w")
+  summaryFileName  = workingDir + "calypso_" + date + ".txt"
+  try: summaryFile = open(summaryFileName, "w")
   except: fail("Failed to open summary file")
 
   # Write relevant information to file
   print("### Output from Calypso pipeline ###", file = summaryFile)
   print(file = summaryFile)
   print("Calypso pipeline version: ", version, sep = "", file = summaryFile)
-  print("Created on:               ", today, sep = "", file = summaryFile)
+  print("Calypso resource version: ", resourceInfo['version'], sep = "", file = summaryFile)
+  print("Reference:                ", args.reference, sep = "", file = summaryFile)
+  print("Created on:               ", date, sep = "", file = summaryFile)
   print("Generated VCF file:       ", finalVcf, sep = "", file = summaryFile)
   print(file = summaryFile)
 
@@ -1329,12 +1359,13 @@ def calypsoSummary(args, finalVcf):
 def updateCalypsoAttributes(args):
   global mosaicConfig
   global version
+  global date
 
   # Define the public attributes we want to import or update
   calypso = {}
   calypso["Calypso version"]  = {"uid": False, "id": False, "value": version, "inProject": False}
-  calypso["Calypso date run"] = {"uid": False, "id": False, "value": date.today(), "inProject": False}
-  calypso["Calypso history"]  = {"uid": False, "id": False, "value": str(version) + ":" + str(date.today()), "inProject": False}
+  calypso["Calypso date run"] = {"uid": False, "id": False, "value": date, "inProject": False}
+  calypso["Calypso history"]  = {"uid": False, "id": False, "value": str(version) + ":" + date, "inProject": False}
 
   # Get all project attributes to check if the Calypso attributes have already been imported and set
   command = api_pa.getPublicProjectAttributes(mosaicConfig, 100, 1)
@@ -1380,13 +1411,14 @@ def updateCalypsoAttributes(args):
 # Update the Calypso history value
 def updateHistory(args, valueRecords):
   global version
+  global date
 
   # Get the history string for this project
   for record in valueRecords:
     value = record["value"] if str(record["project_id"]) == str(args.project_id) else False
 
   # If there was no history value, return todays date and version
-  if not value: return str(version) + ":" + str(date.today())
+  if not value: return str(version) + ":" + date
 
   # Get the most recent update to the history
   mostRecent  = value.split(",")[-1] if "," in value else value
@@ -1394,8 +1426,8 @@ def updateHistory(args, valueRecords):
   lastDate    = mostRecent.split(":")[1]
 
   # If the date and version at execution are the same as at the last execution, do not update
-  if str(lastVersion) == str(version) and str(lastDate) == str(date.today()): return value
-  else: return str(value) + "," + str(version) + ":" + str(date.today())
+  if str(lastVersion) == str(version) and str(lastDate) == date: return value
+  else: return str(value) + "," + str(version) + ":" + date
 
 # Write out any warnings
 def writeWarnings(args):
@@ -1418,6 +1450,10 @@ def fail(message):
 
 # Pipeline version
 version = "0.2.0"
+date    = str(date.today())
+
+# The working directory where all created files are kept
+workingDir = os.getcwd() + "/calypso_v" + version + "r"
 
 # Store warnings to be output at the end
 warnings = {}
