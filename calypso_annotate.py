@@ -85,6 +85,9 @@ def parseCommandLine():
   parser.add_argument('--input_vcf', '-i', required = True, metavar = "string", help = "The input vcf file to annotate")
   parser.add_argument('--project_id', '-p', required = True, metavar = "string", help = "The project id that variants will be uploaded to")
 
+  # Optional reanalysis arguments
+  parser.add_argument('--previous_vcf', '-s', required = False, metavar = "string", help = "A previously annotated Calypso vcf file")
+
   # Optional pipeline arguments
   parser.add_argument('--ped', '-e', required = False, metavar = "string", help = "The pedigree file for the family. Not required for singletons")
   parser.add_argument('--resource_json', '-j', required = False, metavar = "string", help = "The json file describing the annotation resources")
@@ -580,9 +583,11 @@ def getSampleOrder(args):
 def buildToml():
   global resourceInfo
   global workingDir
+  global tomlFilename
 
   # Create a toml file
-  try: tomlFile = open(workingDir + "calypso_annotations.toml", "w")
+  tomlFilename  = workingDir + "calypso_annotations.toml"
+  try: tomlFile = open(tomlFilename, "w")
   except: fail("There was a problem opening a file (calypso_annotations.toml) to write to")
 
   # Add each required resource to the toml file
@@ -644,6 +649,7 @@ def genBashScript(args):
   global resourceInfo
   global workingDir
   global tsvFiles
+  global tomlFilename
 
   # Create a script file
   bashFilename  = workingDir + "calypso_annotation_pipeline.sh"
@@ -661,7 +667,7 @@ def genBashScript(args):
   print("VCF=", vcfFile, sep = "", file = bashFile)
 
   # Generate the names of the intermediate and final vcf files
-  vcfBase = os.getcwd() + "/" + os.path.abspath(args.input_vcf).split("/")[-1].rstrip("vcf.gz")
+  vcfBase = workingDir + os.path.abspath(args.input_vcf).split("/")[-1].rstrip("vcf.gz")
   print("NORMVCF=" + str(vcfBase) + "_norm.vcf.gz", sep = "", file = bashFile)
   print("CLEANVCF=" + str(vcfBase) + "_clean.vcf.gz", sep = "", file = bashFile)
   print("ANNOTATEDVCF=" + str(vcfBase) + "_annotated.vcf.gz", sep = "", file = bashFile)
@@ -688,7 +694,7 @@ def genBashScript(args):
   except: fail("The resources json does not define a gnomAD zip file")
   try: print("JS=", resourceInfo["resources"]["slivar_js"]["file"], sep = "", file = bashFile)
   except: fail("The resources json does not define the Slivar functions js file")
-  print("TOML=", os.getcwd(), "/calypso_annotations.toml", sep = "", file = bashFile)
+  print("TOML=", tomlFilename, sep = "", file = bashFile)
   print(file = bashFile)
 
   # Print out status messages
@@ -793,7 +799,9 @@ def genBashScript(args):
 
   # Combine the slivar vcf files
   print("# Combine the slivar vcf files", file = bashFile)
-  print("  bcftools concat -a -d none $SLIVAR1VCF $SLIVAR2VCF -O z -o $FINALVCF \\", file = bashFile)
+  #print("  bcftools concat -a -d none $SLIVAR1VCF $SLIVAR2VCF -O z -o $FINALVCF \\", file = bashFile)
+  print("  bcftools concat -a -d none $SLIVAR1VCF $SLIVAR2VCF \\", file = bashFile)
+  print("  | bcftools annotate -H '##calypso=v" + version + "r" + resourceInfo['version'] + "' -O z -o $FINALVCF \\", sep = "", file = bashFile)
   print("  >> $STDOUT 2>> $STDERR", file = bashFile)
   print("  bcftools index -t $FINALVCF", file = bashFile)
   print(file = bashFile)
@@ -1496,6 +1504,9 @@ genotypeOptions.append("hom_samples")
 
 # Store annotations created for this project
 createdAnnotations = {}
+
+# Created files
+tomlFilename = ""
 
 if __name__ == "__main__":
   main()
