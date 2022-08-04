@@ -9,6 +9,15 @@
 	"filters": {
 		"annotation_filters": [
 			{
+				"uid": "gene_impact_GRCh38",
+				"values": [
+					"HIGH",
+					"MODERATE"
+				],
+				"value_type": "string",
+				"include_nulls": false
+			},
+			{
 				"name": "GQ Proband",
 				"min": "60",
 				"value_type": "float",

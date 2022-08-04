@@ -934,7 +934,7 @@ def modeOfInheritance(vcfBase, bashFile):
   moiFiles["denovoVcf"]    = {"file": str(vcfBase) + "_calypso_filtered_denovo.vcf.gz", "description": "Slivar de novo variants"}
   moiFiles["xdenovoVcf"]   = {"file": str(vcfBase) + "_calypso_filtered_xdenovo.vcf.gz", "description": "Slivar X de novo variants"}
   moiFiles["recessiveVcf"] = {"file": str(vcfBase) + "_calypso_filtered_recessive.vcf.gz", "description": "Slivar recessive variants"}
-  moiFiles["comphetVcf"]   = {"file": str(vcfBase) + "_calypso_filtered_comphet.vcf.gz", "description": "Slivar compound heterozygous variants"}
+  #moiFiles["comphetVcf"]   = {"file": str(vcfBase) + "_calypso_filtered_comphet.vcf.gz", "description": "Slivar compound heterozygous variants"}
   print("# Generate vcf files containing variants of different modes of inheritance", file = bashFile)
 
   # Generate a vcf of de novo variants
@@ -958,12 +958,17 @@ def modeOfInheritance(vcfBase, bashFile):
   print("  bcftools view -i 'INFO/recessive=\"", proband, "\"' -O z -o $RECESSIVE_VCF $FILTEREDVCF", sep = "", file = bashFile)
   print(file = bashFile)
 
-  # Generate a vcf of comp het variants
-  print("  # Compound heterozygous variants", file = bashFile)
-  print("  echo \"Generating vcf of compound heterozygous variants...\"", file = bashFile)
-  print("  COMPHET_VCF=", moiFiles["comphetVcf"]["file"], sep = "", file = bashFile)
-  print("  bcftools view -i 'INFO/slivar_comphet=\"", proband, "\"' -O z -o $COMPHET_VCF $FILTEREDVCF", sep = "", file = bashFile)
-  print(file = bashFile)
+################
+################
+################ NEED TO SORT COMP HETS
+################
+################
+#  # Generate a vcf of comp het variants
+#  print("  # Compound heterozygous variants", file = bashFile)
+#  print("  echo \"Generating vcf of compound heterozygous variants...\"", file = bashFile)
+#  print("  COMPHET_VCF=", moiFiles["comphetVcf"]["file"], sep = "", file = bashFile)
+#  print("  bcftools view -i 'INFO/slivar_comphet=\"", proband, "\"' -O z -o $COMPHET_VCF $FILTEREDVCF", sep = "", file = bashFile)
+#  print(file = bashFile)
 
 # Generate the tsv files to pass annotations to Mosaic
 def generateTsv(args, bashFile):
@@ -1033,23 +1038,6 @@ def buildPublicTsv(args, resource, bashFile):
   for annotation in sorted(mosaicInfo["resources"][resource]["annotations"]):
     if delimiter: annotations += "\\t%INFO/" + mosaicInfo["resources"][resource]["info"]
     else: annotations += "\\t%INFO/" + annotation
-
-#    # Check if a delimiter is set. If so, this tsv needs to be handled differently
-#    for resource in sorted(resources):
-#      delimiter = mosaicInfo["resources"][resource]["delimiter"]
-#      awkCommand = ""
-#      if delimiter:
-#        for index, annotation in enumerate(sorted(mosaicInfo["resources"][resource]["annotations"])):
-#
-#          # Determine if this annotation is an operation. If not, the position field must be set
-#          try: operation = mosaicInfo["resources"][resource]["annotations"][annotation]["operation"]
-#          except:
-#            position = mosaicInfo["resources"][resource]["annotations"][annotation]["position"]
-#            awkCommand  += "split($" + str(index + 6) + ",a,\"" + str(delimiter) + "\"); $" + str(index + 6) + "=a[" + str(position) + "]; "
-#          annotations += "\\t%INFO/" + mosaicInfo["resources"][resource]["info"]
-#      else:
-#        for annotation in sorted(mosaicInfo["resources"][resource]["annotations"]):
-#          annotations += "\\t%INFO/" + annotation
 
   # Build the query command
   print("  bcftools query -f '", annotations, "\\n' \\", sep = "", file = bashFile)

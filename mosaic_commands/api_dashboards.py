@@ -32,12 +32,13 @@ def postPinChart(mosaicConfig, chartId, projectId):
   return command
 
 # Pin an attribute to the dashboard
-def postPinAttribute(mosaicConfig, attributeId, projectId):
+def postPinAttribute(mosaicConfig, attributeId, showName, projectId):
   token = mosaicConfig["token"]
   url   = mosaicConfig["url"]
 
   command  = 'curl -S -s -X POST -H "Content-Type: application/json" -H "Authorization: Bearer ' + str(token) + '" '
-  command += '-d \'{"type": "project_attribute", "attribute_id": "' + str(attributeId) + '", "is_active": "true"}\' '
+  command += '-d \'{"type": "project_attribute", "attribute_id": "' + str(attributeId) + '", "is_active": "true", '
+  command += '"should_show_name_in_badge": "' + str(showName) + '"}\' '
   command += str(url) + 'api/v1/projects/' + str(projectId) + '/dashboard'
 
   return command
