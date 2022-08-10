@@ -23,13 +23,13 @@ def getProjectSettings(mosaicConfig, projectId):
 ###### PUT routes
 ######
 
-# Update the value of a project attribute
+# Set a variant annotation as a default
 def putDefaultAnnotations(mosaicConfig, projectId, annotationIds):
   token = mosaicConfig["token"]
   url   = mosaicConfig["url"]
 
   command  = 'curl -S -s -X PUT -H "Content-Type: application/json" -H "Authorization: Bearer ' + str(token) + '" '
-  command += '-d \'{"selected_variant_annotation_ids": "[' + str(annotationIds) + ']"}\' '
+  command += '-d \'{"selected_variant_annotation_ids": ' + str(annotationIds) + '}\' '
   command += str(url) + 'api/v1/projects/' + str(projectId) + '/settings'
 
   return command

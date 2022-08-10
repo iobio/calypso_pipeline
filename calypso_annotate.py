@@ -15,13 +15,14 @@ from sys import path
 path.append(os.path.dirname(__file__) + "/mosaic_commands")
 import mosaic_config
 import api_variant_annotations as api_va
-#import api_projects as api_p
+import api_project_settings as api_ps
 import api_project_attributes as api_pa
 import api_samples as api_s
 import api_variant_filters as api_vf
 
 def main():
   global mosaicConfig
+  global mosaicInfo
 
   # Parse the command line
   args = parseCommandLine()
@@ -51,6 +52,9 @@ def main():
   # Get the order that the samples appear in, in the vcf header
   getSampleOrder(args)
 
+  # Get all the project annotations
+  getProjectAnnotations(args)
+
   # Build the toml file for vcfanno
   buildToml()
 
@@ -67,7 +71,10 @@ def main():
   variantFilters(args)
 
   # Remove any annotations from the project that were listed in the resource file
-  removeAnnotations(args)
+  if "remove" in mosaicInfo: removeAnnotations(args)
+
+  # Set the projects default annotations
+  if "default" in mosaicInfo: defaultAnnotations(args)
 
   # Output summary file
   calypsoSummary(args, finalVcf)
@@ -180,13 +187,6 @@ def checkResources(args):
   if args.reference == '37' and resourceReference == '37': isRefMatch = True
   elif args.reference == '38' and resourceReference == '38': isRefMatch = True
   if not isRefMatch: fail("The selected reference (" + str(args.reference) + ") does not match the resource json reference (" + str(resourceReference) + ")")
-
-  # Get the Mosaic uids of annotations to remove from the project
-  if "remove" in resourceData:
-
-    # Check that "remove" contains a list of uids
-    if not isinstance(resourceData["remove"], list): fail("Resources json \"remove\" section need to be a list of Mosaic annotation uids")
-    resourceInfo["remove"] = resourceData["remove"]
 
   # Get the resources
   try: resources = resourceData["resources"]
@@ -312,6 +312,21 @@ def parseMosaicJson(args):
   if args.reference == '37' and mosaicReference == '37': isRefMatch = True
   elif args.reference == '38' and mosaicReference == '38': isRefMatch = True
   if not isRefMatch: fail("The selected reference (" + str(args.reference) + ") does not match the Mosaic json reference (" + str(mosaicReference) + ")")
+
+  # Get the Mosaic uids of annotations to remove from the project
+  if "remove" in mosaicData:
+
+    # Check that "remove" contains a list of uids
+    if not isinstance(mosaicData["remove"], list): fail("Mosaic json \"remove\" section need to be a list of Mosaic annotation uids")
+    mosaicInfo["remove"] = mosaicData["remove"]
+
+  # Check if default annotations for the project are defined. If so, store these and they will be used to
+  # set the default annotations that appear in the variant table for all users
+  if "default_annotations" in mosaicData:
+
+    # Check that this contains a list of uids
+    if not isinstance(mosaicData["default_annotations"], list): fail("Mosaic json \"default_annotations\" section need to be a list of Mosaic annotation uids")
+    mosaicInfo["default"] = mosaicData["default_annotations"]
 
   # Get the resources
   try: resources = mosaicData["resources"]
@@ -525,7 +540,6 @@ def variantFilters(args):
   global samples
   global rootPath
   global genotypeOptions
-  global createAnnotations
 
   # Get information about the samples
   probandId = False
@@ -633,6 +647,14 @@ def getSampleOrder(args):
   # Check that every sample in samples is in sampleOrder
   for sample in samples:
     if sample not in sampleOrder: fail("Sample " + str(sample) + "is listed in the ped file, but does not appear in the vcf header")
+
+# Get all the project annotations
+def getProjectAnnotations(args):
+  global projectAnnotations
+
+  # Get all the attributes in the project
+  data = json.loads(os.popen(api_va.getVariantAnnotations(mosaicConfig, args.project_id)).read())
+  for annotation in data: projectAnnotations[annotation['uid']] = {"id": annotation['id'], "name": annotation['name']}
 
 # Build the toml file
 def buildToml():
@@ -1091,8 +1113,7 @@ def createAnnotations(args, privateResources):
   annotationUids = {}
 
   # Get all the annotations in the project
-  command = api_va.getVariantAnnotations(mosaicConfig, args.project_id)
-  data    = json.loads(os.popen(command).read())
+  data = json.loads(os.popen(api_va.getVariantAnnotations(mosaicConfig, args.project_id)).read())
 
   # Store the annotations in the project by name
   projectAnnotations = {}
@@ -1341,8 +1362,7 @@ def getAnnotationsPages(args):
   global mosaicConfig
 
   # Get a page of public annotations from Mosaic (100 annotations per page)
-  command = api_va.getVariantAnnotationsImport(mosaicConfig, args.project_id, 100, 1)
-  data    = json.loads(os.popen(command).read())
+  data = json.loads(os.popen(api_va.getVariantAnnotationsImport(mosaicConfig, args.project_id, 100, 1)).read())
   noPages = math.ceil(int(data["count"]) / int(100))
 
   # Return the number of pages of annotations
@@ -1353,9 +1373,7 @@ def getAnnotations(args, page, uids):
   global mosaicConfig
 
   # Get a page of public annotations from Mosaic (100 annotations per page)
-  command = api_va.getVariantAnnotationsImport(mosaicConfig, args.project_id, 100, page)
-  data    = json.loads(os.popen(command).read())
-
+  data = json.loads(os.popen(api_va.getVariantAnnotationsImport(mosaicConfig, args.project_id, 100, page)).read())
   for annotation in data["data"]:
     if annotation["uid"] in uids.keys(): uids[annotation["uid"]] = annotation["id"]
 
@@ -1377,17 +1395,29 @@ def importAnnotation(args, annotation, uid):
 
 # Remove any annotations from the project that were listed in the resource file
 def removeAnnotations(args):
-  global resourceInfo
-  projectAnnotations = {}
-
-  # Get all the attributes in the project
-  data = json.loads(os.popen(api_va.getVariantAnnotations(mosaicConfig, args.project_id)).read())
-  for annotation in data: projectAnnotations[annotation['uid']] = annotation['id']
+  global mosaicInfo
+  global projectAnnotations
 
   # Loop over the annotations to remove, get the annotation id, and remove them from the project
-  for uid in resourceInfo["remove"]:
+  for uid in mosaicInfo["remove"]:
     if uid in projectAnnotations:
       data = os.popen(api_va.deleteVariantAnnotation(mosaicConfig, args.project_id, projectAnnotations[uid])).read()
+
+# Set the projects default annotations
+def defaultAnnotations(args):
+  global mosaicInfo
+  global projectAnnotations
+  annotationIds = []
+
+  # Loop over the annotations to and set them as defaults if necessary
+  for uid in mosaicInfo["default"]:
+    if uid in projectAnnotations: annotationIds.append(projectAnnotations[uid]['id'])
+
+  # Set the defaults
+  command = api_ps.putDefaultAnnotations(mosaicConfig, args.project_id, annotationIds)
+  print(command)
+  data = os.popen(api_ps.putDefaultAnnotations(mosaicConfig, args.project_id, annotationIds)).read()
+  print(data)
 
 # Output summary file
 def calypsoSummary(args, finalVcf):
@@ -1551,6 +1581,9 @@ tsvFiles = {}
 
 # Store the path to the Calypso directory
 rootPath = os.path.dirname( __file__)
+
+# Store all the annotations in a project
+projectAnnotations = {}
 
 # Store the allowed genotype options for saved filters
 genotypeOptions = []
