@@ -1,5 +1,5 @@
 {
-	"name": "Splice (within 2bp of exon/intron boundary)",
+	"name": "Splice extended (within 8bp of exon/intron boundary)",
 	"genotypes": {
 		"ref_samples": false,
 		"alt_samples": ["proband"],
@@ -11,8 +11,10 @@
 			{
 				"uid": "gene_consequence_GRCh38",
 				"values": [
-					"splice_donor",
-					"splice_acceptor"
+					"splice_region",
+					"splice_donor_5th_base",
+					"splice_donor_region",
+					"splice_polypyrimidine_tract"
 				],
 				"value_type": "string",
 				"include_nulls": false

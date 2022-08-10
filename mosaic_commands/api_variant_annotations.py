@@ -6,8 +6,8 @@
 ###### GET routes
 ######
 
-# Get the variant annotations to import
-def getVariantAnnotations(mosaicConfig, projectId, limit, page):
+# Get the variant annotations in the project
+def getVariantAnnotations(mosaicConfig, projectId):
   token = mosaicConfig["token"]
   url   = mosaicConfig["url"]
 
@@ -16,7 +16,7 @@ def getVariantAnnotations(mosaicConfig, projectId, limit, page):
 
   return command
 
-# Get variant annotations availebl to import
+# Get variant annotations available to import
 def getVariantAnnotationsImport(mosaicConfig, projectId, limit, page):
   token = mosaicConfig["token"]
   url   = mosaicConfig["url"]
@@ -59,3 +59,13 @@ def postImportVariantAnnotations(mosaicConfig, annotationId, projectId):
 ######
 ###### DELETE routes
 ######
+
+# Delete a variant annotation from a project
+def deleteVariantAnnotation(mosaicConfig, projectId, annotationId):
+  token = mosaicConfig["token"]
+  url   = mosaicConfig["url"]
+
+  command  = 'curl -S -s -X DELETE -H "Authorization: Bearer ' + str(token) + '" '
+  command += str(url) + 'api/v1/projects/' + str(projectId) + '/variants/annotations/' + str(annotationId)
+
+  return command

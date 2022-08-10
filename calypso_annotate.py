@@ -66,6 +66,9 @@ def main():
   # Create Mosaic filters
   variantFilters(args)
 
+  # Remove any annotations from the project that were listed in the resource file
+  removeAnnotations(args)
+
   # Output summary file
   calypsoSummary(args, finalVcf)
 
@@ -132,7 +135,7 @@ def checkArguments(args):
   if not exists(args.input_vcf): fail("The vcf file could not be found")
   elif not args.input_vcf.endswith(".vcf.gz"): fail("The input vcf file (--vcf, -v) must be a compressed, indexed vcf and have the extension '.vcf.gz'")
   if isFamily:
-    if not args.ped: fail("A ped file needs to specified (--ped, -p) for family type \"" + str(args.family_type) + "\"")
+    if not args.ped: fail("A ped file needs to specified (--ped, -e) for family type \"" + str(args.family_type) + "\"")
     if not exists(args.ped): fail("The ped file could not be found")
     elif not args.ped.endswith(".ped"): fail("The input ped file (--ped, -p) must have the extension '.ped'")
 
@@ -177,6 +180,13 @@ def checkResources(args):
   if args.reference == '37' and resourceReference == '37': isRefMatch = True
   elif args.reference == '38' and resourceReference == '38': isRefMatch = True
   if not isRefMatch: fail("The selected reference (" + str(args.reference) + ") does not match the resource json reference (" + str(resourceReference) + ")")
+
+  # Get the Mosaic uids of annotations to remove from the project
+  if "remove" in resourceData:
+
+    # Check that "remove" contains a list of uids
+    if not isinstance(resourceData["remove"], list): fail("Resources json \"remove\" section need to be a list of Mosaic annotation uids")
+    resourceInfo["remove"] = resourceData["remove"]
 
   # Get the resources
   try: resources = resourceData["resources"]
@@ -1081,7 +1091,7 @@ def createAnnotations(args, privateResources):
   annotationUids = {}
 
   # Get all the annotations in the project
-  command = api_va.getVariantAnnotations(mosaicConfig, args.project_id, 100, 1)
+  command = api_va.getVariantAnnotations(mosaicConfig, args.project_id)
   data    = json.loads(os.popen(command).read())
 
   # Store the annotations in the project by name
@@ -1365,6 +1375,20 @@ def importAnnotation(args, annotation, uid):
   command = api_va.postImportVariantAnnotations(mosaicConfig, uid, args.project_id)
   data    = json.loads(os.popen(command).read())
 
+# Remove any annotations from the project that were listed in the resource file
+def removeAnnotations(args):
+  global resourceInfo
+  projectAnnotations = {}
+
+  # Get all the attributes in the project
+  data = json.loads(os.popen(api_va.getVariantAnnotations(mosaicConfig, args.project_id)).read())
+  for annotation in data: projectAnnotations[annotation['uid']] = annotation['id']
+
+  # Loop over the annotations to remove, get the annotation id, and remove them from the project
+  for uid in resourceInfo["remove"]:
+    if uid in projectAnnotations:
+      data = os.popen(api_va.deleteVariantAnnotation(mosaicConfig, args.project_id, projectAnnotations[uid])).read()
+
 # Output summary file
 def calypsoSummary(args, finalVcf):
   global resourceInfo
@@ -1428,8 +1452,7 @@ def updateCalypsoAttributes(args):
         calypso[attribute["name"]]["id"]    = attribute["id"]
 
   # Loop over the attributes in the current project and check for the Calypso attributes
-  command = api_pa.getProjectAttributes(mosaicConfig, args.project_id)
-  data    = json.loads(os.popen(command).read())
+  data = json.loads(os.popen(api_pa.getProjectAttributes(mosaicConfig, args.project_id)).read())
   for attribute in data:
 
     # If an attribute with the right name exists, check the Mosaic id matches the public attribute, and
