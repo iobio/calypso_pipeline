@@ -1414,10 +1414,7 @@ def defaultAnnotations(args):
     if uid in projectAnnotations: annotationIds.append(projectAnnotations[uid]['id'])
 
   # Set the defaults
-  command = api_ps.putDefaultAnnotations(mosaicConfig, args.project_id, annotationIds)
-  print(command)
   data = os.popen(api_ps.putDefaultAnnotations(mosaicConfig, args.project_id, annotationIds)).read()
-  print(data)
 
 # Output summary file
 def calypsoSummary(args, finalVcf):
@@ -1544,7 +1541,7 @@ def fail(message):
 # Initialise global variables
 
 # Pipeline version
-version = "0.2.0"
+version = "0.2.1"
 date    = str(date.today())
 
 # The working directory where all created files are kept
