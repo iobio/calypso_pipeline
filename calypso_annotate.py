@@ -1401,7 +1401,7 @@ def removeAnnotations(args):
   # Loop over the annotations to remove, get the annotation id, and remove them from the project
   for uid in mosaicInfo["remove"]:
     if uid in projectAnnotations:
-      data = os.popen(api_va.deleteVariantAnnotation(mosaicConfig, args.project_id, projectAnnotations[uid])).read()
+      data = os.popen(api_va.deleteVariantAnnotation(mosaicConfig, args.project_id, projectAnnotations[uid]['id'])).read()
 
 # Set the projects default annotations
 def defaultAnnotations(args):
