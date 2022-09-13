@@ -498,6 +498,8 @@ def getProband(args):
       else: noParents = 1
 
       # Determine if the sample is affected
+      try: affectedStatus = int(fields[5])
+      except: fail("Ped file does not contain enough fields")
       if int(fields[5]) == 2:
         isAffected = True 
         noAffected += 1
@@ -726,6 +728,7 @@ def genBashScript(args):
   global resourceInfo
   global workingDir
   global tsvFiles
+  global proband
   global tomlFilename
 
   # Create a script file
@@ -745,9 +748,10 @@ def genBashScript(args):
 
   # Generate the names of the intermediate and final vcf files
   vcfBase = workingDir + os.path.abspath(args.input_vcf).split("/")[-1].rstrip("vcf.gz")
-  print("NORMVCF=" + str(vcfBase) + "_norm.vcf.gz", sep = "", file = bashFile)
   print("CLEANVCF=" + str(vcfBase) + "_clean.vcf.gz", sep = "", file = bashFile)
   print("ANNOTATEDVCF=" + str(vcfBase) + "_annotated.vcf.gz", sep = "", file = bashFile)
+  print("PROBANDVCF=" + str(vcfBase) + "_proband.vcf.gz", sep = "", file = bashFile)
+  print("PREANNOVCF=" + str(vcfBase) + "_preanno.vcf.gz", sep = "", file = bashFile)
   if isFamily: print("SLIVAR1VCF=" + str(vcfBase) + "_slivar1.vcf.gz", sep = "", file = bashFile)
   if isFamily: print("SLIVAR2VCF=" + str(vcfBase) + "_slivar2.vcf.gz", sep = "", file = bashFile)
   finalVcf    = str(vcfBase) + "_calypso.vcf.gz"
@@ -783,41 +787,60 @@ def genBashScript(args):
   # Generate a samples text file from the ped file, if this is a family
   if isFamily: print("  tail -n+2 $PED | cut -f 2 | sort -u > samples.txt", file = bashFile)
   else: fail("Can't handle singletons yet. Need to build samples file in case there are background samples")
-  print("  bcftools norm -m - -w 10000 -f $REF $VCF \\", file = bashFile)
-  print("  2> $STDERR \\", file = bashFile)
-  print("  | bcftools view -a -c 1 -S samples.txt -O z -o $NORMVCF \\", file = bashFile)
+  print("  bcftools norm -m - -w 10000 -f $REF $VCF 2> $STDERR\\", file = bashFile)
+  print("  | bcftools view -a -c 1 -S samples.txt 2>> $STDERR \\", file = bashFile)
+  print("  | bcftools annotate -x INFO -O z -o $CLEANVCF \\", file = bashFile)
   print("  > $STDOUT 2>> $STDERR", file = bashFile)
   print(file = bashFile)
 
-  # Index the normalized vcf file
-  print("# Index the normalized VCF file", file = bashFile)
-  print("  bcftools index -t $NORMVCF \\", file = bashFile)
+  # Index the clean vcf file
+  print("# Index the clean VCF file", file = bashFile)
+  print("  bcftools index -t $CLEANVCF \\", file = bashFile)
   print(file = bashFile)
 
-  # Strip all existing annotations from the VCF file
-  print("# Strip existing VCF annotations", file = bashFile)
-  print("  echo \"Removing any existing annotations from input VCF...\"", file = bashFile)
-  print(file = bashFile)
-  print("  bcftools annotate -x INFO $NORMVCF -O z -o $CLEANVCF \\", file = bashFile)
-  print("  >> $STDOUT 2>> $STDERR", file = bashFile)
-  print("  bcftools index -t $CLEANVCF", file = bashFile)
+  # Filter out the proband variants
+  if not proband: fail("Cannot create proband only vcf")
+  print("# Filter out proband variants", file = bashFile)
+  print("  bcftools view -s ", proband, " $CLEANVCF 2>> $STDERR \\", sep = "", file = bashFile)
+  print("  | bcftools view -e 'GT=\"RR\" || GT=\"mis\"' -O z -o $PROBANDVCF \\", file = bashFile)
+  print("  > $STDOUT 2>> $STDERR", file = bashFile)
+  print("  bcftools index -t $PROBANDVCF \\", file = bashFile)
   print(file = bashFile)
 
-  # Delete the normalized vcf
-  print("# Remove the normalized VCF file", file = bashFile)
-  print("  rm -f $NORMVCF", file = bashFile)
-  print("  rm -f \"$NORMVCF\".tbi", file = bashFile)
-  print("  rm -f samples.txt", file = bashFile)
+  # Intersect the proband vcf with the clean vcf to create a vcf with all samples containing only variants
+  # that are present in the proband
+  print("# Create clean VCF for whole family, but containing only variants the proband has", file = bashFile)
+  print("  bcftools isec $CLEANVCF $PROBANDVCF -n =2 -w 1 -O z -o $PREANNOVCF", file = bashFile)
+  print("  > $STDOUT 2>> $STDERR", file = bashFile)
+  print("  bcftools index -t $PREANNOVCF \\", file = bashFile)
   print(file = bashFile)
 
   # Annotate the vcf
   print("# Annotate with bcftools csq and add further annotations with vcfanno", file = bashFile)
   print("  echo \"Annotating cleaned VCF...\"", file = bashFile)
   print(file = bashFile)
-  print("  bcftools csq -f $REF --ncsq 40 -l -g $GFF $CLEANVCF \\", file = bashFile)
-  print("  2>> $STDERR \\", file = bashFile)
-  print("  | vcfanno -p 16 $TOML /dev/stdin \\", file = bashFile)
-  print("  2>> $STDERR \\", file = bashFile)
+  print("  bcftools csq -f $REF --ncsq 40 -l -g $GFF $PREANNOVCF 2>> $STDERR \\", file = bashFile)
+  print("  | vcfanno -p 16 $TOML /dev/stdin 2>> $STDERR \\", file = bashFile)
+  print("  | vep \\", file = bashFile)
+  print("    --vcf \\", file = bashFile)
+  print("    --force \\", file = bashFile)
+  print("    --check_existing \\", file = bashFile)
+  #print("    --coding_only \\", file = bashFile)
+  print("    --quiet \\", file = bashFile)
+  print("    --fork 40 \\", file = bashFile)
+  print("    --format vcf \\", file = bashFile)
+  print("    --force_overwrite \\", file = bashFile)
+  print("    --cache \\", file = bashFile)
+  print("    --no_stats \\", file = bashFile)
+  print("    --fasta $REF \\", file = bashFile)
+  print("    --dir_cache ", resourceInfo["resources"]["vep"]["cache"], " \\", sep = "", file = bashFile)
+  print("    --dir_plugins ", resourceInfo["resources"]["vep"]["plugins"], " \\", sep = "", file = bashFile)
+  print("    --assembly GRCh", str(args.reference), " \\", sep = "", file = bashFile)
+  print("    --hgvs \\", file = bashFile)
+  #for command in vepCommands: print("    ", command, " \\", sep = "", file = bashFile)
+  #if len(vepFields) > 0: print("    --fields \"", ",".join(vepFields), "\" \\", sep = "", file = bashFile)
+  print("    --fields \"SYMBOL,Feature,IMPACT,Consequence,HGVSc,HGVSp\" \\", file = bashFile)
+  print("    --output_file STDOUT 2>> $STDERR \\", sep = "", file = bashFile)
   print("  | bcftools view -O z -o $ANNOTATEDVCF - \\", file = bashFile)
   print("  >> $STDOUT 2>> $STDERR", file = bashFile)
   print(file = bashFile)
@@ -826,7 +849,12 @@ def genBashScript(args):
   print("# Remove the clean VCF and toml files", file = bashFile)
   print("  rm -f $CLEANVCF", file = bashFile)
   print("  rm -f \"$CLEANVCF\".tbi", file = bashFile)
+  print("  rm -f $PROBANDVCF", file = bashFile)
+  print("  rm -f \"$PROBANDVCF\".tbi", file = bashFile)
+  print("  rm -f $PREANNOVCF", file = bashFile)
+  print("  rm -f \"$PREANNOVCF\".tbi", file = bashFile)
   print("  rm -f $TOML", file = bashFile)
+  print("  rm -f samples.txt", file = bashFile)
   print(file = bashFile)
 
 ############### SINGLETONS NEED GNOMAD ANNOTATIONS FROM SLIVAR
@@ -891,8 +919,6 @@ def genBashScript(args):
   print("  rm -f $SLIVAR2VCF", file = bashFile)
   print("  rm -f \"$SLIVAR2VCF\".tbi", file = bashFile)
   print(file = bashFile)
-  print("  echo \"Everything completed! Annotated VCF written to $FINALVCF\"", file = bashFile)
-  print(file = bashFile)
 
   # Filter the VCF file to generate variants to pass to Mosaic
   print("# Filter the VCF file to generate variants to pass to Mosaic", file = bashFile)
@@ -901,41 +927,42 @@ def genBashScript(args):
   print("  --info 'INFO.gnomad_popmax_af < 0.01 && variant.FILTER == \"PASS\" && variant.ALT[0] != \"*\"' \\", file = bashFile)
   print("  --pass-only \\", file = bashFile)
 
-  # Loop over all resources and see if any of them use VEP
-  vepCommands = []
-  vepFields   = []
-  useVep      = False
-  for resource in resourceInfo["resources"]:
-    if resourceInfo["resources"][resource]["isVepAnnotation"] and resourceInfo["resources"][resource]["apply_to_filtered"]:
-      useVep = True
-      for command in resourceInfo["resources"][resource]["vep_commands"]: vepCommands.append(command)
-      for field in resourceInfo["resources"][resource]["vep_fields"]: vepFields.append(field)
-
-  # If so, include the VEP commands
-  if useVep:
-    print("  | vep \\", file = bashFile)
-    print("    --vcf \\", file = bashFile)
-    print("    --force \\", file = bashFile)
-    print("    --check_existing \\", file = bashFile)
-    print("    --coding_only \\", file = bashFile)
-    print("    --quiet \\", file = bashFile)
-    print("    --fork 40 \\", file = bashFile)
-    print("    --format vcf \\", file = bashFile)
-    print("    --force_overwrite \\", file = bashFile)
-    print("    --cache \\", file = bashFile)
-    print("    --no_stats \\", file = bashFile)
-    print("    --fasta $REF \\", file = bashFile)
-    print("    --dir_cache ", resourceInfo["resources"]["vep"]["cache"], " \\", sep = "", file = bashFile)
-    print("    --dir_plugins ", resourceInfo["resources"]["vep"]["plugins"], " \\", sep = "", file = bashFile)
-    print("    --assembly GRCh", str(args.reference), " \\", sep = "", file = bashFile)
-    for command in vepCommands: print("    ", command, " \\", sep = "", file = bashFile)
-    if len(vepFields) > 0: print("    --fields \"", ",".join(vepFields), "\" \\", sep = "", file = bashFile)
-    print("    --output_file STDOUT \\", sep = "", file = bashFile)
-    print("    2>> $STDERR \\", file = bashFile)
-    print("  | bcftools view -O z -o $FILTEREDVCF - \\", file = bashFile)
-
-  # If VEP is not used, finish the Slivar command
-  else: print("  -o $FILTEREDVCF \\", file = bashFile)
+#  # Loop over all resources and see if any of them use VEP
+#  vepCommands = []
+#  vepFields   = []
+#  useVep      = False
+#  for resource in resourceInfo["resources"]:
+#    if resourceInfo["resources"][resource]["isVepAnnotation"] and resourceInfo["resources"][resource]["apply_to_filtered"]:
+#      useVep = True
+#      for command in resourceInfo["resources"][resource]["vep_commands"]: vepCommands.append(command)
+#      for field in resourceInfo["resources"][resource]["vep_fields"]: vepFields.append(field)
+#
+#  # If so, include the VEP commands
+#  if useVep:
+#    print("  | vep \\", file = bashFile)
+#    print("    --vcf \\", file = bashFile)
+#    print("    --force \\", file = bashFile)
+#    print("    --check_existing \\", file = bashFile)
+#    print("    --coding_only \\", file = bashFile)
+#    print("    --quiet \\", file = bashFile)
+#    print("    --fork 40 \\", file = bashFile)
+#    print("    --format vcf \\", file = bashFile)
+#    print("    --force_overwrite \\", file = bashFile)
+#    print("    --cache \\", file = bashFile)
+#    print("    --no_stats \\", file = bashFile)
+#    print("    --fasta $REF \\", file = bashFile)
+#    print("    --dir_cache ", resourceInfo["resources"]["vep"]["cache"], " \\", sep = "", file = bashFile)
+#    print("    --dir_plugins ", resourceInfo["resources"]["vep"]["plugins"], " \\", sep = "", file = bashFile)
+#    print("    --assembly GRCh", str(args.reference), " \\", sep = "", file = bashFile)
+#    for command in vepCommands: print("    ", command, " \\", sep = "", file = bashFile)
+#    if len(vepFields) > 0: print("    --fields \"", ",".join(vepFields), "\" \\", sep = "", file = bashFile)
+#    print("    --output_file STDOUT \\", sep = "", file = bashFile)
+#    print("    2>> $STDERR \\", file = bashFile)
+#    print("  | bcftools view -O z -o $FILTEREDVCF - \\", file = bashFile)
+#
+#  # If VEP is not used, finish the Slivar command
+#  else: print("  -o $FILTEREDVCF \\", file = bashFile)
+  print("  -o $FILTEREDVCF \\", file = bashFile)
   print("  >> $STDOUT 2>> $STDERR", file = bashFile)
   print(file = bashFile)
 
@@ -948,6 +975,10 @@ def genBashScript(args):
   print("  echo \"Generating annotations tsv files for Mosaic\"", file = bashFile)
   print(file = bashFile)
   generateTsv(args, bashFile)
+
+  # Closing notification
+  print("  echo \"Everything completed! Annotated VCF written to $FINALVCF\"", file = bashFile)
+  print(file = bashFile)
 
   # Close the file
   bashFile.close()
@@ -1541,7 +1572,7 @@ def fail(message):
 # Initialise global variables
 
 # Pipeline version
-version = "0.2.1"
+version = "0.3.1"
 date    = str(date.today())
 
 # The working directory where all created files are kept
