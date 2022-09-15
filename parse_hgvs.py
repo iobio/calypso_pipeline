@@ -178,6 +178,9 @@ def parseHgvs(args):
     else:
       fields = line.split("\t")
 
+      # Store the csq field
+      csq = fields[5]
+
       # Check that the chromosome does not include "chr" prefix
       outputLine = fields[0][3:] if fields[0].startswith("chr") else fields[0]
 
@@ -194,9 +197,9 @@ def parseHgvs(args):
       # Only continue if at least one of the annotations has a value
       if hasValue:
 
-        # Get all the available HGVS values
-        if ',' in fields[5]: availableValues = fields[5].split(",")
-        else: availableValues = [fields[5]]
+        # Get all the available CSQ values
+        if ',' in csq: csqValues = csq.split(",")
+        else: csqValues = [csq]
         annotationLine = ""
 
         # Loop over the HGVS annotations
@@ -209,7 +212,9 @@ def parseHgvs(args):
 
           # Loop over the availableValues and build up a string of all values for this annotation
           values = []
-          for value in availableValues: values.append(value.split("|")[int(position) - 1])
+          for csqValue in csqValues:
+            value = csqValue.split("|")[int(position) - 1]
+            if value: values.append(value)
           annotationLine += "\t" + str(",".join(values))
 
         # Write out the line

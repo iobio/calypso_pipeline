@@ -105,6 +105,9 @@ def parseCommandLine():
   parser.add_argument('--ped', '-e', required = False, metavar = "string", help = "The pedigree file for the family. Not required for singletons")
   parser.add_argument('--resource_json', '-j', required = False, metavar = "string", help = "The json file describing the annotation resources")
 
+  # Optional argument to handle HPO terms
+  parser.add_argument('--hpo', '-o', required = False, metavar = "string", help = "A comma separate list of hpo ids for the proband")
+
   # Optional mosaic arguments
   parser.add_argument('--config', '-c', required = False, metavar = "string", help = "The config file for Mosaic")
   parser.add_argument('--token', '-t', required = False, metavar = "string", help = "The Mosaic authorization token")
@@ -976,6 +979,9 @@ def genBashScript(args):
   print(file = bashFile)
   generateTsv(args, bashFile)
 
+  # If HPO ids were supplied, add a command to generate hpo annotations
+  if args.hpo: processHpo(args, bashFile)
+
   # Closing notification
   print("  echo \"Everything completed! Annotated VCF written to $FINALVCF\"", file = bashFile)
   print(file = bashFile)
@@ -997,7 +1003,7 @@ def modeOfInheritance(vcfBase, bashFile):
   moiFiles["denovoVcf"]    = {"file": str(vcfBase) + "_calypso_filtered_denovo.vcf.gz", "description": "Slivar de novo variants"}
   moiFiles["xdenovoVcf"]   = {"file": str(vcfBase) + "_calypso_filtered_xdenovo.vcf.gz", "description": "Slivar X de novo variants"}
   moiFiles["recessiveVcf"] = {"file": str(vcfBase) + "_calypso_filtered_recessive.vcf.gz", "description": "Slivar recessive variants"}
-  #moiFiles["comphetVcf"]   = {"file": str(vcfBase) + "_calypso_filtered_comphet.vcf.gz", "description": "Slivar compound heterozygous variants"}
+  moiFiles["comphetVcf"]   = {"file": str(vcfBase) + "_calypso_filtered_comphet.vcf.gz", "description": "Slivar compound heterozygous variants"}
   print("# Generate vcf files containing variants of different modes of inheritance", file = bashFile)
 
   # Generate a vcf of de novo variants
@@ -1021,17 +1027,12 @@ def modeOfInheritance(vcfBase, bashFile):
   print("  bcftools view -i 'INFO/recessive=\"", proband, "\"' -O z -o $RECESSIVE_VCF $FILTEREDVCF", sep = "", file = bashFile)
   print(file = bashFile)
 
-################
-################
-################ NEED TO SORT COMP HETS
-################
-################
-#  # Generate a vcf of comp het variants
-#  print("  # Compound heterozygous variants", file = bashFile)
-#  print("  echo \"Generating vcf of compound heterozygous variants...\"", file = bashFile)
-#  print("  COMPHET_VCF=", moiFiles["comphetVcf"]["file"], sep = "", file = bashFile)
-#  print("  bcftools view -i 'INFO/slivar_comphet=\"", proband, "\"' -O z -o $COMPHET_VCF $FILTEREDVCF", sep = "", file = bashFile)
-#  print(file = bashFile)
+  # Generate a vcf of comp het variants
+  print("  # Compound heterozygous variants", file = bashFile)
+  print("  echo \"Generating vcf of compound heterozygous variants...\"", file = bashFile)
+  print("  COMPHET_VCF=", moiFiles["comphetVcf"]["file"], sep = "", file = bashFile)
+  print("  bcftools view -i 'INFO/slivar_comphet=\"", proband, "\"' -O z -o $COMPHET_VCF $FILTEREDVCF", sep = "", file = bashFile)
+  print(file = bashFile)
 
 # Generate the tsv files to pass annotations to Mosaic
 def generateTsv(args, bashFile):
@@ -1039,8 +1040,11 @@ def generateTsv(args, bashFile):
   global mosaicInfo
   privateResources = []
 
-  # Loop over all the annotations to pass to Mosaic
+  # Loop over all the annotations to pass to Mosaic. This is only the annotations in the Mosaic resource file
+  # which may contain annotations not in the resources file. This can happen if the annotation is not generated
+  # from a resource file, e.g. HPO terms.
   for resource in resourceInfo["resources"]:
+  #for resource in mosaicInfo["resources"]:
 
     # Check if this resource is to be uploaded to Mosaic, and if it can be (e.g. does it appear
     # in the Mosaic json
@@ -1165,24 +1169,34 @@ def createAnnotations(args, privateResources):
         # Loop over all samples in the project and get the annotations for each sample
         for sample in sampleOrder:
           annotationName = str(annotation) + " " + str(samples[sample]["relationship"])
-
-          # Check if an annotation with this name already exists
-          annotationUid = projectAnnotations[annotationName]["uid"] if annotationName in projectAnnotations else False
-
-          # If the annotation does not exist, create it
-          if not annotationUid:
-            valueType = mosaicInfo["resources"][resource]["annotations"][annotation]["type"]
-            data      = json.loads(os.popen(api_va.postCreateVariantAnnotations(mosaicConfig, annotationName, valueType, "private", args.project_id)).read())
-
-            # Get the uid of the newly created annotation
-            annotationUid = data["uid"]
-
-          # Store the annotation uids
-          annotationUids[resource][annotation]["uids"].append(annotationUid)
-          createdAnnotations[annotationName] = annotationUid
+          annotationUid  = checkPrivateAnnotation(args, resource, annotation, projectAnnotations, annotationName, annotationUids)
 
       # Other types of private annotations are not yet handled
-      else: fail("PRIVATE ANNOTAION TYPE NOT HANDLED")
+      else:
+        annotationUid = checkPrivateAnnotation(args, resource, annotation, projectAnnotations, annotation, annotationUids)
+
+  return annotationUids
+
+# Check if a private annotation exists and create if it doesn't
+def checkPrivateAnnotation(args, resource, annotation, projectAnnotations, annotationName, annotationUids):
+  global mosaicConfig
+  global mosaicInfo
+  global createdAnnotations
+
+  # Check if an annotation with this name already exists
+  annotationUid = projectAnnotations[annotationName]["uid"] if annotationName in projectAnnotations else False
+
+  # If the annotation does not exist, create it
+  if not annotationUid:
+    valueType = mosaicInfo["resources"][resource]["annotations"][annotation]["type"]
+    data      = json.loads(os.popen(api_va.postCreateVariantAnnotations(mosaicConfig, annotationName, valueType, "private", args.project_id)).read())
+
+    # Get the uid of the newly created annotation
+    annotationUid = data["uid"]
+
+  # Store the annotation uids
+  annotationUids[resource][annotation]["uids"].append(annotationUid)
+  createdAnnotations[annotationName] = annotationUid
 
   return annotationUids
 
@@ -1250,6 +1264,24 @@ def buildPrivateAnnotationTsv(args, resources, annotationUids, bashFile):
     print(" ", outputFile, ">", tempFile, file = bashFile)
     print("  mv", tempFile, outputFile, file = bashFile)
     print(file = bashFile)
+
+# If HPO ids were supplied, process them
+def processHpo(args, bashFile):
+  global resourceInfo
+  global rootPath
+
+  print("# Processing HPO terms...", file = bashFile)
+  print("  echo -e \"Processing HPO terms to generate additional HPO annotations...\"", file = bashFile)
+  print("  bcftools query -f '%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%INFO/BCSQ\\t%INFO/gg2.1.1_AF_popmax\\t%INFO/gg2.1.1_nhomalt\\t%INFO/gg3.1.2_AF_popmax\\t%INFO/gg3.1.2_nhomalt\\t%INFO/REVEL\\t%INFO/SpliceAI\\t%INFO/pLI\\t%INFO/CLNSIG[\\t%SAMPLE\\t%GT]\\n' \\", file = bashFile)
+  print("  $FILTEREDVCF \\", file = bashFile)
+  print("  | python ", rootPath, "/calypso_hpo.py \\", sep = "", file = bashFile)
+  print("  -p ", args.project_id, " \\", sep = "", file = bashFile)
+  print("  -c \"", args.config, "\" \\", sep = "", file = bashFile)
+  print("  -o \"", resourceInfo["resources"]['hpo']['file'], "\" \\", sep = "", file = bashFile)
+  print("  -e $PED \\", sep = "", file = bashFile)
+  print("  -r \"", args.hpo, "\"", sep = "", file = bashFile)
+  print(file = bashFile)
+  exit(0)
 
 # Output a script to upload variants to Mosaic
 def uploadVariants(args, filteredVcf):
@@ -1421,8 +1453,8 @@ def importAnnotation(args, annotation, uid):
   global mosaicConfig
 
   # Create the command to import the annotation
-  command = api_va.postImportVariantAnnotations(mosaicConfig, uid, args.project_id)
-  data    = json.loads(os.popen(command).read())
+  try: data = json.loads(os.popen(api_va.postImportVariantAnnotations(mosaicConfig, uid, args.project_id)).read())
+  except: fail("Unable to import variant annotation: " + uid)
 
 # Remove any annotations from the project that were listed in the resource file
 def removeAnnotations(args):

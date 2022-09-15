@@ -205,7 +205,7 @@ def parseSpliceAI(args):
           annotationLine  = ""
 
           # Loop over the annotations for SpliceAI and output them in order
-          for annotation in mosaicInfo["resources"]["SpliceAI"]["annotations"]:
+          for annotation in sorted(mosaicInfo["resources"]["SpliceAI"]["annotations"]):
             annotationInfo   = mosaicInfo["resources"]["SpliceAI"]["annotations"][annotation]
             outputAnnotation = {}
 

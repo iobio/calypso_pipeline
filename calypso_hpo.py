@@ -55,7 +55,7 @@ def parseCommandLine():
   # Required arguments
   #parser.add_argument('--reference', '-r', required = True, metavar = "string", help = "The reference genome to use. Allowed values: '37', '38'")
   #parser.add_argument('--family_type', '-f', required = True, metavar = "string", help = "The familty structure. Allowed values: 'singleton', 'duo', 'trio'")
-  parser.add_argument('--data_directory', '-d', required = True, metavar = "string", help = "The path to the directory where the resources live")
+  #parser.add_argument('--data_directory', '-d', required = True, metavar = "string", help = "The path to the directory where the resources live")
   #parser.add_argument('--input_vcf', '-i', required = True, metavar = "string", help = "The input vcf file to annotate")
   parser.add_argument('--hpo', '-o', required = True, metavar = "string", help = "The gene:HPO associations file")
   parser.add_argument('--project_id', '-p', required = True, metavar = "string", help = "The project id that variants will be uploaded to")
@@ -229,12 +229,14 @@ def parseVcf(args):
   hpoOut      = open('hpo.tsv', 'w')
   priorityOut = open('priority.tsv', 'w')
   scoreOut    = open('score.tsv', 'w')
+  plotsOut    = open('plots.tsv', 'w')
 
   # Write the header lines to the output files
   headerBase = "CHROM\tSTART\tEND\tREF\tALT"
   print(headerBase, "hpo_overlaps_fd47afb7", "hpo_terms_2bb3b6d5", sep = "\t", file = hpoOut)
   print(headerBase, "variant_prioritization_b851ec5c", sep = "\t", file = priorityOut)
   print(headerBase, "variant_score_96c63960", sep = "\t", file = scoreOut)
+  print("gnomad2AfScore", "gnomad2homaltScore", "gnomad3AfScore", "gnomad3homaltScore", "pLIScore", "hpoScore", "clinvarScore", "moiScores", "impactScore", "variantScore", sep = "\t", file = plotsOut)
 
   # Read the standard input
   for line in sys.stdin:
@@ -282,11 +284,11 @@ def parseVcf(args):
     elif probandGen == "1/1" and (fatherGen == "0/1" or fatherGen == "1/0" or fatherGen == "1/1") and motherGen == "0/0": moi = "unlikely"
     else: fail("Unknown moi, proband: " + probandGen + ", mother: " + motherGen + ", father: " + fatherGen)
 
-    # Get the gnomAD annotations. If these are '.', the variants are not in gnomAD so should be set to 1, i.e. they are rare
-    gnomad2Af     = float(fields[6]) if fields[6] != '.' else 1.
-    gnomad2homalt = float(fields[7]) if fields[7] != '.' else 1.
-    gnomad3Af     = float(fields[8]) if fields[8] != '.' else 1.
-    gnomad3homalt = float(fields[9]) if fields[9] != '.' else 1.
+    # Get the gnomAD annotations. If these are '.', the variants are not in gnomAD so should be set to 0, i.e. they are rare
+    gnomad2Af     = float(fields[6]) if fields[6] != '.' else 0.
+    gnomad2homalt = float(fields[7]) if fields[7] != '.' else 0.
+    gnomad3Af     = float(fields[8]) if fields[8] != '.' else 0.
+    gnomad3homalt = float(fields[9]) if fields[9] != '.' else 0.
 
     # If revel score has multiple values, take the max. The REVEL score will be user to modify the score from the consequence
     # (e.g. missense score = missense weight * REVEL). So a REVEL score of 1 will give the impact score the full weight. A
@@ -305,12 +307,12 @@ def parseVcf(args):
     clinvarScore = clinvarSig[fields[13]] if fields[13] in clinvarSig else fail("Unknown Clinvar significance: " + fields[13])
 
     # If there is no BCSQ in the record, a '.' will be supplied and these should be ignored
-    bcsq = fields[5]
+    bcsq  = fields[5]
+    genes = []
+    impactScore = 0.
     if bcsq != '.':
-      impactScore = 0.
       finalConsequence = False
       if ',' in bcsq:
-        genes = []
         for anno in bcsq.split(","):
 
           # Get all the genes
@@ -381,6 +383,7 @@ def parseVcf(args):
 
     # Print the variant score to file, so it can be uploaded as an annotation
     print(chrom, start, end, ref, alt, variantScore, sep = "\t", file = scoreOut)
+    print(gnomad2Af, gnomad2homalt, gnomad3Af, gnomad3homalt, pLI, noAssociatedTerms, clinvarScore, moiScores[moi], impactScore, variantScore, sep = "\t", file = plotsOut)
 
     # If the variant score is higher than the lowest score in the priority list, remove the lowest score and add this variant
     lowestScore = min(priorityList.keys())
@@ -395,6 +398,7 @@ def parseVcf(args):
   hpoOut.close()
   priorityOut.close()
   scoreOut.close()
+  plotsOut.close()
 
 # If the script fails, provide an error message and exit
 def fail(message):
