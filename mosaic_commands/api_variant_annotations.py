@@ -58,7 +58,7 @@ def postUploadVariantAnnotations(mosaicConfig, filename, allowDeletion, projectI
   url   = mosaicConfig["url"]
 
   command  = 'curl -S -s -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ' + str(token)
-  command += '" -F "file=@' + str(filename) + '" -d \'{"allow_deletion": "' + str(allowDeletion) + '"}\' '
+  command += '" -F "file=@' + str(filename) + '" -F "allow_deletion=' + str(allowDeletion) + '" '
   command += str(url) + 'api/v1/projects/' + str(projectId) + '/variants/annotations/upload'
 
   return command

@@ -214,6 +214,13 @@ def parseHgvs(args):
           values = []
           for csqValue in csqValues:
             value = csqValue.split("|")[int(position) - 1]
+
+#########
+#########
+######### REMOVE values that are longer than 255 characters. Need a better solution
+#########
+#########
+            if len(value) > 255: value = ""
             if value: values.append(value)
           annotationLine += "\t" + str(",".join(values))
 
