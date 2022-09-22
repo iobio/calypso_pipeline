@@ -52,6 +52,17 @@ def postImportVariantAnnotations(mosaicConfig, annotationId, projectId):
 
   return command
 
+# Upload variant annotations to the project
+def postUploadVariantAnnotations(mosaicConfig, filename, allowDeletion, projectId):
+  token = mosaicConfig["token"]
+  url   = mosaicConfig["url"]
+
+  command  = 'curl -S -s -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ' + str(token)
+  command += '" -F "file=@' + str(filename) + '" -d \'{"allow_deletion": "' + str(allowDeletion) + '"}\' '
+  command += str(url) + 'api/v1/projects/' + str(projectId) + '/variants/annotations/upload'
+
+  return command
+
 ######
 ###### PUT routes
 ######
