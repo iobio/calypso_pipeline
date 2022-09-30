@@ -30,13 +30,12 @@ def main():
 def parseCommandLine():
   global version
 
+  parser = argparse.ArgumentParser(description='Process the command line')
+
   # Required arguments
   parser.add_argument('--vcf_file', '-i', required = True, metavar = "string", help = "The vcf file containing variants to upload")
   parser.add_argument('--project', '-p', required = True, metavar = "integer", help = "The Mosaic project id to upload attributes to")
   parser.add_argument('--description', '-d', required = True, metavar = "string", help = "A description of the variants being uploaded")
-
-  # Optional arguments
-  parser.add_argument('--no_deletion', '-d', required = False, action = "store_true", help = "If set, blank values will NOT overwite existing annotation values")
 
   # Optional mosaic arguments
   parser.add_argument('--config', '-c', required = False, metavar = "string", help = "The config file for Mosaic")

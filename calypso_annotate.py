@@ -969,9 +969,14 @@ def genBashScript(args):
   print("  >> $STDOUT 2>> $STDERR", file = bashFile)
   print(file = bashFile)
 
+#################
+#################
+################# Do we want to extract all mois and upload as variant sets?
+#################
+#################
   # Extract vcf files of the de novo, x de novo, and recessive variants to add as variant sets. This can only be performed
   # for trios with a known proband
-  if (args.family_type == "trio" or args.family_type == "quad") and proband: modeOfInheritance(vcfBase, bashFile)
+#  if (args.family_type == "trio" or args.family_type == "quad") and proband: modeOfInheritance(vcfBase, bashFile)
 
   # Generate the tsv files to pass annotations to Mosaic
   print("# Generate the tsv files to pass annotations to Mosaic", file = bashFile)
@@ -1302,7 +1307,6 @@ def uploadVariants(args, filteredVcf):
   print("# Upload variants to Mosaic", file = uploadFile)
   print("python ", os.path.dirname( __file__ ), "/mosaic_commands/upload_variants_to_mosaic.py \\", sep = "", file = uploadFile)
   print("  -i ", str(filteredVcf), " \\", sep = "", file = uploadFile)
-  print("  -a ", os.path.dirname( __file__), "/mosaic_commands \\", sep = "", file = uploadFile)
   print("  -d \"", description, "\" \\", sep = "", file = uploadFile)
   if args.config: print("  -c", str(args.config), "\\", file = uploadFile)
   else: print("  -c \"Insert config file here\" \\", sep = "", file = uploadFile)
@@ -1310,19 +1314,25 @@ def uploadVariants(args, filteredVcf):
   else: print("  -p \"Insert Mosaic project id here\"", file = uploadFile)
   print(file = uploadFile)
 
-  # If vcf files of different modes of inheritance were generated, upload these too
-  if (args.family_type == "trio" or args.family_type == "quad") and proband:
-    print("# Upload the mode of inheritance files as variant sets", file = uploadFile)
-    for moiFile in moiFiles:
-      print("python ", os.path.dirname( __file__ ), "/mosaic_commands/upload_variants_to_mosaic.py \\", sep = "", file = uploadFile)
-      print("  -i ", str(moiFiles[moiFile]["file"]), " \\", sep = "", file = uploadFile)
-      print("  -a ", os.path.dirname( __file__), "/mosaic_commands \\", sep = "", file = uploadFile)
-      print("  -d \"", moiFiles[moiFile]["description"], "\" \\", sep = "", file = uploadFile)
-      if args.config: print("  -c", str(args.config), "\\", file = uploadFile)
-      else: print("  -c \"Insert config file here\" \\", sep = "", file = uploadFile)
-      if args.project_id: print("  -p", str(args.project_id), file = uploadFile)
-      else: print("  -p \"Insert Mosaic project id here\"", file = uploadFile)
-      print(file = uploadFile)
+###################
+###################
+################### Do we want to upload moi files?
+###################
+###################
+
+#  # If vcf files of different modes of inheritance were generated, upload these too
+#  if (args.family_type == "trio" or args.family_type == "quad") and proband:
+#    print("# Upload the mode of inheritance files as variant sets", file = uploadFile)
+#    for moiFile in moiFiles:
+#      print("python ", os.path.dirname( __file__ ), "/mosaic_commands/upload_variants_to_mosaic.py \\", sep = "", file = uploadFile)
+#      print("  -i ", str(moiFiles[moiFile]["file"]), " \\", sep = "", file = uploadFile)
+#      print("  -a ", os.path.dirname( __file__), "/mosaic_commands \\", sep = "", file = uploadFile)
+#      print("  -d \"", moiFiles[moiFile]["description"], "\" \\", sep = "", file = uploadFile)
+#      if args.config: print("  -c", str(args.config), "\\", file = uploadFile)
+#      else: print("  -c \"Insert config file here\" \\", sep = "", file = uploadFile)
+#      if args.project_id: print("  -p", str(args.project_id), file = uploadFile)
+#      else: print("  -p \"Insert Mosaic project id here\"", file = uploadFile)
+#      print(file = uploadFile)
 
   # Close the file
   uploadFile.close()
@@ -1361,7 +1371,6 @@ def uploadAnnotations(args):
       print("# Upload ", resource, " annotations to Mosaic", file = uploadFile)
       print("python ", os.path.dirname( __file__ ), "/mosaic_commands/upload_annotations_to_mosaic.py \\", sep = "", file = uploadFile)
       print("  -i ", str(tsvFiles[resource]), " \\", sep = "", file = uploadFile)
-      print("  -a ", os.path.dirname( __file__), "/mosaic_commands \\", sep = "", file = uploadFile)
       if args.config: print("  -c", str(args.config), "\\", file = uploadFile)
       else: print("  -c \"Insert config file here\" \\", sep = "", file = uploadFile)
   
