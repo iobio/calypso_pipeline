@@ -98,6 +98,33 @@ def readResources(args, resourceInfo):
   # Return the updated resourceInfo
   return resourceInfo
 
+# Output a summary file containing information on all of the resoources used to annotate the vcf
+def calypsoSummary(workingDir, version, resourceInfo, reference):
+
+  # Open an output summary file
+  try: summaryFile = open(workingDir + 'calypso_' + str(date.today()) + '.txt', 'w')
+  except: fail('Failed to open summary file')
+
+  # Write relevant information to file
+  print('### Output from Calypso pipeline ###', file = summaryFile)
+  print(file = summaryFile)
+  print('Calypso pipeline version: ', version, sep = '', file = summaryFile)
+  print('Calypso resource version: ', resourceInfo['version'], sep = '', file = summaryFile)
+  print('Reference:                ', reference, sep = '', file = summaryFile)
+  print('Created on:               ', str(date.today()), sep = '', file = summaryFile)
+  print('Generated VCF file:       ', finalVcf, sep = '', file = summaryFile)
+  print(file = summaryFile)
+
+  # Loop over all the used resources and output their versions
+  for resource in resourceInfo['resources']:
+    print(resource, file = summaryFile)
+    print('  version: ', resourceInfo['resources'][resource]['version'], sep = '', file = summaryFile)
+    print('  file:    ', resourceInfo['resources'][resource]['file'], sep = '', file = summaryFile)
+    print(file = summaryFile)
+
+  # Close the file
+  summaryFile.close()
+
 # If the script fails, provide an error message and exit
 def fail(message):
   print(message, sep = "")

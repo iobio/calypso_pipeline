@@ -242,6 +242,7 @@ def rareDiseaseVariants(bashFile):
   print('  --family-expr \'x_recessive:(variant.CHROM == "X" || variant.CHROM == "chrX") && fam.every(segregating_recessive_x)\' \\', file = bashFile)
   print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && INFO.gnomad_nhomalt < 10\' \\', file = bashFile)
   print('  >> $STDOUT 2>> $STDERR', file = bashFile)
+  print('echo "complete"', file = bashFile)
   print(file = bashFile)
 
 # Delete files no longer required

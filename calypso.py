@@ -14,6 +14,7 @@ import importlib
 
 # Add the path of the common functions and import them
 path.append(os.path.dirname(__file__) + "/components")
+import calypso_annotations as anno
 import calypso_bash_script as bashScript
 import calypso_mosaic as mos
 import calypso_mosaic_resources as mosr
@@ -26,6 +27,7 @@ import calypso_variant_filters as vfilt
 def main():
   global mosaicConfig
   global workingDir
+  global version
 
   # Parse the command line
   args = parseCommandLine()
@@ -83,6 +85,10 @@ def main():
   bashScript.deleteFiles(bashFile)
   bashScript.finishScript(bashFile, bashFilename)
 
+  # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
+  anno.getAnnotationProjects(mosaicInfo, args.project_id)
+  #anno.extractAnnotations(mosaicInfo, filteredVcf)
+
   # Prepare the target project. This includes:
   # 1. Remove any unnecessary annotations from the project
   # 2. Import public annotations into the project
@@ -103,7 +109,7 @@ def main():
 #  if args.previous_vcf: getPreviousVcfInfo(args)
 
   # Output a summary file listing the actions undertaken by Calypso with all version histories
-#  calypsoSummary(args, finalVcf)
+  res.calypsoSummary(workingDir, version, resourceInfo, args.reference)
 
 # Input options
 def parseCommandLine():
@@ -168,9 +174,9 @@ def checkArguments(args):
   # file, throw an error.
   if args.resource_json: resourceFilename = args.resource_json
   else:
-    resourceFilename = args.data_directory + 'resources_GRCh' + str(args.reference)
-    resourceFiles    = glob.glob(resourceFilename + "*json")
-    if len(resourceFiles) != 1: fail("There are zero, or more than one resource files for GRCh" + args.reference + " in " + args.data_directory)
+    resourceFilename = args.data_directory + 'resources_GRCh' + str(args.reference) + '.json'
+    resourceFiles    = glob.glob(resourceFilename)
+    if len(resourceFiles) != 1: fail('There are zero, or more than one resource files for GRCh' + args.reference + ' in ' + args.data_directory)
     resourceFilename = resourceFiles[0]
   resourceInfo['json'] = resourceFilename
 
@@ -232,219 +238,6 @@ def setWorkingDir(version):
 
 
   
-## If a previous Calypso vcf file was set, get the version assigned to the vcf
-#def getPreviousVcfInfo(args):
-#  global resourceInfo
-#  global workingDir
-#  global version
-#  headerVcf = workingDir + "calypso_previous_header.vcf"
-#  previousVersions = []
-#  previousFiles    = []
-#
-#  # Check that the previous vcf file exists
-#  if not exists(args.previous_vcf): fail("Previous Calypso vcf file, " + args.previous_vcf + ", does not exist.")
-#
-#  # Grab the vcf header and extract the previous versions
-#  try: os.popen("bcftools view -h -O v -o " + headerVcf + " " + args.previous_vcf).read()
-#  except: fail("Unable to extract header from vcf file, " + args.previous_vcf)
-#  try: headerInfo = open(headerVcf, "r")
-#  except: fail("Unable to read header information from file " + arg.previous_vcf)
-#  for line in  headerInfo.readlines():
-#    if line.rstrip().startswith("##calypsoVersion="): previousVersions.append(line.rstrip().split("=")[1])
-#    if line.rstrip().startswith("##calypsoSourceVcf="): previousFiles.append(line.rstrip().split("=")[1])
-#
-#  # If there are multiple Calypso versions in the header, instruct the user to clean this up to only include the most recent
-#  if len(previousVersions) != 1: fail("The previous Calypso vcf file, " + args.previous_vcf + ", either has no, or multiple \"##calypsoVersion=VERSION\" header lines. Ensure it only has one")
-#  if len(previousFiles) != 1: fail("The previous Calypso vcf file, " + args.previous_vcf + ", either has no, or multiple \"##calypsoSourceVcf=VCFFILE\" header lines. Ensure it only has one")
-#
-#  # Get the previous Calypso and the resource version
-#  versions = previousVersions[0].split("r")
-#  resourceInfo['previous_version'] = versions[1]
-#  previousVersion = versions[0].strip('v')
-#  previousFile    = previousFiles[0].split('/')[-1]
-#
-#  # If both the Calypso and the resource versions are the same as for the previously generated vcf, and the source
-#  # vcf files are the same, no changes have been made, so there is no need to rerun the pipeline
-#  if str(resourceInfo['version']) == str(resourceInfo['previous_version']) and str(previousVersion) == str(version) and str(args.input_vcf) == str(previousFile):
-#    failString  = "Running the same Calypso version (" + version + "), with the same resource version (" + resourceInfo['version'] + "), on the same\nsource vcf ("
-#    failString += args.input_vcf + ") will result in the same output, so Calypso will not be run"
-#    fail(failString)
-#
-#  # Delete the created header file
-#  try: os.remove(headerVcf)
-#  except: fail("Failed to delete created header vcf, " + headerVcf)
-#
-#
-## Create variant filters in Mosaic
-#def variantFilters(args):
-#  global mosaicConfig
-#  global samples
-#  global rootPath
-#  global genotypeOptions
-#
-#  # Get information about the samples
-#  probandId = False
-#  motherId  = False
-#  fatherId  = False
-#  jsonPath  = rootPath + str("/mosaic_filters/")
-#
-#  # Get the id of the proband and the parents
-#  for sample in samples:
-#    if samples[sample]["relationship"] == "Proband": probandId = samples[sample]["mosaicId"]
-#    elif samples[sample]["relationship"] == "Mother": motherId = samples[sample]["mosaicId"]
-#    elif samples[sample]["relationship"] == "Father": fatherId = samples[sample]["mosaicId"]
-#
-#  # Get all of the filters that exist in the project
-#  existingFilters = {}
-#  try:
-#    for existingFilter in json.loads(os.popen(api_vf.getVariantFilters(mosaicConfig, args.project_id)).read()): existingFilters[existingFilter["name"]] = existingFilter["id"]
-#  except: fail("Unable to get existing variant filters for project " + str(args.project_id))
-#  
-#  # Loop over all the filter json files
-#  for filterJson in os.listdir(jsonPath):
-#    if filterJson.endswith(".json"):
-#
-#      try: filterFile = open(jsonPath + filterJson, "r")
-#      except: fail("File, " + jsonPath + filterJson + ", could not be opened")
-#      try: data = json.load(filterFile)
-#      except: fail("File, " + jsonPath + filterJson + ", is not a valid json file")
-#      filterFile.close()
-#
-#      # Get the name of the filter to create
-#      try: filterName = data["name"]
-#      except: fail("Varianr filter file, " + str(filterJson) + ", defines a filter with no name. A name needs to be supplied")
-#
-#      # Check if the filter already exists in the project. If so, remove it
-#      if filterName in existingFilters:
-#        try: deleteFilter = os.popen(api_vf.deleteVariantFilter(mosaicConfig, args.project_id, existingFilters[filterName])).read()
-#        except: fail("Unable to delete variant filter, " + str(filterName) + " from project " + str(args.project_id))
-#
-#      # Check what genotype filters need to be applied
-#      try: genotypes = data["genotypes"]
-#      except: fail("Mosaic variant filter json file, " + str(filterJson) + ", does not contain the \"genotypes\" field")
-#      for geno in genotypes:
-#        if geno not in genotypeOptions: fail("Mosaic variant filter json file, " + str(filterJson) + ", contains unknown genotype options: " + str(geno))
-#        if not genotypes[geno]: continue
-#
-#        # Check which samples need to have the requested genotype and add to the command
-#        sampleList = []
-#        for sample in genotypes[geno]:
-#          if sample == "proband": sampleList.append(probandId)
-#          elif sample == "mother":
-#            if motherId: sampleList.append(motherId)
-#          elif sample == "father":
-#            if fatherId: sampleList.append(fatherId)
-#          elif sample == "sibling":
-#            fail("Can't handle siblings in filters yet")
-#          else: fail("Unknown sample, " + str(sample) + " in genotypes for Mosaic variant filter (" + str(filterJson) + ")")
-#
-#        # Add the genotype filter to the filters listed in the json
-#        data["filters"][geno] = sampleList
-#
-#      # Check the filters provided in the json. The annotation filters need to extract the
-#      # uids for the annotations
-#      removeAnnotations = []
-#      for index, annotationFilter in enumerate(data["filters"]["annotation_filters"]):
-#
-####################
-####################
-#################### ADD CHECKS ON THE FILTER JSON
-####################
-####################
-#
-#        # If the uid is provided with the filter, this annotation is complete. If not, the name
-#        # field must be present, and this must point to a created annotation uid. Remove the name
-#        # field and replace it with the uid.
-#        if "uid" not in annotationFilter:
-#          try: annotationName = annotationFilter["name"]
-#          except: fail("Annotation " + str(filterJson) + " does not have a uid, but also no name")
-#          annotationFilter.pop("name")
-#
-#          # If the annotation is listed as optional and the name doesn't point to a created annotation
-#          # delete this annotation from the filter. This could be, for example, a filter on genotype
-#          # quality for the mother, but the mother isn't present in the project
-#          isOptional = annotationFilter.pop("optional") if "optional" in annotationFilter else False
-#          try: annotationFilter["uid"] = createdAnnotations[annotationName]
-#          except: 
-#            if isOptional: removeAnnotations.append(index)
-#            else: fail("Annotation, " + str(annotationName) + ", in " + str(filterJson) + " does not have a uid, and the name does not point to a created annotation")
-#
-#      # Remove any optional filters that did not have uids
-#      for index in reversed(removeAnnotations): data["filters"]["annotation_filters"].pop(index)
-#
-#      # Post a new filter
-#      execute = json.loads(os.popen(api_vf.postVariantFilter(mosaicConfig, data["name"], data["filters"], args.project_id)).read())
-#
-##################
-##################
-################## Do we want to extract all mois and upload as variant sets?
-##################
-##################
-#  # Extract vcf files of the de novo, x de novo, and recessive variants to add as variant sets. This can only be performed
-#  # for trios with a known proband
-##  if (args.family_type == "trio" or args.family_type == "quad") and proband: modeOfInheritance(vcfBase, bashFile)
-#
-#  # Generate the tsv files to pass annotations to Mosaic
-#  print("# Generate the tsv files to pass annotations to Mosaic", file = bashFile)
-#  print("  echo \"Generating annotations tsv files for Mosaic\"", file = bashFile)
-#  print(file = bashFile)
-#  generateTsv(args, bashFile)
-#
-#  # If HPO ids were supplied, add a command to generate hpo annotations
-#  if args.hpo: processHpo(args, bashFile)
-#
-#  # Closing notification
-#  print("  echo \"Everything completed! Annotated VCF written to $FINALVCF\"", file = bashFile)
-#  print(file = bashFile)
-#
-#  # Close the file
-#  bashFile.close()
-#
-#  # Make the annotation script executable
-#  makeExecutable = os.popen("chmod +x " + bashFilename).read()
-#
-#  # Return the output vcf
-#  return finalVcf, filteredVcf
-#
-## Extract vcf files of the de novo, x de novo, and recessive variants to add as variant sets. This can only be performed
-## for trios with a known proband
-#def modeOfInheritance(vcfBase, bashFile):
-#  global moiFiles
-#
-#  moiFiles["denovoVcf"]    = {"file": str(vcfBase) + "_calypso_filtered_denovo.vcf.gz", "description": "Slivar de novo variants"}
-#  moiFiles["xdenovoVcf"]   = {"file": str(vcfBase) + "_calypso_filtered_xdenovo.vcf.gz", "description": "Slivar X de novo variants"}
-#  moiFiles["recessiveVcf"] = {"file": str(vcfBase) + "_calypso_filtered_recessive.vcf.gz", "description": "Slivar recessive variants"}
-#  moiFiles["comphetVcf"]   = {"file": str(vcfBase) + "_calypso_filtered_comphet.vcf.gz", "description": "Slivar compound heterozygous variants"}
-#  print("# Generate vcf files containing variants of different modes of inheritance", file = bashFile)
-#
-#  # Generate a vcf of de novo variants
-#  print("  # De novo variants", file = bashFile)
-#  print("  echo \"Generating vcf of de novo variants...\"", file = bashFile)
-#  print("  DENOVO_VCF=", moiFiles["denovoVcf"]["file"], sep = "", file = bashFile)
-#  print("  bcftools view -i 'INFO/denovo=\"", proband, "\"' -O z -o $DENOVO_VCF $FILTEREDVCF", sep = "", file = bashFile)
-#  print(file = bashFile)
-#
-#  # Generate a vcf of X de novo variants
-#  print("  # X de novo variants", file = bashFile)
-#  print("  echo \"Generating vcf of x de novo variants...\"", file = bashFile)
-#  print("  X_DENOVO_VCF=", moiFiles["xdenovoVcf"]["file"], sep = "", file = bashFile)
-#  print("  bcftools view -i 'INFO/x_denovo=\"", proband, "\"' -O z -o $X_DENOVO_VCF $FILTEREDVCF", sep = "", file = bashFile)
-#  print(file = bashFile)
-#
-#  # Generate a vcf of de novo variants
-#  print("  # De novo variants", file = bashFile)
-#  print("  echo \"Generating vcf of recessive variants...\"", file = bashFile)
-#  print("  RECESSIVE_VCF=", moiFiles["recessiveVcf"]["file"], sep = "", file = bashFile)
-#  print("  bcftools view -i 'INFO/recessive=\"", proband, "\"' -O z -o $RECESSIVE_VCF $FILTEREDVCF", sep = "", file = bashFile)
-#  print(file = bashFile)
-#
-#  # Generate a vcf of comp het variants
-#  print("  # Compound heterozygous variants", file = bashFile)
-#  print("  echo \"Generating vcf of compound heterozygous variants...\"", file = bashFile)
-#  print("  COMPHET_VCF=", moiFiles["comphetVcf"]["file"], sep = "", file = bashFile)
-#  print("  bcftools view -i 'INFO/slivar_comphet=\"", proband, "\"' -O z -o $COMPHET_VCF $FILTEREDVCF", sep = "", file = bashFile)
-#  print(file = bashFile)
-#
 ## Generate the tsv files to pass annotations to Mosaic
 #def generateTsv(args, bashFile):
 #  global resourceInfo
@@ -588,29 +381,6 @@ def setWorkingDir(version):
 #
 #  return annotationUids
 #
-## Check if a private annotation exists and create if it doesn't
-#def checkPrivateAnnotation(args, resource, annotation, projectAnnotations, annotationName, annotationUids):
-#  global mosaicConfig
-#  global mosaicInfo
-#  global createdAnnotations
-#
-#  # Check if an annotation with this name already exists
-#  annotationUid = projectAnnotations[annotationName]["uid"] if annotationName in projectAnnotations else False
-#
-#  # If the annotation does not exist, create it
-#  if not annotationUid:
-#    valueType = mosaicInfo["resources"][resource]["annotations"][annotation]["type"]
-#    data      = json.loads(os.popen(api_va.postCreateVariantAnnotations(mosaicConfig, annotationName, valueType, "private", args.project_id)).read())
-#
-#    # Get the uid of the newly created annotation
-#    annotationUid = data["uid"]
-#
-#  # Store the annotation uids
-#  annotationUids[resource][annotation]["uids"].append(annotationUid)
-#  createdAnnotations[annotationName] = annotationUid
-#
-#  return annotationUids
-#
 ## Build the tsv containing the private annotations
 #def buildPrivateAnnotationTsv(args, resources, annotationUids, bashFile):
 #  global mosaicConfig
@@ -734,95 +504,6 @@ def setWorkingDir(version):
 #
 #  # Return the isComplete variable
 #  return isComplete
-#
-## Determine how many pages of public attributes there are
-#def getAnnotationsPages(args):
-#  global mosaicConfig
-#
-#  # Get a page of public annotations from Mosaic (100 annotations per page)
-#  data = json.loads(os.popen(api_va.getVariantAnnotationsImport(mosaicConfig, args.project_id, 100, 1)).read())
-#  noPages = math.ceil(int(data["count"]) / int(100))
-#
-#  # Return the number of pages of annotations
-#  return noPages
-#
-## Get a page of public attributes
-#def getAnnotations(args, page, uids):
-#  global mosaicConfig
-#
-#  # Get a page of public annotations from Mosaic (100 annotations per page)
-#  data = json.loads(os.popen(api_va.getVariantAnnotationsImport(mosaicConfig, args.project_id, 100, page)).read())
-#  for annotation in data["data"]:
-#    if annotation["uid"] in uids.keys(): uids[annotation["uid"]] = annotation["id"]
-#
-#  # Check if all required attributes have been found and the id stored
-#  isComplete = True
-#  for annotation in uids:
-#    if not uids[annotation]: isComplete = False
-#
-#  # Return the Mosaic uids and whether they were all found
-#  return isComplete, uids
-#
-## Import a public annotation into the Mosaic project
-#def importAnnotation(args, annotation, uid):
-#  global mosaicConfig
-#
-#  # Create the command to import the annotation
-#  try: data = json.loads(os.popen(api_va.postImportVariantAnnotations(mosaicConfig, uid, args.project_id)).read())
-#  except: fail("Unable to import variant annotation: " + uid)
-#
-## Output summary file
-#def calypsoSummary(args, finalVcf):
-#  global resourceInfo
-#  global workingDir
-#  global version
-#  global date
-#
-#  # Open an output summary file
-#  summaryFileName  = workingDir + "calypso_" + date + ".txt"
-#  try: summaryFile = open(summaryFileName, "w")
-#  except: fail("Failed to open summary file")
-#
-#  # Write relevant information to file
-#  print("### Output from Calypso pipeline ###", file = summaryFile)
-#  print(file = summaryFile)
-#  print("Calypso pipeline version: ", version, sep = "", file = summaryFile)
-#  print("Calypso resource version: ", resourceInfo['version'], sep = "", file = summaryFile)
-#  print("Reference:                ", args.reference, sep = "", file = summaryFile)
-#  print("Created on:               ", date, sep = "", file = summaryFile)
-#  print("Generated VCF file:       ", finalVcf, sep = "", file = summaryFile)
-#  print(file = summaryFile)
-#
-#  # Loop over all the used resources and output their versions
-#  for resource in resourceInfo["resources"]:
-#    print(resource, file = summaryFile)
-#    print("  version: ", resourceInfo["resources"][resource]["version"], sep = "", file = summaryFile)
-#    print("  file:    ", resourceInfo["resources"][resource]["file"], sep = "", file = summaryFile)
-#    print(file = summaryFile)
-#
-#  # Close the file
-#  summaryFile.close()
-#
-## Update the Calypso history value
-#def updateHistory(args, valueRecords):
-#  global version
-#  global date
-#
-#  # Get the history string for this project
-#  for record in valueRecords:
-#    value = record["value"] if str(record["project_id"]) == str(args.project_id) else False
-#
-#  # If there was no history value, return todays date and version
-#  if not value: return "v" + str(version) + ":" + date
-#
-#  # Get the most recent update to the history
-#  mostRecent  = value.split(",")[-1] if "," in value else value
-#  lastVersion = mostRecent.split(":")[0]
-#  lastDate    = mostRecent.split(":")[1]
-#
-#  # If the date and version at execution are the same as at the last execution, do not update
-#  if str(lastVersion) == str(version) and str(lastDate) == date: return value
-#  else: return str(value) + "," + str(version) + ":" + date
 
 # If the script fails, provide an error message and exit
 def fail(message):
