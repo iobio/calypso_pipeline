@@ -112,7 +112,6 @@ def calypsoSummary(workingDir, version, resourceInfo, reference):
   print('Calypso resource version: ', resourceInfo['version'], sep = '', file = summaryFile)
   print('Reference:                ', reference, sep = '', file = summaryFile)
   print('Created on:               ', str(date.today()), sep = '', file = summaryFile)
-  print('Generated VCF file:       ', finalVcf, sep = '', file = summaryFile)
   print(file = summaryFile)
 
   # Loop over all the used resources and output their versions

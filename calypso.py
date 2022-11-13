@@ -13,7 +13,7 @@ import glob
 import importlib
 
 # Add the path of the common functions and import them
-path.append(os.path.dirname(__file__) + "/components")
+path.append(os.path.dirname(__file__) + '/components')
 import calypso_annotations as anno
 import calypso_bash_script as bashScript
 import calypso_mosaic as mos
@@ -83,11 +83,16 @@ def main():
   bashScript.filterVariants(bashFile, proband, resourceInfo)
   bashScript.rareDiseaseVariants(bashFile)
   bashScript.deleteFiles(bashFile)
-  bashScript.finishScript(bashFile, bashFilename)
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
-  anno.getAnnotationProjects(mosaicInfo, args.project_id)
-  #anno.extractAnnotations(mosaicInfo, filteredVcf)
+  print('# Generate tsv files to upload annotations to Mosaic', file = bashFile)
+  for resource in mosaicInfo['resources']:
+    anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', args.config, filteredVcf, privateAnnotations, bashFile)
+    #anno.uploadAnnotation()
+  #anno.getAnnotationProjects(mosaicInfo, args.project_id)
+
+  # Close the bash script
+  bashScript.finishScript(bashFile, bashFilename)
 
   # Prepare the target project. This includes:
   # 1. Remove any unnecessary annotations from the project

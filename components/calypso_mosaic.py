@@ -93,18 +93,26 @@ def createPrivateAnnotations(mosaicConfig, resources, projectAnnotations, sample
           for sample in samples: annotations[(str(annotation) + ' ' + str(samples[sample]['relationship']))] = valueType
         else: annotations[annotation] = valueType
 
+      # Remove this annotation from the resources dictionary. It will be replaced below with the new annotations with the
+      # corresponding uids
+      resources[resource]['annotations'] = {}
+
     # Loop over the annotations to be created, check that there doesn't already exist an annotation of that name in the
     # project, and if not, create a new, private annotation
     for annotation in annotations:
+      valueType = annotations[annotation]
   
-      # If the annotation already exists, get the uid of the annotation, otherwise create the annotation
+      # If the annotation already exists, get the uid of the annotation, otherwise create the annotation.
       if annotation in existingAnnotations:
         for existingAnnotation in projectAnnotations: 
-          if str(projectAnnotations[existingAnnotation]['name']) == annotation: privateAnnotations[existingAnnotation] = {'name': annotation, 'id': projectAnnotations[existingAnnotation]['id']}
+          if str(projectAnnotations[existingAnnotation]['name']) == annotation:
+            privateAnnotations[existingAnnotation] = {'name': annotation, 'id': projectAnnotations[existingAnnotation]['id']}
+            resources[resource]['annotations'][annotation] = {'uid': existingAnnotation, 'type': valueType}
+            break
       else:
-        valueType = annotations[annotation]
-        data      = json.loads(os.popen(api_va.postCreateVariantAnnotations(mosaicConfig, annotation, valueType, 'private', projectId)).read())
+        data = json.loads(os.popen(api_va.postCreateVariantAnnotations(mosaicConfig, annotation, valueType, 'private', projectId)).read())
         privateAnnotations[data['uid']] = {'name': annotation, 'id': data['id']}
+        resources[resource]['annotations'][annotation] = {'uid': data['uid'], 'type': valueType}
 
   # Return the created private annotations
   return privateAnnotations
