@@ -64,7 +64,8 @@ def main():
   publicAttributes  = mos.getPublicProjectAttributes(mosaicConfig, api_pa)
 
   # Read the Mosaic json and validate its contents
-  mosaicInfo         = mosr.readMosaicJson(args)
+  if not args.mosaic_json: args.mosaic_json = args.data_directory + 'resources_mosaic_GRCh' + args.reference + '.json'
+  mosaicInfo         = mosr.readMosaicJson(args.mosaic_json, args.reference)
   projectAnnotations = mos.getProjectAnnotations(mosaicConfig, args.project_id, api_va)
   publicAnnotations  = mos.getPublicAnnotations(mosaicConfig, args.project_id, api_va)
   privateAnnotations = mos.createPrivateAnnotations(mosaicConfig, mosaicInfo['resources'], projectAnnotations, samples, args.project_id, api_va)
@@ -86,10 +87,11 @@ def main():
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
   print('# Generate tsv files to upload annotations to Mosaic', file = bashFile)
+  uploadFilename, uploadFile = upload.openUploadAnnotationsFile(workingDir)
   for resource in mosaicInfo['resources']:
-    anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', args.config, filteredVcf, privateAnnotations, bashFile)
-    #anno.uploadAnnotation()
-  #anno.getAnnotationProjects(mosaicInfo, args.project_id)
+    tsv = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', args.reference, args.config, args.mosaic_json, bashFile)
+    upload.uploadAnnotations(args.utils_directory, tsv, mosaicInfo['resources'][resource]['project_id'], args.config, uploadFile)
+  upload.closeUploadAnnotationsFile(uploadFilename, uploadFile)
 
   # Close the bash script
   bashScript.finishScript(bashFile, bashFilename)
@@ -221,295 +223,6 @@ def setWorkingDir(version):
   # If the directory doesn't exist, create it
   if not os.path.exists(workingDir): os.makedirs(workingDir)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-## Generate the tsv files to pass annotations to Mosaic
-#def generateTsv(args, bashFile):
-#  global resourceInfo
-#  global mosaicInfo
-#  privateResources = []
-#
-#  # Loop over all the annotations to pass to Mosaic. This is only the annotations in the Mosaic resource file
-#  # which may contain annotations not in the resources file. This can happen if the annotation is not generated
-#  # from a resource file, e.g. HPO terms.
-#  for resource in resourceInfo["resources"]:
-#  #for resource in mosaicInfo["resources"]:
-#
-#    # Check if this resource is to be uploaded to Mosaic, and if it can be (e.g. does it appear
-#    # in the Mosaic json
-#    upload    = resourceInfo["resources"][resource]["upload"]
-#    canUpload = True if resource in mosaicInfo["resources"] else False
-#
-#    # If the resource is listed as to be uploaded to Mosaic, but there are no instructions on how
-#    # to, fail
-#    if upload and not canUpload: fail("Resource '" + str(resource) + "' is marked as to be uploaded to Mosaic, but it is not included in the Mosaic json")
-#
-#    # If the resource is not listed as to be uploaded to Mosaic, but it can be, provide a warning.
-#    elif not upload and canUpload:
-#      warningTitle = "Resource omitted"
-#      description  = "The following resources were listed as to be uploaded to Mosaic in the resources json, "
-#      description += "but no instructions are provided in the Mosaic json, so they will not be uploaded"
-#      if warningTitle not in warnings: warnings[warningTitle] = {"description": description, "messages": [resource]}
-#      else: warnings[warningTitle]["messages"].append(resource)
-#
-#    # For resources to upload, check if they are public or private Mosaic annotations. All private
-#    # annotations should be included in the same tsv, but public annotation will get their own tsv.
-#    elif upload and canUpload:
-#      annotation_type = mosaicInfo["resources"][resource]["annotation_type"]
-#      if annotation_type == "private": privateResources.append(resource)
-#      else: buildPublicTsv(args, resource, bashFile)
-#
-#  # Build the tsv for private annotations
-#  if len(privateResources) > 0:
-#
-#    # All of the private annotations need to be created in the project
-#    temp = 1
-#    annotationUids = createAnnotations(args, privateResources)
-#    buildPrivateAnnotationTsv(args, privateResources, annotationUids, bashFile)
-#
-## Build the tsv file
-#def buildPublicTsv(args, resource, bashFile):
-#  global mosaicInfo
-#  global tsvFiles
-#
-#  # First create the header line
-#  header = "CHROM\\tSTART\\tEND\\tREF\\tALT"
-#  for annotation in sorted(mosaicInfo["resources"][resource]["annotations"]):
-#    header += "\\t" + mosaicInfo["resources"][resource]["annotations"][annotation]["uid"]
-#
-#  # Print the header
-#  print("  # Public annotation: ", resource, sep = "", file = bashFile)
-#  outputFile         = resource + "_calypso_annotations_mosaic.tsv"
-#  tsvFiles[resource] = outputFile
-#  tempFile           = outputFile + ".tmp"
-#  print("  echo -e \"", header, "\" > ", outputFile, sep = "", file = bashFile)
-#
-#  # Include all annotations for all resources
-#  annotations = "%CHROM\\t%POS\\t%END\\t%REF\\t%ALT"
-#
-#  delimiter     = mosaicInfo["resources"][resource]["delimiter"]
-#  isPostprocess = mosaicInfo["resources"][resource]["postprocess"]
-#
-#  # Loop over the annotations and add to the command line
-#  for annotation in sorted(mosaicInfo["resources"][resource]["annotations"]):
-#    if delimiter: annotations += "\\t%INFO/" + mosaicInfo["resources"][resource]["info"]
-#    else: annotations += "\\t%INFO/" + annotation
-#
-#  # Build the query command
-#  print("  bcftools query -f '", annotations, "\\n' \\", sep = "", file = bashFile)
-#  print("  $FILTEREDVCF >> ", outputFile, sep = "", file = bashFile)
-#  print(file = bashFile)
-#
-#  # If the resources need post processing (e.g. with additional scripts), do not modify the tsv
-#  if isPostprocess:
-#    print("  # Postprocess the annotation tsv", file = bashFile)
-#    postCommand = mosaicInfo["resources"][resource]["post_command"]
-#    command = (postCommand["precommand"] + " ") if postCommand["precommand"] else ""
-#    command += os.path.dirname( __file__) + "/" + postCommand["tool"]
-#    for argument in postCommand["args"]:
-#      argValue = postCommand["args"][argument]
-#
-#      # Process the different arguments for standard values
-#      if argValue == "TSV": argValue = outputFile
-#      elif argValue == "data_directory": argValue = args.data_directory
-#      elif argValue == "reference": argValue = args.reference
-#      command += " " + argument + " " + argValue
-#    print("  ", command, sep = "", file = bashFile)
-#    print(file = bashFile)
-#  else:
-#
-#    # If the delimiter has been set, the tsv contains the full annotation (e.g. A|B|C), for each
-#    # annotation. This needs to be modified to break the annotation up.
-#    print("  # Update the tsv file to Mosaic specifications", file = bashFile)
-##    print("  awk '{FS=\"\\t\"; OFS=\"\\t\"} {if ($1 != \"CHROM\") {if ($1 ~ \"chr\") {$1=substr($1, 4)}; $3 = $3+1; " + awkCommand + "for(i=6; i<=NF; i++) {$i=($i==\".\" ? \"\":$i)}}; print $0}' \\", file = bashFile)
-#    print("  awk '{FS=\"\\t\"; OFS=\"\\t\"} {if ($1 != \"CHROM\") {if ($1 ~ \"chr\") {$1=substr($1, 4)}; $3 = $3+1; for(i=6; i<=NF; i++) {$i=($i==\".\" ? \"\":$i)}}; print $0}' \\", file = bashFile)
-#    print(" ", outputFile, ">", tempFile, file = bashFile)
-#    print("  mv", tempFile, outputFile, file = bashFile)
-#    print(file = bashFile)
-#
-## Creat new annotations
-#def createAnnotations(args, privateResources):
-#  global mosaicConfig
-#  global mosaicInfo
-#  global samples
-#  global sampleOrder
-#  global createdAnnotations
-#  annotationUids = {}
-#
-#  # Get all the annotations in the project
-#  data = json.loads(os.popen(api_va.getVariantAnnotations(mosaicConfig, args.project_id)).read())
-#
-#  # Store the annotations in the project by name
-#  projectAnnotations = {}
-#  for annotation in data: projectAnnotations[str(annotation["name"])] = annotation
-#
-#  # Loop over the private resources
-#  for resource in sorted(privateResources):
-#    annotationUids[resource] = {}
-#
-#    # Loop over all the annotations for this resource
-#    for annotation in mosaicInfo["resources"][resource]["annotations"]:
-#
-#      # If this is a genotype annotation, create an attribute for each sample
-#      isGenotype = mosaicInfo["resources"][resource]["annotations"][annotation]["isGenotype"]
-#      annotationUids[resource][annotation] = {"isGenotype": isGenotype, "uids": []}
-#      if isGenotype:
-#
-#        # Loop over all samples in the project and get the annotations for each sample
-#        for sample in sampleOrder:
-#          annotationName = str(annotation) + " " + str(samples[sample]["relationship"])
-#          annotationUid  = checkPrivateAnnotation(args, resource, annotation, projectAnnotations, annotationName, annotationUids)
-#
-#      # Other types of private annotations are not yet handled
-#      else:
-#        annotationUid = checkPrivateAnnotation(args, resource, annotation, projectAnnotations, annotation, annotationUids)
-#
-#  return annotationUids
-#
-## Build the tsv containing the private annotations
-#def buildPrivateAnnotationTsv(args, resources, annotationUids, bashFile):
-#  global mosaicConfig
-#  global tsvFiles
-#  global sampleOrder
-#
-#  # First create the header line
-#  header = "CHROM\\tSTART\\tEND\\tREF\\tALT"
-#  for resource in sorted(resources):
-#    for annotation in sorted(annotationUids[resource]):
-#      for uid in annotationUids[resource][annotation]["uids"]: header += "\\t" + uid
-#
-#  # Print the header
-#  print("  # Private annotation: ", resource, sep = "", file = bashFile)
-#  outputFile         = resource + "_calypso_annotations_mosaic.tsv"
-#  tsvFiles[resource] = outputFile
-#  tempFile           = outputFile + ".tmp"
-#  print("  echo -e \"", header, "\" > ", outputFile, sep = "", file = bashFile)
-#
-#  # Include all annotations for all resources
-#  annotations = "%CHROM\\t%POS\\t%END\\t%REF\\t%ALT"
-#
-#  delimiter     = mosaicInfo["resources"][resource]["delimiter"]
-#  isPostprocess = mosaicInfo["resources"][resource]["postprocess"]
-#
-#  # Loop over the annotations and add to the command line
-#  for annotation in sorted(mosaicInfo["resources"][resource]["annotations"]):
-#
-#    # Determine if this is a genotype annotation, loop over the samples in the correct order, and add the annotation
-#    if mosaicInfo["resources"][resource]["annotations"][annotation]["isGenotype"]: annotations += "[\\t%GQ]"
-#    elif delimiter: annotations += "\\t%INFO/" + mosaicInfo["resources"][resource]["info"]
-#    else: annotations += "\\t%INFO/" + annotation
-#
-#  # Build the query command
-#  print("  bcftools query -f '", annotations, "\\n' \\", sep = "", file = bashFile)
-#  print("  $FILTEREDVCF >> ", outputFile, sep = "", file = bashFile)
-#  print(file = bashFile)
-#
-#  # If the resources need post processing (e.g. with additional scripts), do not modify the tsv
-#  if isPostprocess:
-#    print("  # Postprocess the annotation tsv", file = bashFile)
-#    postCommand = mosaicInfo["resources"][resource]["post_command"]
-#    command = (postCommand["precommand"] + " ") if postCommand["precommand"] else ""
-#    command += os.path.dirname( __file__) + "/" + postCommand["tool"]
-#    for argument in postCommand["args"]:
-#      argValue = postCommand["args"][argument]
-#
-#      # Process the different arguments for standard values
-#      if argValue == "TSV": argValue = outputFile
-#      elif argValue == "data_directory": argValue = args.data_directory
-#      elif argValue == "reference": argValue = args.reference
-#      command += " " + argument + " " + argValue
-#    print("  ", command, sep = "", file = bashFile)
-#    print(file = bashFile)
-#  else:
-#
-#    # If the delimiter has been set, the tsv contains the full annotation (e.g. A|B|C), for each
-#    # annotation. This needs to be modified to break the annotation up.
-#    print("  # Update the tsv file to Mosaic specifications", file = bashFile)
-##    print("  awk '{FS=\"\\t\"; OFS=\"\\t\"} {if ($1 != \"CHROM\") {if ($1 ~ \"chr\") {$1=substr($1, 4)}; $3 = $3+1; " + awkCommand + "for(i=6; i<=NF; i++) {$i=($i==\".\" ? \"\":$i)}}; print $0}' \\", file = bashFile)
-#    print("  awk '{FS=\"\\t\"; OFS=\"\\t\"} {if ($1 != \"CHROM\") {if ($1 ~ \"chr\") {$1=substr($1, 4)}; $3 = $3+1; for(i=6; i<=NF; i++) {$i=($i==\".\" ? \"\":$i)}}; print $0}' \\", file = bashFile)
-#    print(" ", outputFile, ">", tempFile, file = bashFile)
-#    print("  mv", tempFile, outputFile, file = bashFile)
-#    print(file = bashFile)
-#
-## If HPO ids were supplied, process them
-#def processHpo(args, bashFile):
-#  global resourceInfo
-#  global mosaicInfo
-#  global rootPath
-#
-#  hpoTermsUid    = mosaicInfo['resources']['hpo']['annotations']['HPO Terms']['uid']
-#  hpoOverlapsUid = mosaicInfo['resources']['hpo']['annotations']['HPO Overlaps']['uid']
-#  print("# Processing HPO terms...", file = bashFile)
-#  print("  echo -e \"Processing HPO terms to generate additional HPO annotations...\"", file = bashFile)
-#  print("  bcftools query -f '%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%INFO/BCSQ\\n' \\", file = bashFile)
-#  print("  $FILTEREDVCF \\", file = bashFile)
-#  print("  | python ", rootPath, "/calypso_hpo.py \\", sep = "", file = bashFile)
-#  print("  -p ", args.project_id, " \\", sep = "", file = bashFile)
-#  print("  -c \"", args.config, "\" \\", sep = "", file = bashFile)
-#  print("  -o \"", resourceInfo["resources"]['hpo']['file'], "\" \\", sep = "", file = bashFile)
-#  print("  -r \"", args.hpo, "\" \\", sep = "", file = bashFile)
-#  print("  -e \"", hpoTermsUid, "\" \\", sep = "", file = bashFile)
-#  print("  -l \"", hpoOverlapsUid, "\"", sep = "", file = bashFile)
-#  print(file = bashFile)
-#
-## Check the public annotations exist, and get their ids
-#def getPublicAnnotation(args, resource):
-#  global mosaicInfo
-#  global warnings
-#  page = 1
-#  uids = {}
-#
-#  # Find the annotation id for the public annotation. Get the first page of annotations and check
-#  # if there are additional pages required
-#  for annotation in mosaicInfo["resources"][resource]["annotations"]:
-#    uids[mosaicInfo["resources"][resource]["annotations"][annotation]["uid"]] = False
-#
-#  # Get the first page of public attributes, and how many pages there are
-#  noPages          = getAnnotationsPages(args)
-#  isComplete, uids = getAnnotations(args, page, uids)
-#
-#  # If some ids are not found, go to the next page. If there are no more pages, throw a warning
-#  while page <= noPages:
-#    isComplete, uids = getAnnotations(args, page, uids)
-#    page += 1
-#    if isComplete: break
-#
-#  # If the annotations weren't found, throw a warning
-#  if not isComplete:
-#    warningTitle = "Annotation not found"
-#    description  = "Public annotations need to be imported into the Mosaic project, but these annotations weren't found "
-#    description += "and so cannot be imported"
-#    if warningTitle not in warnings: warnings[warningTitle] = {"description": description, "messages": []}
-#    for annotation in uids:
-#      if not uids[annotation]: warnings[warningTitle]["messages"].append("  " + annotation)
-#
-#  # If the annotations can be imported, import them
-#  else:
-#    for annotation in uids: importAnnotation(args, annotation, uids[annotation])
-#
-#  # Return the isComplete variable
-#  return isComplete
-
 # If the script fails, provide an error message and exit
 def fail(message):
   print(message, sep = "")
@@ -524,34 +237,12 @@ date    = str(date.today())
 # The working directory where all created files are kept
 workingDir = os.getcwd() + "/calypso_v" + version + "r"
 
-## Store warnings to be output at the end
-#warnings = {}
-#
 ## Store info on allowed values
-#isFamily          = True
 allowedFamily     = ['singleton', 'duo', 'trio', 'quad', 'quintet']
 allowedReferences = ['37', '38']
-#
-## Store the mode of inheritance file names
-#moiFiles = {}
 
 # Store information related to Mosaic
 mosaicConfig = {}
-
-## Store the tsv files that upload annotations to Mosaic
-#tsvFiles = {}
-#
-## Store the path to the Calypso directory
-#rootPath = os.path.dirname( __file__)
-#
-## Store all the annotations in a project
-#projectAnnotations = {}
-#
-## Store annotations created for this project
-#createdAnnotations = {}
-#
-## Created files
-#tomlFilename = ""
 
 if __name__ == "__main__":
   main()

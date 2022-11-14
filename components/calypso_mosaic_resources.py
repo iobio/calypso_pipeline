@@ -5,14 +5,9 @@ import json
 import os
 
 # Read through the Mosaic json file describing the mosaic information for uploading annotations
-def readMosaicJson(args):
+def readMosaicJson(mosaicFilename, reference):
   mosaicInfo              = {}
   mosaicInfo['resources'] = {}
-
-  # Define the name of the Mosaic json file. Use the file provided on the command
-  # line, and resort to the default file if not included
-  if args.mosaic_json: mosaicFilename = args.mosaic_json
-  else: mosaicFilename = args.data_directory + 'resources_mosaic_GRCh' + args.reference + '.json'
 
   # Try and open the file
   try: mosaicFile = open(mosaicFilename, 'r')
@@ -33,7 +28,7 @@ def readMosaicJson(args):
   # Check that the resource json reference matches the selected reference
   try: mosaicReference = mosaicData['reference']
   except: fail('The Mosaic json does not include a reference genome')
-  if args.reference != mosaicReference: fail('The selected reference (' + str(args.reference) + ') does not match the Mosaic json reference (' + str(mosaicReference) + ')')
+  if reference != mosaicReference: fail('The selected reference (' + str(reference) + ') does not match the Mosaic json reference (' + str(mosaicReference) + ')')
 
   # Store information on annotationns to remove from the project, and defaults to set
   if 'remove' in mosaicData: mosaicInfo['remove'] = mosaicData['remove'] if 'remove' in mosaicData else []
@@ -49,7 +44,15 @@ def readMosaicJson(args):
     # The annotation must be identified as public or private. The other required information is dependent
     # on this
     try: mosaicInfo['resources'][resource]['annotation_type'] = resources[resource]['annotation_type']
-    except: fail('The Mosaic json file does not include the "annotation_type" for resource: ' + str(resource))
+    except: fail('The Mosaic json file does not include the "annotation_type" field for resource: ' + str(resource))
+
+    # The resource "class" dictates how the annotated vcf will be processed
+    try: mosaicInfo['resources'][resource]['class'] = resources[resource]['class']
+    except: fail('The Mosaic json does not contain the "class" field for resource: ' + str(resource))
+
+    # Some annotations need to be extracted from an INFO field that is not the name provided in the annotation. For example, the HGVS
+    # codes need to be extracted from the CSQ field. The "info_field" provides information on where the info should be extracted from
+    mosaicInfo['resources'][resource]['info_field'] = resources[resource]['info_field'] if 'info_field' in resources[resource] else False
 
     # Collect the information required only for public annotations
     if mosaicInfo['resources'][resource]['annotation_type'] == 'public':
@@ -66,18 +69,19 @@ def readMosaicJson(args):
     # Loop over the annotation information
     mosaicInfo['resources'][resource]['annotations'] = {}
     for annotation in resources[resource]['annotations']:
+      mosaicInfo['resources'][resource]['annotations'][annotation] = {}
 
       # Check that all required information is supplied and store it
-      try: uid = resources[resource]['annotations'][annotation]['uid']
+      try: mosaicInfo['resources'][resource]['annotations'][annotation]['uid'] = resources[resource]['annotations'][annotation]['uid']
       except: fail('The Mosaic json does not contain the "uid" field for annotation "' + str(annotation) + '" for resource "' + str(resource) + '"')
-      try: annotationType = resources[resource]['annotations'][annotation]['type']
+      try: mosaicInfo['resources'][resource]['annotations'][annotation]['type'] = resources[resource]['annotations'][annotation]['type']
       except: fail('The Mosaic json does not contain the "type" field for annotation "' + str(annotation) + '" for resource "' + str(resource) + '"')
 
       # Check if the "is_sample" flag is set. This means there is an annotation for each project sample
-      isSample = resources[resource]['annotations'][annotation]['is_sample'] if 'is_sample' in resources[resource]['annotations'][annotation] else False
+      mosaicInfo['resources'][resource]['annotations'][annotation]['isSample'] = resources[resource]['annotations'][annotation]['is_sample'] if 'is_sample' in resources[resource]['annotations'][annotation] else False
 
-      # Store the annotation information
-      mosaicInfo['resources'][resource]['annotations'][annotation] = {'uid': uid, 'type': annotationType, 'isSample': isSample}
+      # Check if the "position" value is set. This defines the position in a compound annotation that the desired annotation can be found
+      mosaicInfo['resources'][resource]['annotations'][annotation]['position'] = resources[resource]['annotations'][annotation]['position'] if 'position' in resources[resource]['annotations'][annotation] else False
 
   return mosaicInfo
 

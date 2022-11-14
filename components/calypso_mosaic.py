@@ -84,6 +84,12 @@ def createPrivateAnnotations(mosaicConfig, resources, projectAnnotations, sample
 
     # Loop over all annotations for this resource
     if resources[resource]['annotation_type'] == 'private':
+
+      # The project id for these annotations is the target project as these annotations will be created there. Update
+      # mosaicInfo to reflect this.
+      resources[resource]['project_id'] = projectId
+
+      # Loop over all annotations for this resource
       for annotation in resources[resource]['annotations']:
         valueType = resources[resource]['annotations'][annotation]['type']
 
@@ -107,12 +113,12 @@ def createPrivateAnnotations(mosaicConfig, resources, projectAnnotations, sample
         for existingAnnotation in projectAnnotations: 
           if str(projectAnnotations[existingAnnotation]['name']) == annotation:
             privateAnnotations[existingAnnotation] = {'name': annotation, 'id': projectAnnotations[existingAnnotation]['id']}
-            resources[resource]['annotations'][annotation] = {'uid': existingAnnotation, 'type': valueType}
+            resources[resource]['annotations'][annotation] = {'uid': existingAnnotation, 'type': valueType, 'id': projectAnnotations[existingAnnotation]['id']}
             break
       else:
         data = json.loads(os.popen(api_va.postCreateVariantAnnotations(mosaicConfig, annotation, valueType, 'private', projectId)).read())
         privateAnnotations[data['uid']] = {'name': annotation, 'id': data['id']}
-        resources[resource]['annotations'][annotation] = {'uid': data['uid'], 'type': valueType}
+        resources[resource]['annotations'][annotation] = {'uid': data['uid'], 'type': valueType, 'id': data['id']}
 
   # Return the created private annotations
   return privateAnnotations
