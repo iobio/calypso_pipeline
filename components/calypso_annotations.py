@@ -36,6 +36,33 @@ def createAnnotationTsv(mosaicInfo, resource, scriptDir, reference, configFile, 
   # Return the name of the output file
   return outputFile
 
+# Call the command to extract HPO annotations from the filtered vcf into a tsv file
+def createHpoTsv(resourceInfo, scriptDir, configFile, hpoString, projectId, genePhenotype, utils, bashFile):
+
+  # Get the uids for the HPO Overlaps and HPO Terms annotations
+  overlapsUid = resourceInfo['annotations']['HPO Overlaps']['uid']
+  termsUid    = resourceInfo['annotations']['HPO Terms']['uid']
+
+  # Define the name of the output tsv file
+  outputFile = 'hpo.tsv'
+
+  print(file = bashFile)
+  print('  # Resource: HPO', sep = '', file = bashFile)
+  print('  echo -n "Creating tsv file for resource HPO..."', sep = '', file = bashFile)
+  print('  python ', scriptDir, '/hpo.py \\', sep = '', file = bashFile)
+  print('    -c "', configFile, '" \\', sep = '', file = bashFile)
+  print('    -r "', hpoString, '" \\', sep = '', file = bashFile)
+  print('    -p ', projectId, ' \\', sep = '', file = bashFile)
+  print('    -o "', genePhenotype, '" \\', sep = '', file = bashFile)
+  print('    -l "', utils, '" \\', sep = '', file = bashFile)
+  print('    -d "', overlapsUid, '" \\', sep = '', file = bashFile)
+  print('    -e "', termsUid, '" \\', sep = '', file = bashFile)
+  print('    -i $FILTEREDVCF', sep = '', file = bashFile)
+  print('  echo "complete"', file = bashFile)
+
+  # Return the name of the output file
+  return outputFile
+
 # If the script fails, provide an error message and exit
 def fail(message):
   print(message, sep = "")

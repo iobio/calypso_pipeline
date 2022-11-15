@@ -1,9 +1,6 @@
 #!/usr/bin/python
 
 from __future__ import print_function
-from datetime import date
-from os.path import exists
-from sys import path
 
 import os
 import argparse
@@ -11,6 +8,11 @@ import json
 import math
 import glob
 import importlib
+import sys
+
+from datetime import date
+from os.path import exists
+from sys import path
 
 # Add the path of the common functions and import them
 path.append(os.path.dirname(__file__) + '/components')
@@ -18,6 +20,7 @@ import calypso_annotations as anno
 import calypso_bash_script as bashScript
 import calypso_mosaic as mos
 import calypso_mosaic_resources as mosr
+import calypso_path as cpath
 import calypso_resources as res
 import calypso_samples as sam
 import calypso_toml as toml
@@ -35,7 +38,7 @@ def main():
   # Check the supplied parameters are as expected, then expand the path to enable scripts and api commands
   # to be accessed for Calypso
   resourceInfo = checkArguments(args)
-  buildPath(args)
+  sys.path = cpath.buildPath(sys.path, args.utils_directory)
 
   # Read the resources json file to identify all the resources that will be used in the annotation pipeline
   resourceInfo = res.readResources(args, resourceInfo)
@@ -89,7 +92,11 @@ def main():
   print('# Generate tsv files to upload annotations to Mosaic', file = bashFile)
   uploadFilename, uploadFile = upload.openUploadAnnotationsFile(workingDir)
   for resource in mosaicInfo['resources']:
-    tsv = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', args.reference, args.config, args.mosaic_json, bashFile)
+    if resource == 'hpo':
+
+      # Only proceed with HPO terms if an HPO term string has been provided
+      if args.hpo: tsv = anno.createHpoTsv(mosaicInfo['resources']['hpo'], os.path.dirname(__file__) + '/components', args.config, args.hpo, args.project_id, resourceInfo['resources']['hpo']['file'], args.utils_directory, bashFile)
+    else: tsv = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', args.reference, args.config, args.mosaic_json, bashFile)
     upload.uploadAnnotations(args.utils_directory, tsv, mosaicInfo['resources'][resource]['project_id'], args.config, uploadFile)
   upload.closeUploadAnnotationsFile(uploadFilename, uploadFile)
 
@@ -140,9 +147,9 @@ def parseCommandLine():
   # Optional pipeline arguments
   parser.add_argument('--resource_json', '-j', required = False, metavar = 'string', help = 'The json file describing the annotation resources')
 #  parser.add_argument('--no_comp_het', '-n', required = False, action = "store_true", help = "If set, comp het determination will be skipped")
-#
+
   # Optional argument to handle HPO terms
-#  parser.add_argument('--hpo', '-o', required = False, metavar = "string", help = "A comma separate list of hpo ids for the proband")
+  parser.add_argument('--hpo', '-o', required = False, metavar = "string", help = "A comma separate list of hpo ids for the proband")
 
   # Optional mosaic arguments
   parser.add_argument('--token', '-t', required = False, metavar = "string", help = "The Mosaic authorization token")
@@ -204,15 +211,6 @@ def checkArguments(args):
 
   # Return the info on resources
   return resourceInfo
-
-# Build the path to allow importing additional modules
-def buildPath(args):
-
-  # Add public-utils and required directories to the path
-  path.append(args.utils_directory)
-  path.append(args.utils_directory + 'common_components')
-  path.append(args.utils_directory + 'scripts')
-  path.append(args.utils_directory + 'api_commands')
 
 # Create a directory where all Calypso associated files will be stored
 def setWorkingDir(version):
