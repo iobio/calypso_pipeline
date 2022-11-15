@@ -83,6 +83,9 @@ def readMosaicJson(mosaicFilename, reference):
       # Check if the "position" value is set. This defines the position in a compound annotation that the desired annotation can be found
       mosaicInfo['resources'][resource]['annotations'][annotation]['position'] = resources[resource]['annotations'][annotation]['position'] if 'position' in resources[resource]['annotations'][annotation] else False
 
+      # Check if the "positions" value is set. This defines the position in a compound annotation that the desired annotation can be found
+      mosaicInfo['resources'][resource]['annotations'][annotation]['positions'] = resources[resource]['annotations'][annotation]['positions'] if 'positions' in resources[resource]['annotations'][annotation] else False
+
   return mosaicInfo
 
 # Loop over all of the public annotations defined in the Mosaic resources json file and check that they exist
