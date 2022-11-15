@@ -36,6 +36,7 @@ def main():
     # Loop over the vcf and process according to the annotation class
     if processClass == "A": processClassA(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == "B": processClassB(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
+    elif processClass == "C": processClassC(mosaicInfo, args.resource, args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == "OMIM": processClassOMIM(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == "hgvs": processClassHgvs(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == "spliceai": processClassSpliceAI(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.split(','), outputFile)
@@ -138,6 +139,31 @@ def processClassB(vcf, tags, outputFile):
       # Update the chromosome and position
       fields[0], fields[2] = updateCoords(fields[0], fields[2])
   
+      # Build the output record from the updated fields
+      print('\t'.join(fields), file = outputFile)
+
+# Process class C annotations. This is for annotations that are found in the genotype (FORMAT) strings in the vcf
+#   - GQ
+def processClassC(mosaicInfo, resource, vcf, tags, outputFile):
+
+  # Loop over all records in the vcf file
+  for record in os.popen(bcftools.queryFormat(vcf, resource)).readlines():
+
+    # Split the record on tabs
+    fields = record.rstrip().split('\t')
+  
+    # If all genotype fields are '.', do not output the line. If some have values and others are '.', replace the '.' with ' '
+    hasValue = False
+    for i, annotation in enumerate(fields[5:]):
+      if annotation == '.': fields[i + 5] = ''
+      else: hasValue = True
+
+    # If any of the fields have values, update and output
+    if hasValue:
+
+      # Update the chromosome and position
+      fields[0], fields[2] = updateCoords(fields[0], fields[2])
+
       # Build the output record from the updated fields
       print('\t'.join(fields), file = outputFile)
 
@@ -271,7 +297,7 @@ def fail(message):
 version = "1.0.0"
 
 # Define the allowed annotation classes
-allowedClasses = ["A", "B", "OMIM", "hgvs", "spliceai"]
+allowedClasses = ['A', 'B', 'C', 'OMIM', 'hgvs', 'spliceai']
 
 if __name__ == "__main__":
   main()

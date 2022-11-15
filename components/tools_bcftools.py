@@ -35,6 +35,18 @@ def splitvepQuery(vcf, tags):
   # Return the complete command
   return command
 
+# Use bcftools query to return the coords, alleles and selected format (genotype) annotation fields
+def queryFormat(vcf, tag):
+
+  # Build the bcftools query command beginning with the base command
+  command = 'bcftools query -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT[\\t%' + str(tag) + ']'
+
+  # Complete the command with a newline and the vcf file
+  command += '\\n\' ' + str(vcf)
+
+  # Return the complete command
+  return command
+
 # If the script fails, provide an error message and exit
 def fail(message):
   print(message, sep = "")
