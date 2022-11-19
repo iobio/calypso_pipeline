@@ -47,6 +47,15 @@ def getPublicProjectAttributes(mosaicConfig, api_pa):
   # Return the public project attributes
   return publicAttributes
 
+# Get the resource version from the previous execution of the Calypso pipeline (if there is one)
+def getPreviousResourceVersion(projectAttributes):
+  version = False
+  for attribute in projectAttributes:
+    if projectAttributes[attribute]['name'] == 'Calypso resource version': version = projectAttributes[attribute]['value']
+
+  # Return the version
+  return version
+
 # Get all available public annotations
 def getPublicAnnotations(mosaicConfig, projectId, api_va):
   limit = 100
@@ -195,13 +204,14 @@ def addVariantFilter(filepath, filename):
   except: fail('Variant filter file, ' + str(filename) + ', defines a filter with no name. A name needs to be supplied')
 
 # Set project attributes to indicate when and which version of Calypso has been run
-def updateCalypsoAttributes(mosaicConfig, projectAttributes, publicAttributes, version, projectId, api_pa):
+def updateCalypsoAttributes(mosaicConfig, resourceVersion, projectAttributes, publicAttributes, version, projectId, api_pa):
 
   # Define the public attributes to import or update
   calypso = {}
-  calypso['Calypso version']  = {'uid': False, 'id': False, 'value': version, 'inProject': False}
-  calypso['Calypso date run'] = {'uid': False, 'id': False, 'value': str(date.today()), 'inProject': False}
-  calypso['Calypso history']  = {'uid': False, 'id': False, 'value': str(version) + ':' + str(date.today()), 'inProject': False}
+  calypso['Calypso version']          = {'uid': False, 'id': False, 'value': str(version), 'inProject': False}
+  calypso['Calypso date run']         = {'uid': False, 'id': False, 'value': str(date.today()), 'inProject': False}
+  calypso['Calypso history']          = {'uid': False, 'id': False, 'value': str(version) + ':' + str(date.today()), 'inProject': False}
+  calypso['Calypso resource version'] = {'uid': False, 'id': False, 'value': str(resourceVersion), 'inProject': False}
 
   # Loop over all the attributes in the project and look for the Calypso attributes
   for attributeUid in projectAttributes: 
@@ -213,20 +223,30 @@ def updateCalypsoAttributes(mosaicConfig, projectAttributes, publicAttributes, v
       calypso[attributeName]['id']        = attributeId
       calypso[attributeName]['inProject'] = True
 
-      # If this is the Calypso history attribute, append the current value to the existing value, otherwise overwrite
+      # If this is the Calypso history attribute, prepend the current value to the existing value, otherwise overwrite
       # the value
       if str(attributeName) == str('Calypso history'): calypso[attributeName]['value'] = str(calypso['Calypso history']['value']) + ',' + str(attributeValue)
+
+      try: data = json.loads(os.popen(api_pa.putProjectAttribute(mosaicConfig, calypso[attributeName]['value'], projectId, calypso[attributeName]['id'])).read())
+      except: fail('Could not update Calypso attribute')
+      calypso[attributeName]['inProject'] = True
   
   # Import all attributes that are not in the project
   for attribute in calypso:
     if not calypso[attribute]['inProject']:
 
       # Loop over the available public attributes and find the missing attribute
+      isImported = False
       for publicAttributeUid in publicAttributes:
         if str(attribute) == publicAttributes[publicAttributeUid]['name']:
           attributeId = publicAttributes[publicAttributeUid]['id']
-          try: data   = json.loads(os.popen(api_pa.postImportProjectAttribute(mosaicConfig, attributeId, calypso[attribute]['value'], projectId)).read())
+          try: data = json.loads(os.popen(api_pa.postImportProjectAttribute(mosaicConfig, attributeId, calypso[attribute]['value'], projectId)).read())
           except: fail('Unable to import Calypso attributes')
+          isImported = True
+          break
+
+      # If the attribute wasn't found, warn the user
+      if not isImported: fail('Unable to import attribute ' + str(attribute) + '. Ensure this attribute exists in the public attribute project')
 
 # If the script fails, provide an error message and exit
 def fail(message):

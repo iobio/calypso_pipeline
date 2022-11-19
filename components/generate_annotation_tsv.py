@@ -38,7 +38,7 @@ def main():
     elif processClass == "B": processClassB(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == "C": processClassC(mosaicInfo, args.resource, args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == "OMIM": processClassOMIM(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
-    elif processClass == "hgvs": processClassHgvs(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
+    elif processClass == "compound": processClassCompound(args.resource, mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == "spliceai": processClassSpliceAI(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.split(','), outputFile)
   
     # Close the output tsv file
@@ -167,6 +167,37 @@ def processClassC(mosaicInfo, resource, vcf, tags, outputFile):
       # Build the output record from the updated fields
       print('\t'.join(fields), file = outputFile)
 
+# Process compound annotations
+def processClassCompound(resource, resourceInfo, vcf, tags, outputFile):
+
+  # Check that the delimeter is provided to determine how to split up the compound annotation. If it is not set, then provide a
+  # warning and do not preceed with this annotation
+  try: delimeter = resourceInfo['delimeter']
+  except:
+    print('The delimeter field is not provided for resource ', resource, ' and so its annotation cannot be processed.', sep = '')
+    return
+
+  # Loop over all records in the vcf file
+  for record in os.popen(bcftools.splitvepQuery(vcf, [resourceInfo['info_field']])).readlines():
+
+    # Split the record on tabs
+    fields = record.rstrip().split('\t')
+  
+    # Check that the variant has a value. If not, skip this record. The only records that will be output are those with values
+    if fields[5] != '.':
+  
+      # Update the chromosome and position
+      fields[0], fields[2] = updateCoords(fields[0], fields[2])
+      annotations = fields.pop().split('/')
+      hasValue = False
+      for tag in tags:
+        value = annotations[resourceInfo['annotations'][tag]['position'] - 1]
+        fields.append(annotations[resourceInfo['annotations'][tag]['position'] - 1])
+        if value: hasValue = True
+  
+      # Build the output record from the updated fields
+      if hasValue: print('\t'.join(fields), file = outputFile)
+
 # Process OMIM annotations
 def processClassOMIM(vcf, tags, outputFile):
 
@@ -197,30 +228,6 @@ def processClassOMIM(vcf, tags, outputFile):
   
       # Build the output record from the updated fields
       print('\t'.join(fields), file = outputFile)
-
-# Process HGVS annotations
-def processClassHgvs(resourceInfo, vcf, tags, outputFile):
-
-  # Loop over all records in the vcf file
-  for record in os.popen(bcftools.splitvepQuery(vcf, [resourceInfo['info_field']])).readlines():
-
-    # Split the record on tabs
-    fields = record.rstrip().split('\t')
-  
-    # Check that the variant has a value. If not, skip this record. The only records that will be output are those with values
-    if fields[5] != '.':
-  
-      # Update the chromosome and position
-      fields[0], fields[2] = updateCoords(fields[0], fields[2])
-      annotations = fields.pop().split('|')
-      hasValue = False
-      for tag in tags:
-        value = annotations[resourceInfo['annotations'][tag]['position'] - 1]
-        fields.append(annotations[resourceInfo['annotations'][tag]['position'] - 1])
-        if value: hasValue = True
-  
-      # Build the output record from the updated fields
-      if hasValue: print('\t'.join(fields), file = outputFile)
 
 # Process SpliceAI annotations
 def processClassSpliceAI(resourceInfo, vcf, tags, outputFile):
@@ -297,7 +304,7 @@ def fail(message):
 version = "1.0.0"
 
 # Define the allowed annotation classes
-allowedClasses = ['A', 'B', 'C', 'OMIM', 'hgvs', 'spliceai']
+allowedClasses = ['A', 'B', 'C', 'OMIM', 'compound', 'spliceai']
 
 if __name__ == "__main__":
   main()

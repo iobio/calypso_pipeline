@@ -21,6 +21,7 @@ import calypso_bash_script as bashScript
 import calypso_mosaic as mos
 import calypso_mosaic_resources as mosr
 import calypso_path as cpath
+import calypso_reanalysis as rean
 import calypso_resources as res
 import calypso_samples as sam
 import calypso_toml as toml
@@ -37,11 +38,13 @@ def main():
 
   # Check the supplied parameters are as expected, then expand the path to enable scripts and api commands
   # to be accessed for Calypso
-  resourceInfo = checkArguments(args)
+  checkArguments(args)
   sys.path = cpath.buildPath(sys.path, args.utils_directory)
 
   # Read the resources json file to identify all the resources that will be used in the annotation pipeline
-  resourceInfo = res.readResources(args, resourceInfo)
+  if args.resource_json: resourceInfo = res.checkResources(args.reference, args.data_directory, args.resource_json)
+  else: resourceInfo = res.checkResources(args.reference, args.data_directory, args.data_directory + 'resources_GRCh' + str(args.reference) + '.json')
+  resourceInfo = res.readResources(args.reference, resourceInfo)
   rootPath = os.path.dirname( __file__)
   setWorkingDir(resourceInfo['version'])
 
@@ -66,6 +69,16 @@ def main():
   projectAttributes = mos.getProjectAttributes(mosaicConfig, args.project_id, api_pa)
   publicAttributes  = mos.getPublicProjectAttributes(mosaicConfig, api_pa)
 
+  # Get the value for the Calypso resource version attribute. If Calypso has been run previously, this will indicate the last resources
+  # that were used
+  previousResourceVersion = mos.getPreviousResourceVersion(projectAttributes)
+  if previousResourceVersion and str(previousResourceVersion) != str(resourceInfo['version']):
+    previousResourceInfo = res.checkResources(args.reference, args.data_directory, args.data_directory + 'resources_archive/resources_GRCh' + str(args.reference) + '_v' + str(previousResourceVersion) + '.json')
+    previousResourceInfo = res.readResources(args.reference, previousResourceInfo)
+    updatedResources     = rean.compare(previousResourceInfo, resourceInfo)
+    print(updatedResources)
+  #exit(0)
+
   # Read the Mosaic json and validate its contents
   if not args.mosaic_json: args.mosaic_json = args.data_directory + 'resources_mosaic_GRCh' + args.reference + '.json'
   mosaicInfo         = mosr.readMosaicJson(args.mosaic_json, args.reference)
@@ -73,6 +86,9 @@ def main():
   publicAnnotations  = mos.getPublicAnnotations(mosaicConfig, args.project_id, api_va)
   privateAnnotations = mos.createPrivateAnnotations(mosaicConfig, mosaicInfo['resources'], projectAnnotations, samples, args.project_id, api_va)
   mosr.checkPublicAnnotations(mosaicConfig, mosaicInfo['resources'], publicAnnotations, args.project_id, api_va)
+
+#  # If a previous Calypso vcf file was set, get the version assigned to the vcf
+#  if args.previous_vcf: getPreviousVcfInfo(args)
 
   # Build the toml file for vcfanno. This defines all of the annotations that vcfanno needs to use
   # with the path to the required files
@@ -83,7 +99,7 @@ def main():
   filteredVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, args.input_vcf, args.ped, tomlFilename)
   bashScript.samplesFile(bashFile)
   bashScript.cleanedVcf(bashFile)
-  bashScript.annotateVcf(bashFile, resourceInfo)
+  bashScript.annotateVcf(bashFile, resourceInfo, args.family_type)
   bashScript.filterVariants(bashFile, proband, resourceInfo)
   bashScript.rareDiseaseVariants(bashFile)
   bashScript.deleteFiles(bashFile)
@@ -113,14 +129,10 @@ def main():
   mos.importAnnotations(mosaicConfig, mosaicInfo['resources'], projectAnnotations, publicAnnotations, args.project_id, api_va)
   mos.defaultAnnotations(mosaicConfig, mosaicInfo['defaultAnnotations'], publicAnnotations, privateAnnotations, args.project_id, api_ps)
   vfilt.variantFilters(mosaicConfig, rootPath, samples, privateAnnotations, args.project_id, api_vf)
-  mos.updateCalypsoAttributes(mosaicConfig, projectAttributes, publicAttributes, version, args.project_id, api_pa)
+  mos.updateCalypsoAttributes(mosaicConfig, resourceInfo['version'], projectAttributes, publicAttributes, version, args.project_id, api_pa)
 
-  # Generate scripts to upload filtered variants and annotations to Mosaic
-  upload.uploadVariants(mosaicInfo, mosaicConfig, workingDir, args.config, filteredVcf, args.project_id, api_v)
-  #upload.uploadAnnotations(args)
-
-#  # If a previous Calypso vcf file was set, get the version assigned to the vcf
-#  if args.previous_vcf: getPreviousVcfInfo(args)
+  # Generate scripts to upload filtered variants to Mosaic
+  upload.uploadVariants(workingDir, args.utils_directory, args.config, args.project_id)
 
   # Output a summary file listing the actions undertaken by Calypso with all version histories
   res.calypsoSummary(workingDir, version, resourceInfo, args.reference)
@@ -166,7 +178,6 @@ def parseCommandLine():
 def checkArguments(args):
   global allowedReferences
   global allowedFamily
-  resourceInfo = {}
 
   # Check the reference is allowed
   if args.reference not in allowedReferences:
@@ -176,41 +187,21 @@ def checkArguments(args):
 
   # Ensure the data path ends with a "/", then add the reference directory
   if args.data_directory[-1] != "/": args.data_directory += "/"
-  resourceInfo['path'] = args.data_directory + "GRCh" + str(args.reference) + "/"
 
   # Check that the public-utils directory exists and add to the path so scripts from here can be used
   if args.utils_directory[-1] != "/": args.utils_directory += "/"
   if not os.path.exists(args.utils_directory): fail('public-utils directory could not be found')
 
-  # Define the name of the resource description json file. Use the file provided on the command
-  # line, and resort to the default file if not included. The version of the resource file is
-  # unknown, so look for any json with the correct prefix and if there is more than one such
-  # file, throw an error.
-  if args.resource_json: resourceFilename = args.resource_json
-  else:
-    resourceFilename = args.data_directory + 'resources_GRCh' + str(args.reference) + '.json'
-    resourceFiles    = glob.glob(resourceFilename)
-    if len(resourceFiles) != 1: fail('There are zero, or more than one resource files for GRCh' + args.reference + ' in ' + args.data_directory)
-    resourceFilename = resourceFiles[0]
-  resourceInfo['json'] = resourceFilename
-
   # Check the family type is allowed
   if args.family_type not in allowedFamily: fail('The allowed family types (--family-type, -f) are: ' + ', '.join(allowedFamily))
-
-  # If this is a singleton, no family based analyis should be performed
-  resourceInfo['family_type'] = args.family_type
-  resourceInfo['isFamily'] = False if args.family_type == 'singleton' else True
 
   # Check that the input files exist and have the correct extensions
   if not exists(args.input_vcf): fail('The vcf file could not be found')
   elif not args.input_vcf.endswith('.vcf.gz'): fail('The input vcf file (--vcf, -v) must be a compressed, indexed vcf and have the extension ".vcf.gz"')
-  if resourceInfo['isFamily']:
+  if args.family_type != 'singleton':
     if not args.ped: fail('A ped file needs to specified (--ped, -e) for family type "' + str(args.family_type) + '"')
     if not exists(args.ped): fail('The ped file could not be found')
     elif not args.ped.endswith('.ped'): fail('The input ped file (--ped, -p) must have the extension ".ped"')
-
-  # Return the info on resources
-  return resourceInfo
 
 # Create a directory where all Calypso associated files will be stored
 def setWorkingDir(version):

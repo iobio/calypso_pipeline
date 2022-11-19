@@ -92,7 +92,7 @@ def cleanedVcf(bashFile):
   print(file = bashFile)
 
 # Annotate the cleaned vcf file using vcfanno
-def annotateVcf(bashFile, resourceInfo):
+def annotateVcf(bashFile, resourceInfo, familyType):
 
   # Annotate the vcf with vcfanno
   print('# Annotate with bcftools csq and add further annotations with vcfanno', file = bashFile)
@@ -101,7 +101,7 @@ def annotateVcf(bashFile, resourceInfo):
   print('  | vcfanno -p 16 $TOML /dev/stdin 2>> $STDERR \\', file = bashFile)
 
   # If this is a family, also include modes of inheritance using Slivar
-  if resourceInfo['isFamily']:
+  if familyType != 'singleton':
     print('  | slivar_static expr \\', file = bashFile)
     print('  --vcf /dev/stdin \\', file = bashFile)
     print('  --ped $PED \\', file = bashFile)
@@ -121,7 +121,7 @@ def annotateVcf(bashFile, resourceInfo):
   print(file = bashFile)
 
   # Annotate with compound hets
-  if resourceInfo['isFamily']:
+  if familyType != 'singleton':
 
     # Annotate with compound hets
     print('# Annotate compound hets with Slivar', file = bashFile)

@@ -12,11 +12,23 @@ import math
 import glob
 import importlib
 
+# Check the supplied arguments
+def checkResources(reference, dataDir, resourceFilename):
+  resourceInfo = {}
+  resourceInfo['path']   = dataDir + "GRCh" + str(reference) + "/"
+  resourceFiles          = glob.glob(resourceFilename)
+  if len(resourceFiles) != 1: fail('There are zero, or more than one resource files for GRCh' + reference + ' in ' + dataDir)
+  resourceFilename       = resourceFiles[0]
+  resourceInfo['json']   = resourceFilename
+
+  # Return the info on resources
+  return resourceInfo
+
 # Read the json file describing the resources for the selected genome build, check the files exist, and store the versions.
-def readResources(args, resourceInfo):
+def readResources(reference, resourceInfo):
 
   # Try and open the file
-  try: resourceFile = open(resourceInfo['json'], "r")
+  try: resourceFile = open(resourceInfo['json'], 'r')
   except: fail('The file describing the resource files (' + str(resourceInfo['json']) + ') could not be found')
 
 #  # Extract the json information
@@ -34,7 +46,7 @@ def readResources(args, resourceInfo):
   # Check that the resource json reference matches the selected reference
   try: resourceInfo['reference'] = resourceData['reference']
   except: fail('The resource json does not include a reference genome')
-  if str(args.reference) != str(resourceData['reference']): fail("The selected reference (" + str(args.reference) + ") does not match the resource json reference (" + str(resourceInfo['reference']) + ")")
+  if str(reference) != str(resourceData['reference']): fail("The selected reference (" + str(reference) + ") does not match the resource json reference (" + str(resourceInfo['reference']) + ")")
 
   # Get the resources
   try: resources = resourceData['resources']

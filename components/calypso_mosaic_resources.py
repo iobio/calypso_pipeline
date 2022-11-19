@@ -54,6 +54,9 @@ def readMosaicJson(mosaicFilename, reference):
     # codes need to be extracted from the CSQ field. The "info_field" provides information on where the info should be extracted from
     mosaicInfo['resources'][resource]['info_field'] = resources[resource]['info_field'] if 'info_field' in resources[resource] else False
 
+    # Check if the "delimeter" value is set. This defines how to break up compound annotations
+    mosaicInfo['resources'][resource]['delimeter'] = resources[resource]['delimeter'] if 'delimeter' in resources[resource] else False
+
     # Collect the information required only for public annotations
     if mosaicInfo['resources'][resource]['annotation_type'] == 'public':
 
