@@ -5,12 +5,10 @@ from datetime import date
 from os.path import exists
 from sys import path
 
-import os
-import argparse
-import json
-import math
-import glob
 import importlib
+import json
+import os
+import tools_bcftools as bcf
 
 # Compare the current and previous resources and identify any differences
 def compare(previousResourceInfo, resourceInfo):
@@ -42,6 +40,38 @@ def compare(previousResourceInfo, resourceInfo):
 
   # Return the updated resources
   return updatedResources
+
+# Determine which project variants have undergone notable changes
+def clinvarUpdates(cvDates, compDir, bashFile):
+
+  # Define the name of the output file
+  outFile = 'clinvar_updates_' + str(cvDates) + '.tsv'
+
+  # Define the clinvar difference files to use for intersecting with the project vcf file
+  clinvar = {}
+  clinvar['benign_conflicting.vcf.gz'] = 'benign_conflicting'
+  clinvar['benign_path.vcf.gz'] = 'benign_pathogenic'
+  clinvar['benign_vus.vcf.gz'] = 'banign_vus'
+  clinvar['conflicting_path.vcf.gz'] = 'conflicting_pathogenic'
+  clinvar['conflicting_vus.vcf.gz'] = 'conflicting_vus'
+  clinvar['path_conflicting.vcf.gz'] = 'pathogenic_conflicting'
+  clinvar['path_vus.vcf.gz'] = 'pathogenic_vus'
+  clinvar['vus_conflicting.vcf.gz'] = 'vus_conflicting'
+  clinvar['vus_path.vcf.gz'] = 'vus_pathogenic'
+  clinvar['unique_current_conflicting.vcf.gz'] = 'new_conflicting'
+  clinvar['unique_current_path.vcf.gz'] = 'new_pathogenic'
+  clinvar['unique_current_vus.vcf.gz'] = 'new_vus'
+  clinvar['unique_previous_conflicting.vcf.gz'] = 'removed_conflicting'
+  clinvar['unique_previous_path.vcf.gz'] = 'removed_pathogenic'
+  clinvar['unique_previous_vus.vcf.gz'] = 'removed_vus'
+  print(file = bashFile)
+  print('# ClinVar updates', file = bashFile)
+  print('echo -n "Searching for ClinVar updates..."', file = bashFile)
+  for cvFile in clinvar:
+    print(bcf.isecIntStream(str(compDir) + '/' + cvFile, '$FINALVCF'), ' \\', file = bashFile)
+    print(' | bcftools query -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t', clinvar[cvFile], '\\n \\', sep = '', file = bashFile)
+    print(' >> ', outFile, sep = '', file = bashFile)
+  print('echo "complete"', file = bashFile)
 
 # If the script fails, provide an error message and exit
 def fail(message):

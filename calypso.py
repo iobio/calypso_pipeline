@@ -18,6 +18,7 @@ from sys import path
 path.append(os.path.dirname(__file__) + '/components')
 import calypso_annotations as anno
 import calypso_bash_script as bashScript
+import clinvar_compare as cv
 import calypso_mosaic as mos
 import calypso_mosaic_resources as mosr
 import calypso_path as cpath
@@ -71,13 +72,19 @@ def main():
 
   # Get the value for the Calypso resource version attribute. If Calypso has been run previously, this will indicate the last resources
   # that were used
+  updatedResources        = []
   previousResourceVersion = mos.getPreviousResourceVersion(projectAttributes)
   if previousResourceVersion and str(previousResourceVersion) != str(resourceInfo['version']):
     previousResourceInfo = res.checkResources(args.reference, args.data_directory, args.data_directory + 'resources_archive/resources_GRCh' + str(args.reference) + '_v' + str(previousResourceVersion) + '.json')
     previousResourceInfo = res.readResources(args.reference, previousResourceInfo)
     updatedResources     = rean.compare(previousResourceInfo, resourceInfo)
-    print(updatedResources)
-  #exit(0)
+
+    # If Calypso was updated, see if the difference files for the original and updated ClinVar resources exist. If not, create them
+    if 'ClinVar' in updatedResources:
+      cvDir   = str(args.data_directory) + 'GRCh' + str(args.reference) + '/clinvar/'
+      cvDates = str(updatedResources['ClinVar']['previousVersion']) + '_' + str(updatedResources['ClinVar']['currentVersion'])
+      compDir = str(cvDir) + str(cvDates)
+      if not exists(compDir): cv.compare(compDir, previousResourceInfo['resources']['ClinVar']['file'], resourceInfo['resources']['ClinVar']['file'])
 
   # Read the Mosaic json and validate its contents
   if not args.mosaic_json: args.mosaic_json = args.data_directory + 'resources_mosaic_GRCh' + args.reference + '.json'
@@ -86,9 +93,6 @@ def main():
   publicAnnotations  = mos.getPublicAnnotations(mosaicConfig, args.project_id, api_va)
   privateAnnotations = mos.createPrivateAnnotations(mosaicConfig, mosaicInfo['resources'], projectAnnotations, samples, args.project_id, api_va)
   mosr.checkPublicAnnotations(mosaicConfig, mosaicInfo['resources'], publicAnnotations, args.project_id, api_va)
-
-#  # If a previous Calypso vcf file was set, get the version assigned to the vcf
-#  if args.previous_vcf: getPreviousVcfInfo(args)
 
   # Build the toml file for vcfanno. This defines all of the annotations that vcfanno needs to use
   # with the path to the required files
@@ -115,6 +119,10 @@ def main():
     else: tsv = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', args.reference, args.config, args.mosaic_json, bashFile)
     upload.uploadAnnotations(args.utils_directory, tsv, mosaicInfo['resources'][resource]['project_id'], args.config, uploadFile)
   upload.closeUploadAnnotationsFile(uploadFilename, uploadFile)
+
+  # If this is a reannotation of the sample and there has been a change to ClinVar, perform a check for ClinVar significance
+  # changes based on the difference files.
+  if 'ClinVar' in updatedResources: rean.clinvarUpdates(cvDates, compDir, bashFile)
 
   # Close the bash script
   bashScript.finishScript(bashFile, bashFilename)

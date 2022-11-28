@@ -170,6 +170,7 @@ def annotateVcf(bashFile, resourceInfo, familyType):
     print('  -o $FINALVCF \\', file = bashFile)
     print('  $ANNOTATEDVCF \\', file = bashFile)
     print('  >> $STDOUT 2>> $STDERR', file = bashFile)
+    print('bcftools index -t $FINALVCF', file = bashFile)
     print('echo "complete"', file = bashFile)
     print(file = bashFile)
 
@@ -221,6 +222,7 @@ def filterVariants(bashFile, proband, resourceInfo):
   print('  | bcftools view -O z -o $FILTEREDVCF - \\', file = bashFile)
   print('  >> $STDOUT 2>> $STDERR', file = bashFile)
   print('echo "complete"', file = bashFile)
+  print('bcftools index -t $FILTEREDVCF', file = bashFile)
   print(file = bashFile)
 
 # Use Slivar to extract variants based on the Slivar rare disease wiki
@@ -243,6 +245,7 @@ def rareDiseaseVariants(bashFile):
   print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && INFO.gnomad_nhomalt < 10\' \\', file = bashFile)
   print('  >> $STDOUT 2>> $STDERR', file = bashFile)
   print('echo "complete"', file = bashFile)
+  print('bcftools index -t $RAREDISEASEVCF', file = bashFile)
   print(file = bashFile)
 
 # Delete files no longer required
