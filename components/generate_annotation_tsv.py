@@ -188,7 +188,7 @@ def processClassCompound(resource, resourceInfo, vcf, tags, outputFile):
   
       # Update the chromosome and position
       fields[0], fields[2] = updateCoords(fields[0], fields[2])
-      annotations = fields.pop().split('/')
+      annotations = fields.pop().split(delimeter)
       hasValue = False
       for tag in tags:
         value = annotations[resourceInfo['annotations'][tag]['position'] - 1]
