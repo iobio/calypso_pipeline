@@ -52,10 +52,12 @@ def uploadAnnotations(utils, tsvFile, projectId, configFile, uploadFile):
   # Print the command to upload annotations to the output file
   print(file = uploadFile)
   print('# Upload ', tsvFile, ' annotations', sep = '', file = uploadFile)
+  print('echo -n "Uploading annotations from file ', str(tsvFile), '"', sep = '', file = uploadFile)
   print('python ', utils, 'scripts/upload_annotations.py \\', sep = '', file = uploadFile)
   print('  -i ', tsvFile, ' \\', sep = '', file = uploadFile)
   print('  -p ', projectId, ' \\', sep = '', file = uploadFile)
   print('  -c ', configFile, sep = '', file = uploadFile)
+  print('echo "complete"', file = uploadFile)
 
 # Close the upload annotations file
 def closeUploadAnnotationsFile(uploadFilename, uploadFile):
