@@ -7,7 +7,7 @@ import json
 import os
 
 # Output a script to upload variants to Mosaic
-def uploadVariants(workingDir, utils, configFile, projectId):
+def uploadVariants(workingDir, utils, configFile, projectId, filteredVcf, rareVcf):
 
   # Open a script file
   uploadFileName = workingDir + 'calypso_upload_variants.sh'
@@ -20,7 +20,8 @@ def uploadVariants(workingDir, utils, configFile, projectId):
   print('  -c ', configFile + ' \\', sep = '', file = uploadFile)
   print('  -p ', str(projectId) + ' \\', sep = '', file = uploadFile)
   print('  -m "allele" \\', sep = '', file = uploadFile)
-  print('  -i $FILTEREDVCF ', file = uploadFile)
+  print('  -i ', filteredVcf, sep = '', file = uploadFile)
+  print(file = uploadFile)
 
   # Write the command to file to upload a variant set of the "rare disease" variants
   print('# Upload rare disease variants to Mosaic', file = uploadFile)
@@ -29,7 +30,7 @@ def uploadVariants(workingDir, utils, configFile, projectId):
   print('  -p ', str(projectId) + ' \\', sep = '', file = uploadFile)
   print('  -m "allele" \\', sep = '', file = uploadFile)
   print('  -n "rare disease" \\', sep = '', file = uploadFile)
-  print('  -i $RAREDISEASEVCF ', file = uploadFile)
+  print('  -i ', rareVcf, sep = '', file = uploadFile)
 
   # Close the file
   uploadFile.close()
