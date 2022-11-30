@@ -182,8 +182,15 @@ def defaultAnnotations(mosaicConfig, defaultAnnotations, publicAnnotations, priv
   # Get the ids of all the default annotations
   for annotation in defaultAnnotations:
     if annotation in publicAnnotations: annotationIds.append(publicAnnotations[annotation]['id'])
-    elif annotation in privateAnnotations: annotationIds.append(privateAnnotations[annotation]['id'])
-    else: fail('Default annotation ' + str(annotation) + ' has not been imported or created in the project')
+
+    # Check if the annotation is a private annotation. In this case, the supplied annotation will not be the uid as
+    # this is not known, but will be the annotation name
+    else:
+      pAnnoId = False
+      for pAnno in privateAnnotations:
+        if str(privateAnnotations[pAnno]['name']) == str(annotation): pAnnoId = privateAnnotations[pAnno]['id']
+      if pAnnoId: annotationIds.append(pAnnoId)
+      else: fail('Default annotation ' + str(annotation) + ' has not been imported or created in the project')
 
   # Set the default annoatations in the Mosaic project
   try: data = os.popen(api_ps.putDefaultAnnotations(mosaicConfig, projectId, annotationIds)).read()

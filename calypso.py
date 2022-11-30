@@ -112,10 +112,13 @@ def main():
   print('# Generate tsv files to upload annotations to Mosaic', file = bashFile)
   uploadFilename, uploadFile = upload.openUploadAnnotationsFile(workingDir)
   for resource in mosaicInfo['resources']:
-    if resource == 'hpo':
+    if resource == 'hpo_public':
 
       # Only proceed with HPO terms if an HPO term string has been provided
-      if args.hpo: tsv = anno.createHpoTsv(mosaicInfo['resources']['hpo'], os.path.dirname(__file__) + '/components', args.config, args.hpo, args.project_id, resourceInfo['resources']['hpo']['file'], args.utils_directory, bashFile)
+      if args.hpo: tsv = anno.createHpoTsv(mosaicInfo['resources']['hpo_public'], mosaicInfo['resources']['hpo_private'], os.path.dirname(__file__) + '/components', args.config, args.hpo, args.project_id, resourceInfo['resources']['hpo']['file'], args.utils_directory, bashFile)
+
+    # Ignore the hpo_private - all HPO annotations are handled in hpo_public
+    elif resource == 'hpo_private': tsv = 'hpo_private.tsv'
     else: tsv = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', args.reference, args.config, args.mosaic_json, bashFile)
     upload.uploadAnnotations(args.utils_directory, tsv, mosaicInfo['resources'][resource]['project_id'], args.config, uploadFile)
   upload.closeUploadAnnotationsFile(uploadFilename, uploadFile)
@@ -228,7 +231,7 @@ def fail(message):
 # Initialise global variables
 
 # Pipeline version
-version = "1.0.0"
+version = "1.1.0"
 date    = str(date.today())
 
 # The working directory where all created files are kept

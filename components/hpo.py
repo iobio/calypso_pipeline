@@ -57,6 +57,7 @@ def parseCommandLine():
   parser.add_argument('--project_id', '-p', required = True, metavar = "string", help = "The project id that variants will be uploaded to")
   parser.add_argument('--hpo_terms', '-r', required = True, metavar = "string", help = "The HPO terms associated with the patient")
   parser.add_argument('--terms_uid', '-e', required = True, metavar = "string", help = "The uid for the HPO terms annotation")
+  parser.add_argument('--labels_uid', '-b', required = True, metavar = "string", help = "The uid for the HPO labels annotation")
   parser.add_argument('--overlaps_uid', '-d', required = True, metavar = "string", help = "The uid for the HPO overlaps annotation")
   parser.add_argument('--utils_directory', '-l', required = True, metavar = 'string', help = 'The path to the public-utils directory')
 
@@ -88,6 +89,8 @@ def getProband(args, api_s):
 # Get HPO / gene associations
 def parseHpoGene(args):
   global hpoGene
+  global hpoLabels
+  global patientTerms
 
   # Open the file containing HPO:gene associations
   hpoFile = open(args.hpo, 'r')
@@ -97,12 +100,17 @@ def parseHpoGene(args):
 
     # Ignore the header
     if line.startswith('#'): continue
-    gene = line.split('\t')[1]
-    hpo  = line.split('\t')[2]
+    hpo   = line.split('\t')[2]
 
-    # Store the info
-    if gene not in hpoGene: hpoGene[gene] = [hpo]
-    else: hpoGene[gene].append(hpo)
+    # Only store information on genes that are associated with HPO terms present in the patient terms
+    if hpo in patientTerms:
+      gene  = line.split('\t')[1]
+      label = line.split('\t')[3]
+
+      # Store the information
+      if gene not in hpoGene: hpoGene[gene] = [hpo]
+      else: hpoGene[gene].append(hpo)
+      if hpo not in hpoLabels: hpoLabels[hpo] = label
 
   # Close the file
   hpoFile.close()
@@ -110,19 +118,21 @@ def parseHpoGene(args):
 # Parse vcf file
 def parseVcf(args):
   global hpoGene
+  global hpoLabels
   global patientTerms
   global samples
 
-  # Open output files
-  hpoOut = open('hpo.tsv', 'w')
+  # Open output files. There needs to be one for public and one for private annotations
+  hpoPublic  = open('hpo_public.tsv', 'w')
+  hpoPrivate = open('hpo_private.tsv', 'w')
 
   # Write the header lines to the output files
   headerBase = 'CHROM\tSTART\tEND\tREF\tALT'
-  print(headerBase, args.overlaps_uid, args.terms_uid, sep = '\t', file = hpoOut)
+  print(headerBase, args.terms_uid, args.labels_uid, sep = '\t', file = hpoPublic)
+  print(headerBase, args.overlaps_uid, sep = '\t', file = hpoPrivate)
 
   # Read the standard input
   for line in os.popen(bcftools.query(args.input_vcf, ['BCSQ'])).readlines():
-  #for line in sys.stdin:
 
     # Skip header lines
     if line.startswith('#'): continue
@@ -146,6 +156,7 @@ def parseVcf(args):
       # Check if any of the genes have an association with an HPO term association with the patient
       hasAssociation    = False
       associatedTerms   = []
+      associatedLabels  = []
       noAssociatedTerms = 0
       for gene in genes:
         if gene in hpoGene:
@@ -155,6 +166,7 @@ def parseVcf(args):
               if hpoTerm not in associatedTerms:
                 noAssociatedTerms += 1
                 associatedTerms.append(hpoTerm)
+              if hpoLabels[hpoTerm] not in associatedLabels: associatedLabels.append(hpoLabels[hpoTerm])
   
       # Get the basic information required for upload to Mosaic as an annotation
       chrom = line.split('\t')[0]
@@ -163,12 +175,19 @@ def parseVcf(args):
       end   = int(line.split('\t')[2]) + 1
       ref   = line.split('\t')[3]
       alt   = line.split('\t')[4]
+
+      # If the label has more than 255 characters, trim it
+      label = ','.join(associatedLabels)
+      if len(label) > 255: label = label[0:252] + '...'
   
       # If there is an association with a patient HPO term, write out the tsv for upload to Mosaic
-      if hasAssociation: print(chrom, start, end, ref, alt, noAssociatedTerms, ','.join(associatedTerms), sep = '\t', file = hpoOut)
+      if hasAssociation:
+        print(chrom, start, end, ref, alt, ','.join(associatedTerms), label, sep = '\t', file = hpoPublic)
+        print(chrom, start, end, ref, alt, noAssociatedTerms, sep = '\t', file = hpoPrivate)
 
   # Close output files
-  hpoOut.close()
+  hpoPrivate.close()
+  hpoPublic.close()
 
 # If the script fails, provide an error message and exit
 def fail(message):
@@ -190,6 +209,9 @@ patientTerms = []
 
 # Store the hpo:gene associations
 hpoGene = {}
+
+# Store the HPO labels
+hpoLabels = {}
 
 # Mosaic samples
 samples = {}
