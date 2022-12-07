@@ -191,8 +191,11 @@ def processClassCompound(resource, resourceInfo, vcf, tags, outputFile):
       annotations = fields.pop().split(delimeter)
       hasValue = False
       for tag in tags:
+
+        # If the annotation is longer than 255 characters, it cannot be uploaded to Mosaic, so trim it
         value = annotations[resourceInfo['annotations'][tag]['position'] - 1]
-        fields.append(annotations[resourceInfo['annotations'][tag]['position'] - 1])
+        if len(value) > 255: value = value[0:252] + '...'
+        fields.append(value)
         if value: hasValue = True
   
       # Build the output record from the updated fields
