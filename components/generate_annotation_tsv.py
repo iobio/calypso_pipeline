@@ -34,12 +34,13 @@ def main():
     print('CHROM\tSTART\tEND\tREF\tALT\t', '\t'.join(args.uids.replace(' ', '').split(',')), sep = '', file = outputFile)
   
     # Loop over the vcf and process according to the annotation class
-    if processClass == "A": processClassA(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
-    elif processClass == "B": processClassB(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
-    elif processClass == "C": processClassC(mosaicInfo, args.resource, args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
-    elif processClass == "OMIM": processClassOMIM(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
-    elif processClass == "compound": processClassCompound(args.resource, mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
-    elif processClass == "spliceai": processClassSpliceAI(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.split(','), outputFile)
+    if processClass == 'A': processClassA(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
+    elif processClass == 'B': processClassB(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
+    elif processClass == 'C': processClassC(mosaicInfo, args.resource, args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
+    elif processClass == 'OMIM': processClassOMIM(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
+    elif processClass == 'compound': processClassCompound(args.resource, mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
+    elif processClass == 'spliceai': processClassSpliceAI(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.split(','), outputFile)
+    elif processClass == 'clinvar': processClassClinvar(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
   
     # Close the output tsv file
     outputFile.close()
@@ -284,6 +285,112 @@ def processClassSpliceAI(resourceInfo, vcf, tags, outputFile):
       # Build the output record from the updated fields
       print('\t'.join(fields + finalSet), file = outputFile)
 
+# Process ClinVar annotations
+def processClassClinvar(vcf, tags, outputFile):
+  skippedValues    = {}
+  noRecords        = 0
+  noOutputRecords  = 0
+  noSkippedRecords = 0
+  noDotRecords     = 0
+
+  # Define the allowed ClinVar significance values
+  allowedClinVar = {}
+  allowedClinVar['Benign'] = 'Benign'
+  allowedClinVar['Benign/Likely_benign'] = 'Benign/Likely_benign'
+  allowedClinVar['Conflicting_interpretations_of_pathogenicity'] = 'Conflicting_interpretations_of_pathogenicity'
+  allowedClinVar['Likely_benign'] = 'Likely_benign'
+  allowedClinVar['Pathogenic'] = 'Pathogenic'
+  allowedClinVar['Pathogenic/Likely_pathogenic'] = 'Pathogenic/Likely_pathogenic'
+  allowedClinVar['Likely_pathogenic'] = 'Likely_pathogenic'
+  allowedClinVar['Uncertain_significance'] = 'Uncertain_significance'
+
+  # Modify some of the obsevered values
+  allowedClinVar['Pathogenic,_risk_factor']             = 'Pathogenic'
+  allowedClinVar['Pathogenic,_other']                   = 'Pathogenic'
+  allowedClinVar['Pathogenic,_association,_protective'] = 'Pathogenic'
+  allowedClinVar['Pathogenic,_Affects']                 = 'Pathogenic'
+  allowedClinVar['Pathogenic,_protective']              = 'Pathogenic'
+  allowedClinVar['Pathogenic,_drug_response']           = 'Pathogenic'
+  allowedClinVar['Pathogenic,_association']             = 'Pathogenic'
+  allowedClinVar['Pathogenic,_drug_response,_other']    = 'Pathogenic'
+
+  allowedClinVar['Pathogenic/Likely_pathogenic,_other']         = 'Pathogenic/Likely_pathogenic'
+  allowedClinVar['Pathogenic/Likely_pathogenic,_risk_factor']   = 'Pathogenic/Likely_pathogenic'
+  allowedClinVar['Pathogenic/Likely_pathogenic,_drug_response'] = 'Pathogenic/Likely_pathogenic'
+
+  allowedClinVar['Likely_pathogenic,_other']              = 'Likely_pathogenic'
+  allowedClinVar['Likely_pathogenic,_risk_factor']        = 'Likely_pathogenic'
+  allowedClinVar['Likely_pathogenic,_association']        = 'Likely_pathogenic'
+  allowedClinVar['Likely_pathogenic,_drug_response']      = 'Likely_pathogenic'
+  allowedClinVar['Likely_pathogenic,_other,_risk_factor'] = 'Likely_pathogenic'
+  allowedClinVar['Likely_pathogenic,_Affects']            = 'Likely_pathogenic'
+
+  allowedClinVar['Uncertain_significance,_risk_factor']   = 'Uncertain_significance'
+  allowedClinVar['Uncertain_significance,_other']         = 'Uncertain_significance'
+  allowedClinVar['Uncertain_significance,_association']   = 'Uncertain_significance'
+  allowedClinVar['Uncertain_significance,_drug_response'] = 'Uncertain_significance'
+
+  allowedClinVar['Conflicting_interpretations_of_pathogenicity,_other']                = 'Conflicting_interpretations_of_pathogenicity'
+  allowedClinVar['Conflicting_interpretations_of_pathogenicity,_risk_factor']          = 'Conflicting_interpretations_of_pathogenicity'
+  allowedClinVar['Conflicting_interpretations_of_pathogenicity,_protective']           = 'Conflicting_interpretations_of_pathogenicity'
+  allowedClinVar['Conflicting_interpretations_of_pathogenicity,_Affects']              = 'Conflicting_interpretations_of_pathogenicity'
+  allowedClinVar['Conflicting_interpretations_of_pathogenicity,_other,_risk_factor']   = 'Conflicting_interpretations_of_pathogenicity'
+  allowedClinVar['Conflicting_interpretations_of_pathogenicity,_drug_response']        = 'Conflicting_interpretations_of_pathogenicity'
+  allowedClinVar['Conflicting_interpretations_of_pathogenicity,_drug_response,_other'] = 'Conflicting_interpretations_of_pathogenicity'
+
+  allowedClinVar['Likely_benign,_other']                = 'Likely_benign'
+  allowedClinVar['Likely_benign,_drug_response']        = 'Likely_benign'
+  allowedClinVar['Likely_benign,_drug_response,_other'] = 'Likely_benign'
+
+  allowedClinVar['Benign/Likely_benign,_risk_factor'] = 'Benign/Likely_benign'
+  allowedClinVar['Benign/Likely_benign,_other']       = 'Benign/Likely_benign'
+
+  allowedClinVar['Benign,_other']         = 'Benign'
+  allowedClinVar['Benign,_risk_factor']   = 'Benign'
+  allowedClinVar['Benign,_drug_response'] = 'Benign'
+  allowedClinVar['Benign,_association']   = 'Benign'
+
+  # Loop over all records in the vcf file
+  for record in os.popen(bcftools.query(vcf, tags)).readlines():
+    noRecords += 1
+
+    # Split the record on tabs
+    fields = record.rstrip().split('\t')
+  
+    # Check that the variant has a value. If not, skip this record. The only records that will be output are those with values
+    if fields[5] != '.':
+  
+      # Ensure the value is allowed. If the value is not recognized, store the value and skip the line
+      if fields[5] not in allowedClinVar: 
+        if fields[5] not in skippedValues: skippedValues[fields[5]] = 1
+        else: skippedValues[fields[5]] += 1
+        noSkippedRecords += 1
+        continue
+        #fail('Unknown ClinVar significance: "' + str(fields[5]) + '"')
+
+      # Update the value if required
+      else: fields[5] = allowedClinVar[fields[5]]
+
+      # Update the chromosome and position
+      fields[0], fields[2] = updateCoords(fields[0], fields[2])
+  
+      # Build the output record from the updated fields
+      print('\t'.join(fields), file = outputFile)
+      noOutputRecords += 1
+
+    # Record the number of records with no value
+    else: noDotRecords += 1
+
+  # Write to screen all the records that were skipped based on unrecognised values
+  if len(skippedValues.keys()) > 0:
+    print('The following unrecognised values were observed resulting in the given number of skipped records:')
+    for record in skippedValues: print('  ', record, ': ', skippedValues[record], sep = '')
+  print()
+  print('Total number of records in the input vcf file: ', noRecords, sep = '')
+  print('Number of records with "." as the value      : ', noDotRecords, sep = '')
+  print('Number of skipped records                    : ', noSkippedRecords, sep = '')
+  print('Total number of output records               : ', noOutputRecords, sep = '')
+
 # Update the chromosome and position in the tsv file
 def updateCoords(chrom, pos):
 
@@ -307,7 +414,7 @@ def fail(message):
 version = "1.0.0"
 
 # Define the allowed annotation classes
-allowedClasses = ['A', 'B', 'C', 'OMIM', 'compound', 'spliceai']
+allowedClasses = ['A', 'B', 'C', 'clinvar', 'compound', 'OMIM', 'spliceai']
 
 if __name__ == "__main__":
   main()

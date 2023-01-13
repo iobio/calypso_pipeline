@@ -65,9 +65,11 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename):
 # Generate a text file containing all the samples
 def samplesFile(bashFile):
   print('# Generate a text file containing all samples in the family', file = bashFile)
+  print('echo -n "Creating text file of samples..." > $STDOUT', file = bashFile)
   print('echo -n "Creating text file of samples..."', file = bashFile)
   print('tail -n+2 $PED | cut -f 2 | sort -u > samples.txt', file = bashFile)
   print('echo "complete"', file = bashFile)
+  print('echo "complete" >> $STDOUT', file = bashFile)
   print(file = bashFile)
 
 # Generate a normalized vcf containing only family members and no annotations

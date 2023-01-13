@@ -11,11 +11,17 @@ def getProband(mosaicConfig, ped, familyType, projectId, api_s):
 
   # Open the ped file and get the samples
   try: pedFile = open(ped, "r")
-  except: fail('Couldn\'t open the ped file (' + ped + ')')
+  except: fail('Couldn\'t open the ped file (' + ped + '). Components/calypso_samples.py (1).')
 
   # Get the samples Mosaic id and store
   mosaicSamples = {}
-  for sample in json.loads(os.popen(api_s.getSamples(mosaicConfig, projectId)).read()): mosaicSamples[sample['name']] = sample['id']
+  try: data = json.loads(os.popen(api_s.getSamples(mosaicConfig, projectId)).read())
+  except: fail('Failed to read samples (components/calypso_samples.py)')
+
+  # If the API call returned an error, fail and print the error message
+  if 'message' in data: fail('Failure in components/calypso_samples.py (2). Message: ' + data['message'])
+  else:
+    for sample in data: mosaicSamples[sample['name']] = sample['id']
 
   # Get information on all the samples
   noAffected = 0
@@ -35,7 +41,7 @@ def getProband(mosaicConfig, ped, familyType, projectId, api_s):
 
       # Determine if the sample is affected
       try: affectedStatus = int(fields[5])
-      except: fail('Ped file does not contain enough fields')
+      except: fail('Ped file does not contain enough fields. Components/calypso_samples.py (3)')
       if int(fields[5]) == 2:
         isAffected = True 
         noAffected += 1
@@ -46,7 +52,7 @@ def getProband(mosaicConfig, ped, familyType, projectId, api_s):
 
       # Attach the Mosaic sample id
       try: samples[sample]['mosaicId'] = mosaicSamples[sample]
-      except: fail('Sample ' + str(sample) + ' is not present in the Mosaic project')
+      except: fail('Sample ' + str(sample) + ' is not present in the Mosaic project. Components/calypso_samples.py (4)')
 
   # Close the ped file
   pedFile.close()

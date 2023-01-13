@@ -1,0 +1,19 @@
+{
+	"name": "HPO Overlaps",
+	"genotypes": {
+		"ref_samples": false,
+		"alt_samples": ["proband"],
+		"het_samples": false,
+		"hom_samples": false
+	},
+	"filters": {
+		"annotation_filters": [
+			{
+				"uid": "hpo_overlaps_72bc74b3",
+				"min": "1",
+				"value_type": "float",
+				"include_nulls": false
+			}
+		]
+	}
+}

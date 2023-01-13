@@ -38,11 +38,11 @@ def createAnnotationTsv(mosaicInfo, resource, scriptDir, reference, configFile, 
 
 # Call the command to extract HPO annotations from the filtered vcf into a tsv file
 def createHpoTsv(hpoPublicInfo, hpoPrivateInfo, scriptDir, configFile, hpoString, projectId, genePhenotype, utils, bashFile):
+  uids = {}
 
   # Get the uids for the HPO Overlaps and HPO Terms annotations
-  overlapsUid = hpoPrivateInfo['annotations']['HPO Overlaps']['uid']
-  termsUid    = hpoPublicInfo['annotations']['HPO Terms']['uid']
-  labelsUid   = hpoPublicInfo['annotations']['HPO Labels']['uid']
+  for annotation in hpoPublicInfo['annotations']: uids[annotation] = hpoPublicInfo['annotations'][annotation]['uid']
+  for annotation in hpoPrivateInfo['annotations']: uids[annotation] = hpoPrivateInfo['annotations'][annotation]['uid']
 
   print(file = bashFile)
   print('  # Resource: HPO', sep = '', file = bashFile)
@@ -53,9 +53,9 @@ def createHpoTsv(hpoPublicInfo, hpoPrivateInfo, scriptDir, configFile, hpoString
   print('    -p ', projectId, ' \\', sep = '', file = bashFile)
   print('    -o "', genePhenotype, '" \\', sep = '', file = bashFile)
   print('    -l "', utils, '" \\', sep = '', file = bashFile)
-  print('    -d "', overlapsUid, '" \\', sep = '', file = bashFile)
-  print('    -e "', termsUid, '" \\', sep = '', file = bashFile)
-  print('    -b "', labelsUid, '" \\', sep = '', file = bashFile)
+  print('    -d "', uids['HPO Overlaps'], '" \\', sep = '', file = bashFile)
+  print('    -e "', uids['HPO Terms'], '" \\', sep = '', file = bashFile)
+  print('    -b "', uids['HPO Labels'], '" \\', sep = '', file = bashFile)
   print('    -i $FILTEREDVCF', sep = '', file = bashFile)
   print('  echo "complete"', file = bashFile)
 

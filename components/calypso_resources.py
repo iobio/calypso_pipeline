@@ -16,9 +16,7 @@ import importlib
 def checkResources(reference, dataDir, resourceFilename):
   resourceInfo = {}
   resourceInfo['path']   = dataDir + "GRCh" + str(reference) + "/"
-  resourceFiles          = glob.glob(resourceFilename)
-  if len(resourceFiles) != 1: fail('There are zero, or more than one resource files for GRCh' + reference + ' in ' + dataDir)
-  resourceFilename       = resourceFiles[0]
+  if not exists(resourceFilename): fail('The resource file "' + resourceFilename + '" does not exist')
   resourceInfo['json']   = resourceFilename
 
   # Return the info on resources

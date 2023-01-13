@@ -7,7 +7,7 @@ import math
 import os
 
 # Process all the variant filters in Calypso and add to the project
-def variantFilters(mosaicConfig, rootPath, samples, privateAnnotations, projectId, api_vf):
+def variantFilters(mosaicConfig, mosaicInfo, rootPath, samples, privateAnnotations, projectId, api_vf):
   existingFilters = {}
 
   # Define the path to the variant filter json file
@@ -31,7 +31,7 @@ def variantFilters(mosaicConfig, rootPath, samples, privateAnnotations, projectI
       if 'filters' not in filterData: fail('Variant filter json file with the name ' + str(filterJson) + ' does not contain the required \'filters\' section')
       if filterName in existingFilters: deleteFilter(mosaicConfig, filterName, projectId, existingFilters[filterName], api_vf)
       filterData = getGenotypeFilter(filterData, filterJson, probandId, motherId, fatherId)
-      filterData = annotationFilters(filterData, filterName, privateAnnotations)
+      filterData = annotationFilters(mosaicInfo, filterData, filterName, privateAnnotations)
 
       # Create the annotation filter
       createFilter(filterData, mosaicConfig, projectId, api_vf)
@@ -115,7 +115,7 @@ def getGenotypeFilter(data, filename, probandId, motherId, fatherId):
   return data
 
 # Process the annotation filters
-def annotationFilters(data, filename, privateAnnotations):
+def annotationFilters(mosaicInfo, data, filename, privateAnnotations):
   removeAnnotations = []
 
   # Make sure the annotation_filters section exists
@@ -129,27 +129,46 @@ def annotationFilters(data, filename, privateAnnotations):
     # field must be present, and this must point to a created annotation uid. Remove the name
     # field and replace it with the uid.
     if 'uid' not in annotationFilter:
-      try: annotationName = annotationFilter['name']
-      except: fail('Annotation ' + str(filterJson) + ' does not have a uid, but also no name')
-      annotationFilter.pop('name')
+      resource       = annotationFilter['resource'] if 'resource' in annotationFilter else False
+      annotationName = annotationFilter['name'] if 'name' in annotationFilter else False
+      resourceAnno   = annotationFilter['annotation'] if 'annotation' in annotationFilter else False
 
-      # If the annotation is listed as optional and the name doesn't point to a created annotation
-      # delete this annotation from the filter. This could be, for example, a filter on genotype
-      # quality for the mother, but the mother isn't present in the project
-      isOptional = annotationFilter.pop('optional') if 'optional' in annotationFilter else False
+      # If a resource is defined, ensure that an annotation is defined for that resource and get the uid from
+      # mosaicInfo
+      if resource:
+        if resource not in mosaicInfo['resources']: fail('Annotation filter with the name "' + str(filename) + '" references an unknown resource: ' + str(resource))
+        if not resourceAnno: fail('Annotation filter with the name "' + str(filename) + '" references resource "' + str(resource) + '", but does not define an annotation')
+        if resourceAnno not in mosaicInfo['resources'][resource]['annotations']: fail('Annotation filter with the name "' + str(filename) + '" references annotation "' + str(resourceAnno) + '" for resource "' + str(resource) + '", but this annotation is not defined in the Mosaic resource json')
+        annotationFilter['uid'] = mosaicInfo['resources'][resource]['annotations'][resourceAnno]['uid']
 
-      # Check if the annotation has been created in this execution of Calypso
-      foundMatch = False
-      for annotation in privateAnnotations:
-        if privateAnnotations[annotation]['name'] == annotationName:
-          annotationFilter['uid'] = annotation
-          foundMatch = True
-          break
+        # Remove the resource and annotation from the annotationFilter object
+        annotationFilter.pop('resource')
+        annotationFilter.pop('annotation')
 
-      # If no annotation with the required name was created and the annotation is optional, remove the annotation
-      if not foundMatch:
-        if isOptional: removeAnnotations.append(index)
-        else: fail('Annotation, ' + str(annotationName) + ', in ' + str(filename) + ' does not have a uid, and the name does not point to a created annotation')
+      # If a resource is not defined, then the filter must point to a private annotation created in this execution of Calypso
+      elif annotationName:
+        annotationFilter.pop('name')
+
+        # If the annotation is listed as optional and the name doesn't point to a created annotation
+        # delete this annotation from the filter. This could be, for example, a filter on genotype
+        # quality for the mother, but the mother isn't present in the project
+        isOptional = annotationFilter.pop('optional') if 'optional' in annotationFilter else False
+
+        # Check if the annotation has been created in this execution of Calypso
+        foundMatch = False
+        for annotation in privateAnnotations:
+          if privateAnnotations[annotation]['name'] == annotationName:
+            annotationFilter['uid'] = annotation
+            foundMatch = True
+            break
+
+        # If no annotation with the required name was created and the annotation is optional, remove the annotation
+        if not foundMatch:
+          if isOptional: removeAnnotations.append(index)
+          else: fail('Annotation, ' + str(annotationName) + ', in ' + str(filename) + ' does not have a uid, and the name does not point to a created annotation')
+
+      # If the uid, private annotation name and resource are not supplied, fail
+      else: fail('Annotation filter with the name "' + str(filename) + '" includes an annotation with no uid, name, or resource supplied')
 
   # Remove any optional filters that did not have uids
   for index in reversed(removeAnnotations): data['filters']['annotation_filters'].pop(index)

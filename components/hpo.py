@@ -128,8 +128,8 @@ def parseVcf(args):
 
   # Write the header lines to the output files
   headerBase = 'CHROM\tSTART\tEND\tREF\tALT'
-  print(headerBase, args.terms_uid, args.labels_uid, sep = '\t', file = hpoPublic)
-  print(headerBase, args.overlaps_uid, sep = '\t', file = hpoPrivate)
+  print(headerBase, args.terms_uid, args.labels_uid, sep = '\t', file = hpoPrivate)
+  print(headerBase, args.overlaps_uid, sep = '\t', file = hpoPublic)
 
   # Read the standard input
   for line in os.popen(bcftools.query(args.input_vcf, ['BCSQ'])).readlines():
@@ -182,8 +182,8 @@ def parseVcf(args):
   
       # If there is an association with a patient HPO term, write out the tsv for upload to Mosaic
       if hasAssociation:
-        print(chrom, start, end, ref, alt, ','.join(associatedTerms), label, sep = '\t', file = hpoPublic)
-        print(chrom, start, end, ref, alt, noAssociatedTerms, sep = '\t', file = hpoPrivate)
+        print(chrom, start, end, ref, alt, ','.join(associatedTerms), label, sep = '\t', file = hpoPrivate)
+        print(chrom, start, end, ref, alt, noAssociatedTerms, sep = '\t', file = hpoPublic)
 
   # Close output files
   hpoPrivate.close()

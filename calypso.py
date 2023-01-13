@@ -139,7 +139,7 @@ def main():
   if 'remove' in mosaicInfo: mos.removeAnnotations(mosaicConfig, mosaicInfo['remove'], projectAnnotations, args.project_id, api_va)
   mos.importAnnotations(mosaicConfig, mosaicInfo['resources'], projectAnnotations, publicAnnotations, args.project_id, api_va)
   mos.defaultAnnotations(mosaicConfig, mosaicInfo['defaultAnnotations'], publicAnnotations, privateAnnotations, args.project_id, api_ps)
-  vfilt.variantFilters(mosaicConfig, rootPath, samples, privateAnnotations, args.project_id, api_vf)
+  vfilt.variantFilters(mosaicConfig, mosaicInfo, rootPath, samples, privateAnnotations, args.project_id, api_vf)
   mos.updateCalypsoAttributes(mosaicConfig, resourceInfo['version'], projectAttributes, publicAttributes, version, args.project_id, api_pa)
 
   # Generate scripts to upload filtered variants to Mosaic

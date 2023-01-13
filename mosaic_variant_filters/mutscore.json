@@ -1,0 +1,19 @@
+{
+	"name": "MutScore",
+	"genotypes": {
+		"ref_samples": false,
+		"alt_samples": ["proband"],
+		"het_samples": false,
+		"hom_samples": false
+	},
+	"filters": {
+		"annotation_filters": [
+			{
+				"uid": "mutscore_grch38_d287fd72",
+				"min": "0.75",
+				"value_type": "float",
+				"include_nulls": false
+			}
+		]
+	}
+}
