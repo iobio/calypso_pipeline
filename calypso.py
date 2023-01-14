@@ -100,12 +100,13 @@ def main():
 
   # Generate the bash script to run the annotation pipeline
   bashFilename, bashFile = bashScript.openBashScript(workingDir)
-  filteredVcf, rareVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, args.input_vcf, args.ped, tomlFilename)
+  filteredVcf, clinvarVcf, rareVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, args.input_vcf, args.ped, tomlFilename)
   bashScript.samplesFile(bashFile)
   bashScript.cleanedVcf(bashFile)
   bashScript.annotateVcf(bashFile, resourceInfo, args.family_type)
   bashScript.filterVariants(bashFile, proband, resourceInfo)
   bashScript.rareDiseaseVariants(bashFile)
+  bashScript.clinVarVariants(bashFile)
   bashScript.deleteFiles(bashFile)
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
@@ -143,7 +144,7 @@ def main():
   mos.updateCalypsoAttributes(mosaicConfig, resourceInfo['version'], projectAttributes, publicAttributes, version, args.project_id, api_pa)
 
   # Generate scripts to upload filtered variants to Mosaic
-  upload.uploadVariants(workingDir, args.utils_directory, args.config, args.project_id, filteredVcf, rareVcf)
+  upload.uploadVariants(workingDir, args.utils_directory, args.config, args.project_id, filteredVcf, clinvarVcf, rareVcf)
 
   # Output a summary file listing the actions undertaken by Calypso with all version histories
   res.calypsoSummary(workingDir, version, resourceInfo, args.reference)

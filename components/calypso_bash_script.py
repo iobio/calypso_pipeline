@@ -30,6 +30,7 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename):
   # Generate the names of the intermediate and final vcf files
   vcfBase     = workingDir + os.path.abspath(vcf).split('/')[-1].rstrip('vcf.gz')
   filteredVcf = str(vcfBase) + '_calypso_filtered.vcf.gz'
+  clinvarVcf  = str(vcfBase) + '_calypso_clinVar.vcf.gz'
   rareVcf     = str(vcfBase) + '_calypso_rare_disease.vcf.gz'
   print('CLEANVCF=' + str(vcfBase) + '_clean.vcf.gz', sep = '', file = bashFile)
   print('ANNOTATEDVCF=' + str(vcfBase) + '_annotated.vcf.gz', sep = '', file = bashFile)
@@ -38,6 +39,7 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename):
   print('COMPHETS=' + str(vcfBase) + '_comphets.vcf.gz', sep = '', file = bashFile)
   print('FINALVCF=' + str(vcfBase) + '_calypso.vcf.gz', sep = '', file = bashFile)
   print('FILTEREDVCF=' + str(filteredVcf), sep = '', file = bashFile)
+  print('CLINVARVCF=' + str(clinvarVcf), sep = '', file = bashFile)
   print('RAREDISEASEVCF=' + str(rareVcf), sep = '', file = bashFile)
   print('STDOUT=calypso_annotation_pipeline.stdout', file = bashFile)
   print('STDERR=calypso_annotation_pipeline.stderr', file = bashFile)
@@ -60,7 +62,7 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename):
   print(file = bashFile)
 
   # Return the name of the filtered vcf file
-  return filteredVcf, rareVcf
+  return filteredVcf, clinvarVcf, rareVcf
 
 # Generate a text file containing all the samples
 def samplesFile(bashFile):
@@ -226,6 +228,20 @@ def filterVariants(bashFile, proband, resourceInfo):
   print('  >> $STDOUT 2>> $STDERR', file = bashFile)
   print('echo "complete"', file = bashFile)
   print('bcftools index -t $FILTEREDVCF', file = bashFile)
+  print(file = bashFile)
+
+# Extract all variants that have "athogenic" in the ClinVar significance. This will extract all Pathogenic,
+# Likely_pathogenic, and Conflicting... variants
+def clinVarVariants(bashFile):
+  print('# Extract all variants with some pathogenic significance', file = bashFile)
+  print('echo -n "Generating clinVar variants file..."', file = bashFile)
+  print('bcftools view -O z \\', file = bashFile)
+  print('  -o $CLINVARVCF \\', file = bashFile)
+  print('  -i \'INFO/CLNSIG~"athogenic"\' \\', file = bashFile)
+  print('  $FINALVCF \\', file = bashFile)
+  print('  >> $STDOUT 2>> $STDERR', file = bashFile)
+  print('echo "complete"', file = bashFile)
+  print('bcftools index -t $CLINVARVCF', file = bashFile)
   print(file = bashFile)
 
 # Use Slivar to extract variants based on the Slivar rare disease wiki

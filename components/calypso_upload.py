@@ -7,7 +7,7 @@ import json
 import os
 
 # Output a script to upload variants to Mosaic
-def uploadVariants(workingDir, utils, configFile, projectId, filteredVcf, rareVcf):
+def uploadVariants(workingDir, utils, configFile, projectId, filteredVcf, clinvarVcf, rareVcf):
 
   # Open a script file
   uploadFileName = workingDir + 'calypso_upload_variants.sh'
@@ -21,6 +21,16 @@ def uploadVariants(workingDir, utils, configFile, projectId, filteredVcf, rareVc
   print('  -p ', str(projectId) + ' \\', sep = '', file = uploadFile)
   print('  -m "allele" \\', sep = '', file = uploadFile)
   print('  -i ', filteredVcf, sep = '', file = uploadFile)
+  print(file = uploadFile)
+
+  # Write the command to file to upload a variant set of the clinVar variants
+  print('# Upload ClinVar variants to Mosaic', file = uploadFile)
+  print('python ', utils, 'scripts/upload_variants.py \\', sep = '', file = uploadFile)
+  print('  -c ', configFile + ' \\', sep = '', file = uploadFile)
+  print('  -p ', str(projectId) + ' \\', sep = '', file = uploadFile)
+  print('  -m "allele" \\', sep = '', file = uploadFile)
+  print('  -n "ClinVar" \\', sep = '', file = uploadFile)
+  print('  -i ', clinvarVcf, sep = '', file = uploadFile)
   print(file = uploadFile)
 
   # Write the command to file to upload a variant set of the "rare disease" variants
