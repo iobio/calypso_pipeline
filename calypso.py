@@ -59,8 +59,10 @@ def main():
   import api_variant_filters as api_vf
 
   # Parse the Mosaic config file to get the token and url for the api calls
-  mosaicRequired = {"token": True, "url": True, "attributesProjectId": True}
-  mosaicConfig   = mosaic_config.parseConfig(args, mosaicRequired)
+  mosaicRequired = {'MOSAIC_TOKEN': {'value': args.token, 'desc': 'An access token', 'long': '--token', 'short': '-t'},
+                    'MOSAIC_URL': {'value': args.url, 'desc': 'The api url', 'long': '--url', 'short': '-u'},
+                    'MOSAIC_ATTRIBUTES_PROJECT_ID': {'value': args.attributes_project, 'desc': 'The public attribtes project id', 'long': '--attributes_project', 'short': '-a'}}
+  mosaicConfig = mosaic_config.parseConfig(args.config, mosaicRequired)
 
   # Determine the id of the proband, and the order of the samples in the vcf header
   proband, samples = sam.getProband(mosaicConfig, args.ped, args.family_type, args.project_id, api_s)
@@ -112,16 +114,19 @@ def main():
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
   print('# Generate tsv files to upload annotations to Mosaic', file = bashFile)
   uploadFilename, uploadFile = upload.openUploadAnnotationsFile(workingDir)
+
+  # Define the output VCF files whose annotations need uploading to Mosaic
+  annotateFiles = ['$FILTEREDVCF', '$CLINVARVCF']
+
+  # Loop over all the resources to be uploaded to Mosaic
   for resource in mosaicInfo['resources']:
-    if resource == 'hpo_public':
+    if resource == 'hpo':
 
       # Only proceed with HPO terms if an HPO term string has been provided
-      if args.hpo: tsv = anno.createHpoTsv(mosaicInfo['resources']['hpo_public'], mosaicInfo['resources']['hpo_private'], os.path.dirname(__file__) + '/components', args.config, args.hpo, args.project_id, resourceInfo['resources']['hpo']['file'], args.utils_directory, bashFile)
+      if args.hpo: tsvFiles = anno.createHpoTsv(mosaicInfo['resources']['hpo'], os.path.dirname(__file__) + '/components', args.config, args.hpo, args.project_id, resourceInfo['resources']['hpo']['file'], args.utils_directory, bashFile, annotateFiles)
 
-    # Ignore the hpo_private - all HPO annotations are handled in hpo_public
-    elif resource == 'hpo_private': tsv = 'hpo_private.tsv'
-    else: tsv = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', args.reference, args.config, args.mosaic_json, bashFile)
-    upload.uploadAnnotations(args.utils_directory, tsv, mosaicInfo['resources'][resource]['project_id'], args.config, uploadFile)
+    else: tsvFiles = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', args.reference, args.config, args.mosaic_json, bashFile, annotateFiles)
+    for tsv in tsvFiles: upload.uploadAnnotations(args.utils_directory, tsv, mosaicInfo['resources'][resource]['project_id'], args.config, uploadFile)
   upload.closeUploadAnnotationsFile(uploadFilename, uploadFile)
 
   # If this is a reannotation of the sample and there has been a change to ClinVar, perform a check for ClinVar significance

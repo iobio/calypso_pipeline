@@ -9,7 +9,7 @@
 	"filters": {
 		"annotation_filters": [
 			{
-				"uid": "hpo_overlaps_72bc74b3",
+				"name": "HPO Overlaps",
 				"min": "1",
 				"value_type": "float",
 				"include_nulls": false

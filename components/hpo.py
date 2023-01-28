@@ -30,8 +30,9 @@ def main():
   import api_samples as api_s
 
   # Parse the Mosaic config file to get the token and url for the api calls
-  mosaicRequired = {"token": True, "url": True, "attributesProjectId": False}
-  mosaicConfig   = mosaic_config.parseConfig(args, mosaicRequired)
+  mosaicRequired = {'MOSAIC_TOKEN': {'value': args.token, 'desc': 'An access token', 'long': '--token', 'short': '-t'},
+                    'MOSAIC_URL': {'value': args.url, 'desc': 'The api url', 'long': '--url', 'short': '-u'}}
+  mosaicConfig = mosaic_config.parseConfig(args.config, mosaicRequired)
 
   # Determine the family structure
   getProband(args, api_s)
@@ -53,7 +54,8 @@ def parseCommandLine():
 
   # Required arguments
   parser.add_argument('--input_vcf', '-i', required = True, metavar = 'string', help = 'The filtered Calypso vcf file')
-  parser.add_argument('--hpo', '-o', required = True, metavar = "string", help = "The gene:HPO associations file")
+  parser.add_argument('--output_tsv', '-o', required = True, metavar = 'string', help = 'The output tsv file')
+  parser.add_argument('--hpo', '-f', required = True, metavar = "string", help = "The gene:HPO associations file")
   parser.add_argument('--project_id', '-p', required = True, metavar = "string", help = "The project id that variants will be uploaded to")
   parser.add_argument('--hpo_terms', '-r', required = True, metavar = "string", help = "The HPO terms associated with the patient")
   parser.add_argument('--terms_uid', '-e', required = True, metavar = "string", help = "The uid for the HPO terms annotation")
@@ -123,13 +125,11 @@ def parseVcf(args):
   global samples
 
   # Open output files. There needs to be one for public and one for private annotations
-  hpoPublic  = open('hpo_public.tsv', 'w')
-  hpoPrivate = open('hpo_private.tsv', 'w')
+  hpoFile  = open(args.output_tsv, 'w')
 
   # Write the header lines to the output files
   headerBase = 'CHROM\tSTART\tEND\tREF\tALT'
-  print(headerBase, args.terms_uid, args.labels_uid, sep = '\t', file = hpoPrivate)
-  print(headerBase, args.overlaps_uid, sep = '\t', file = hpoPublic)
+  print(headerBase, args.terms_uid, args.labels_uid, args.overlaps_uid, sep = '\t', file = hpoFile)
 
   # Read the standard input
   for line in os.popen(bcftools.query(args.input_vcf, ['BCSQ'])).readlines():
@@ -181,13 +181,10 @@ def parseVcf(args):
       if len(label) > 255: label = label[0:252] + '...'
   
       # If there is an association with a patient HPO term, write out the tsv for upload to Mosaic
-      if hasAssociation:
-        print(chrom, start, end, ref, alt, ','.join(associatedTerms), label, sep = '\t', file = hpoPrivate)
-        print(chrom, start, end, ref, alt, noAssociatedTerms, sep = '\t', file = hpoPublic)
+      if hasAssociation: print(chrom, start, end, ref, alt, ','.join(associatedTerms), label, noAssociatedTerms, sep = '\t', file = hpoFile)
 
   # Close output files
-  hpoPrivate.close()
-  hpoPublic.close()
+  hpoFile.close()
 
 # If the script fails, provide an error message and exit
 def fail(message):
