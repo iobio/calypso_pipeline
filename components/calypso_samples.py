@@ -20,8 +20,7 @@ def getProband(mosaicConfig, ped, familyType, projectId, api_s):
 
   # If the API call returned an error, fail and print the error message
   if 'message' in data: fail('Failure in components/calypso_samples.py (2). Message: ' + data['message'])
-  else:
-    for sample in data: mosaicSamples[sample['name']] = sample['id']
+  for sample in data: mosaicSamples[sample['name']] = sample['id']
 
   # Get information on all the samples
   noAffected = 0

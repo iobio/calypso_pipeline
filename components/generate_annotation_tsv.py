@@ -355,6 +355,7 @@ def processClassClinvar(vcf, tags, outputFile):
   allowedClinVar['Uncertain_significance,_other']                = 'Uncertain_significance'
   allowedClinVar['Uncertain_significance,_association']          = 'Uncertain_significance'
   allowedClinVar['Uncertain_significance,_drug_response']        = 'Uncertain_significance'
+  allowedClinVar['Uncertain_significance,_Affects']              = 'Uncertain_significance'
   allowedClinVar['Uncertain_significance|risk_factor']           = 'Uncertain_significance'
   allowedClinVar['Uncertain_significance|association']           = 'Uncertain_significance'
   allowedClinVar['Uncertain_significance|other']                 = 'Uncertain_significance'
@@ -471,7 +472,7 @@ def fail(message):
 # Initialise global variables
 
 # Pipeline version
-version = "1.0.0"
+version = "0.0.1"
 
 # Define the allowed annotation classes
 allowedClasses = ['A', 'B', 'C', 'clinvar', 'compound', 'OMIM', 'spliceai']
