@@ -391,6 +391,7 @@ def processClassClinvar(vcf, tags, outputFile):
 
   allowedClinVar['Benign/Likely_benign,_risk_factor']        = 'Benign/Likely_benign'
   allowedClinVar['Benign/Likely_benign,_other']              = 'Benign/Likely_benign'
+  allowedClinVar['Benign/Likely_benign,_drug_response']      = 'Benign/Likely_benign'
   allowedClinVar['Benign/Likely_benign|other']               = 'Benign/Likely_benign'
   allowedClinVar['Benign/Likely_benign|risk_factor']         = 'Benign/Likely_benign'
   allowedClinVar['Benign/Likely_benign|other|risk_factor']   = 'Benign/Likely_benign'

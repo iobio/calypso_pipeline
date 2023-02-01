@@ -153,6 +153,7 @@ def main():
 
   # Output a summary file listing the actions undertaken by Calypso with all version histories
   res.calypsoSummary(workingDir, version, resourceInfo, args.reference)
+  print('Calypso pipeline version ', version, ' completed successfully', sep = '')
 
 # Input options
 def parseCommandLine():
