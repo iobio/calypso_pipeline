@@ -283,7 +283,10 @@ def deleteFiles(bashFile):
   print(file = bashFile)
 
 # Close the script and make it executable
-def finishScript(bashFile, bashFilename):
+def finishScript(bashFile, bashFilename, version):
+
+  # Print the pipeline completed successfully
+  print('echo "Calypso pipeline version ', version, ' completed successfully"', sep = '', file = bashFile)
 
   # Close the file
   bashFile.close()

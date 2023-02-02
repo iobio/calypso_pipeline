@@ -134,7 +134,7 @@ def main():
   if 'ClinVar' in updatedResources: rean.clinvarUpdates(cvDates, compDir, bashFile)
 
   # Close the bash script
-  bashScript.finishScript(bashFile, bashFilename)
+  bashScript.finishScript(bashFile, bashFilename, version)
 
   # Prepare the target project. This includes:
   # 1. Remove any unnecessary annotations from the project
