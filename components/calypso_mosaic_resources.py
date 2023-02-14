@@ -34,6 +34,10 @@ def readMosaicJson(mosaicFilename, reference):
   if 'remove' in mosaicData: mosaicInfo['remove'] = mosaicData['remove'] if 'remove' in mosaicData else []
   if 'default_annotations' in mosaicData: mosaicInfo['defaultAnnotations'] = mosaicData['default_annotations']
 
+  # Store the name of the json describing the variant filters to be applied
+  try: mosaicInfo['variantFilters'] = mosaicData['variant_filters']
+  except: fail('The Mosaic json does not include a json describing the variant filters to apply')
+
   # Loop over all the specified resources, and get all information required to pull the annotations
   # into Mosaic
   try: resources = mosaicData['resources']

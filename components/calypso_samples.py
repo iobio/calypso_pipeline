@@ -15,12 +15,7 @@ def getProband(mosaicConfig, ped, familyType, projectId, api_s):
 
   # Get the samples Mosaic id and store
   mosaicSamples = {}
-  try: data = json.loads(os.popen(api_s.getSamples(mosaicConfig, projectId)).read())
-  except: fail('Failed to read samples (components/calypso_samples.py)')
-
-  # If the API call returned an error, fail and print the error message
-  if 'message' in data: fail('Failure in components/calypso_samples.py (2). Message: ' + data['message'])
-  for sample in data: mosaicSamples[sample['name']] = sample['id']
+  mosaicSamples = api_s.getSampleNamesAndIds(mosaicConfig, projectId)
 
   # Get information on all the samples
   noAffected = 0

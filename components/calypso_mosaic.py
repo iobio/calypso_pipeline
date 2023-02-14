@@ -11,8 +11,7 @@ def getProjectAttributes(mosaicConfig, projectId, api_pa):
   projectAttributes = {}
 
   # Get the first page of attributes
-  try: data = json.loads(os.popen(api_pa.getProjectAttributes(mosaicConfig, projectId)).read())
-  except: fail('Couldn\'t get project attributes')
+  data = api_pa.getProjectAttributes(mosaicConfig, projectId)
   for attribute in data:
 
     # Get the value for this project
@@ -26,23 +25,9 @@ def getProjectAttributes(mosaicConfig, projectId, api_pa):
 
 # Get all of the public attributes that are available for import
 def getPublicProjectAttributes(mosaicConfig, api_pa):
-  limit = 100
-  page  = 1
   publicAttributes = {}
-
-  # Get the first page of attributes
-  try: data = json.loads(os.popen(api_pa.getPublicProjectAttributes(mosaicConfig, limit, page)).read())
-  except: fail('Couldn\'t get public attributes in the project')
-  for attribute in data['data']: publicAttributes[attribute['uid']] = {'name': attribute['name'], 'id': attribute['id']}
-
-  # Determine how many annotations there are and consequently how many pages of annotations
-  noPages = math.ceil(int(data['count']) / int(limit))
-
-  # Loop over remainig pages of annotations
-  for page in range(2, noPages + 1):
-    try: data = json.loads(os.popen(api_pa.getPublicProjectAttributes(mosaicConfig, limit, page)).read())
-    except: fail('Couldn\'t get public attributes in the project')
-    for attribute in data['data']: publicAttributes[attribute['uid']] = {'name': attribute['name'], 'id': attribute['id']}
+  data = api_pa.getPublicProjectAttributesNameIdUid(mosaicConfig)
+  for record in data: publicAttributes[record['uid']] = {'name': record['name'], 'id': record['id']}
 
   # Return the public project attributes
   return publicAttributes
@@ -58,23 +43,9 @@ def getPreviousResourceVersion(projectAttributes):
 
 # Get all available public annotations
 def getPublicAnnotations(mosaicConfig, projectId, api_va):
-  limit = 100
-  page  = 1
   publicAnnotations = {}
-
-  # Get all of the annotations that are available for import into the project
-  try: data = json.loads(os.popen(api_va.getVariantAnnotationsImport(mosaicConfig, projectId, limit, page)).read())
-  except: fail('Unable to find annotations available for import')
-  for annotation in data['data']: publicAnnotations[annotation['uid']] = {'name': annotation['name'], 'id': annotation['id']}
-
-  # Determine how many annotations there are and consequently how many pages of annotations
-  noPages = math.ceil(int(data['count']) / int(limit))
-
-  # Loop over remainig pages of annotations
-  for page in range(2, noPages + 1):
-    try: data = json.loads(os.popen(api_va.getVariantAnnotationsImport(mosaicConfig, projectId, limit, page)).read())
-    except: fail('Unable to find annotations available for import')
-    for annotation in data['data']: publicAnnotations[annotation['uid']] = {'name': annotation['name'], 'id': annotation['id']}
+  data = api_va.getVariantAnnotationsImportNameIdUid(mosaicConfig, projectId)
+  for annotation in data: publicAnnotations[annotation['uid']] = {'name': annotation['name'], 'id': annotation['id']}
 
   # Return the dictionary of available public annotations
   return publicAnnotations
@@ -125,7 +96,7 @@ def createPrivateAnnotations(mosaicConfig, resources, projectAnnotations, sample
             resources[resource]['annotations'][annotation] = {'uid': existingAnnotation, 'type': valueType, 'id': projectAnnotations[existingAnnotation]['id']}
             break
       else:
-        data = json.loads(os.popen(api_va.postCreateVariantAnnotations(mosaicConfig, annotation, valueType, 'private', projectId)).read())
+        data = api_va.createPrivateAnnotationIdUid(mosaicConfig, annotation, valueType, projectId)
         privateAnnotations[data['uid']] = {'name': annotation, 'id': data['id']}
         resources[resource]['annotations'][annotation] = {'uid': data['uid'], 'type': valueType, 'id': data['id']}
 
@@ -137,7 +108,7 @@ def getProjectAnnotations(mosaicConfig, projectId, api_va):
   projectAnnotations = {}
 
   # Get the annotations
-  data = json.loads(os.popen(api_va.getVariantAnnotations(mosaicConfig, projectId)).read())
+  data = api_va.getVariantAnnotationsNameIdUId(mosaicConfig, projectId)
   for annotation in data: projectAnnotations[annotation['uid']] = {'id': annotation['id'], 'name': annotation['name']}
 
   # Return a formatted dictionary of annotations
@@ -148,9 +119,7 @@ def removeAnnotations(mosaicConfig, uids, projectAnnotations, projectId, api_va)
 
   # Loop over the annotations to remove, get the annotation id, and remove them from the project
   for uid in uids:
-    if uid in projectAnnotations:
-      try: data = os.popen(api_va.deleteVariantAnnotation(mosaicConfig, projectId, projectAnnotations[uid]['id'])).read()
-      except: fail('Unable to remove annotation: ', uid)
+    if uid in projectAnnotations: data = api_va.deleteAnnotationById(mosaicConfig, projectId, projectAnnotations[uid]['id'])
 
 # Import a list of public annotations into a Mosaic project
 def importAnnotations(mosaicConfig, resources, projectAnnotations, publicAnnotations, projectId, api_va):
@@ -165,12 +134,7 @@ def importAnnotations(mosaicConfig, resources, projectAnnotations, publicAnnotat
         uid = resources[resource]['annotations'][annotation]['uid']
 
         # Check if the annotation is already in the target project
-        if uid not in projectAnnotations:
-          id = publicAnnotations[uid]['id']
-
-          # Get the id of the annotation
-          try: data = json.loads(os.popen(api_va.postImportVariantAnnotations(mosaicConfig, id, projectId)).read())
-          except: fail('Unable to import variant annotation: ' + uid)
+        if uid not in projectAnnotations: api_va.importAnnotation(mosaicConfig, publicAnnotations[uid]['id'], projectId)
 
 # Set the projects default annotations. The default annotations are what a new user will see in the table by default
 # and all users will have the option to reset the annotations table to show only the default annotations
@@ -193,8 +157,7 @@ def defaultAnnotations(mosaicConfig, defaultAnnotations, publicAnnotations, priv
       else: fail('Default annotation ' + str(annotation) + ' has not been imported or created in the project')
 
   # Set the default annoatations in the Mosaic project
-  try: data = os.popen(api_ps.putDefaultAnnotations(mosaicConfig, projectId, annotationIds)).read()
-  except: fail('Unable to set default variant annotations')
+  api_ps.setDefaultVariantAnnotations(mosaicConfig, projectId, annotationIds)
 
 # Add a variant filter to a Mosaic project
 def addVariantFilter(filepath, filename):
@@ -233,9 +196,7 @@ def updateCalypsoAttributes(mosaicConfig, resourceVersion, projectAttributes, pu
       # If this is the Calypso history attribute, prepend the current value to the existing value, otherwise overwrite
       # the value
       if str(attributeName) == str('Calypso history'): calypso[attributeName]['value'] = str(calypso['Calypso history']['value']) + ',' + str(attributeValue)
-
-      try: data = json.loads(os.popen(api_pa.putProjectAttribute(mosaicConfig, calypso[attributeName]['value'], projectId, calypso[attributeName]['id'])).read())
-      except: fail('Could not update Calypso attribute')
+      api_pa.updateProjectAttribute(mosaicConfig, projectId, calypso[attributeName]['id'], calypso[attributeName]['value'])
       calypso[attributeName]['inProject'] = True
   
   # Import all attributes that are not in the project
@@ -247,8 +208,7 @@ def updateCalypsoAttributes(mosaicConfig, resourceVersion, projectAttributes, pu
       for publicAttributeUid in publicAttributes:
         if str(attribute) == publicAttributes[publicAttributeUid]['name']:
           attributeId = publicAttributes[publicAttributeUid]['id']
-          try: data = json.loads(os.popen(api_pa.postImportProjectAttribute(mosaicConfig, attributeId, calypso[attribute]['value'], projectId)).read())
-          except: fail('Unable to import Calypso attributes')
+          api_pa.importProjectAttribute(mosaicConfig, projectId, attributeId, calypso[attribute]['value'])
           isImported = True
           break
 

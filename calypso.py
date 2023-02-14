@@ -57,12 +57,14 @@ def main():
   import api_variants as api_v
   import api_variant_annotations as api_va
   import api_variant_filters as api_vf
+  import add_variant_filters as pu_avf
 
   # Parse the Mosaic config file to get the token and url for the api calls
   mosaicRequired = {'MOSAIC_TOKEN': {'value': args.token, 'desc': 'An access token', 'long': '--token', 'short': '-t'},
                     'MOSAIC_URL': {'value': args.url, 'desc': 'The api url', 'long': '--url', 'short': '-u'},
                     'MOSAIC_ATTRIBUTES_PROJECT_ID': {'value': args.attributes_project, 'desc': 'The public attribtes project id', 'long': '--attributes_project', 'short': '-a'}}
-  mosaicConfig = mosaic_config.parseConfig(args.config, mosaicRequired)
+  mosaicConfig   = mosaic_config.mosaicConfigFile(args.config)
+  mosaicConfig   = mosaic_config.commandLineArguments(mosaicConfig, mosaicRequired)
 
   # Determine the id of the proband, and the order of the samples in the vcf header
   proband, samples = sam.getProband(mosaicConfig, args.ped, args.family_type, args.project_id, api_s)
@@ -74,19 +76,19 @@ def main():
 
   # Get the value for the Calypso resource version attribute. If Calypso has been run previously, this will indicate the last resources
   # that were used
-  updatedResources        = []
-  previousResourceVersion = mos.getPreviousResourceVersion(projectAttributes)
-  if previousResourceVersion and str(previousResourceVersion) != str(resourceInfo['version']):
-    previousResourceInfo = res.checkResources(args.reference, args.data_directory, args.data_directory + 'resources_archive/resources_GRCh' + str(args.reference) + '_v' + str(previousResourceVersion) + '.json')
-    previousResourceInfo = res.readResources(args.reference, previousResourceInfo)
-    updatedResources     = rean.compare(previousResourceInfo, resourceInfo)
-
-    # If Calypso was updated, see if the difference files for the original and updated ClinVar resources exist. If not, create them
-    if 'ClinVar' in updatedResources:
-      cvDir   = str(args.data_directory) + 'GRCh' + str(args.reference) + '/clinvar/'
-      cvDates = str(updatedResources['ClinVar']['previousVersion']) + '_' + str(updatedResources['ClinVar']['currentVersion'])
-      compDir = str(cvDir) + str(cvDates)
-      if not exists(compDir): cv.compare(compDir, previousResourceInfo['resources']['ClinVar']['file'], resourceInfo['resources']['ClinVar']['file'])
+  #updatedResources        = []
+  #previousResourceVersion = mos.getPreviousResourceVersion(projectAttributes)
+  #if previousResourceVersion and str(previousResourceVersion) != str(resourceInfo['version']):
+  #  previousResourceInfo = res.checkResources(args.reference, args.data_directory, args.data_directory + 'resources_archive/resources_GRCh' + str(args.reference) + '_v' + str(previousResourceVersion) + '.json')
+  #  previousResourceInfo = res.readResources(args.reference, previousResourceInfo)
+  #  updatedResources     = rean.compare(previousResourceInfo, resourceInfo)
+#
+#    # If Calypso was updated, see if the difference files for the original and updated ClinVar resources exist. If not, create them
+#    if 'ClinVar' in updatedResources:
+#      cvDir   = str(args.data_directory) + 'GRCh' + str(args.reference) + '/clinvar/'
+#      cvDates = str(updatedResources['ClinVar']['previousVersion']) + '_' + str(updatedResources['ClinVar']['currentVersion'])
+#      compDir = str(cvDir) + str(cvDates)
+#      if not exists(compDir): cv.compare(compDir, previousResourceInfo['resources']['ClinVar']['file'], resourceInfo['resources']['ClinVar']['file'])
 
   # Read the Mosaic json and validate its contents
   if not args.mosaic_json: args.mosaic_json = args.data_directory + 'resources_mosaic_GRCh' + args.reference + '.json'
@@ -131,7 +133,7 @@ def main():
 
   # If this is a reannotation of the sample and there has been a change to ClinVar, perform a check for ClinVar significance
   # changes based on the difference files.
-  if 'ClinVar' in updatedResources: rean.clinvarUpdates(cvDates, compDir, bashFile)
+  #if 'ClinVar' in updatedResources: rean.clinvarUpdates(cvDates, compDir, bashFile)
 
   # Close the bash script
   bashScript.finishScript(bashFile, bashFilename, version)
@@ -145,7 +147,14 @@ def main():
   if 'remove' in mosaicInfo: mos.removeAnnotations(mosaicConfig, mosaicInfo['remove'], projectAnnotations, args.project_id, api_va)
   mos.importAnnotations(mosaicConfig, mosaicInfo['resources'], projectAnnotations, publicAnnotations, args.project_id, api_va)
   mos.defaultAnnotations(mosaicConfig, mosaicInfo['defaultAnnotations'], publicAnnotations, privateAnnotations, args.project_id, api_ps)
-  vfilt.variantFilters(mosaicConfig, mosaicInfo, rootPath, samples, privateAnnotations, args.project_id, api_vf)
+
+############
+############
+############ SORT OUT NEW VARIANT FILTERS
+############
+############
+  #pu_avf.addVariantFilters(mosaicConfig, args.filter_json, args.project_id, sampleIds, uids)
+  #vfilt.variantFilters(mosaicConfig, mosaicInfo, rootPath, samples, privateAnnotations, args.project_id, api_vf)
   mos.updateCalypsoAttributes(mosaicConfig, resourceInfo['version'], projectAttributes, publicAttributes, version, args.project_id, api_pa)
 
   # Generate scripts to upload filtered variants to Mosaic
