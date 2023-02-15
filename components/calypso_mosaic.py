@@ -108,8 +108,8 @@ def getProjectAnnotations(mosaicConfig, projectId, api_va):
   projectAnnotations = {}
 
   # Get the annotations
-  data = api_va.getVariantAnnotationsNameIdUId(mosaicConfig, projectId)
-  for annotation in data: projectAnnotations[annotation['uid']] = {'id': annotation['id'], 'name': annotation['name']}
+  data = api_va.getVariantAnnotationsNameIdUIdType(mosaicConfig, projectId)
+  for annotation in data: projectAnnotations[annotation['uid']] = {'id': annotation['id'], 'name': annotation['name'], 'type': annotation['type']}
 
   # Return a formatted dictionary of annotations
   return projectAnnotations

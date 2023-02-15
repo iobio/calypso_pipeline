@@ -86,7 +86,7 @@ def getProband(args, api_s):
 
   # Get the samples Mosaic id and store
   samples = {}
-  for sample in json.loads(os.popen(api_s.getSamples(mosaicConfig, args.project_id)).read()): samples[sample['name']] = sample['id']
+  for sample in api_s.getSampleIds(mosaicConfig, args.project_id): samples[sample['name']] = sample['id']
 
 # Get HPO / gene associations
 def parseHpoGene(args):

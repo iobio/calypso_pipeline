@@ -74,6 +74,11 @@ def main():
   projectAttributes = mos.getProjectAttributes(mosaicConfig, args.project_id, api_pa)
   publicAttributes  = mos.getPublicProjectAttributes(mosaicConfig, api_pa)
 
+##############
+##############
+############## Move reanalysis to its own script
+##############
+##############
   # Get the value for the Calypso resource version attribute. If Calypso has been run previously, this will indicate the last resources
   # that were used
   #updatedResources        = []
@@ -153,7 +158,17 @@ def main():
 ############ SORT OUT NEW VARIANT FILTERS
 ############
 ############
-  #pu_avf.addVariantFilters(mosaicConfig, args.filter_json, args.project_id, sampleIds, uids)
+  # The variant filters are constructed from json templates. The routine that processes these templates requires
+  # a translation from terms e.g. proband, mother to the sample ids for the project being executed. Create this
+  # map prior to executing the filters
+  sampleMap = {}
+  for sample in samples: sampleMap[samples[sample]['relationship'].lower()] = samples[sample]['mosaicId']
+
+  # We also need an annotation map that links the current version of ClinVar to a uid for the filter
+  annotationMap = {}
+  annotationMap['clinvar_latest'] = mosaicInfo['resources']['clinVar']['annotations']['CLNSIG']['uid']
+  pu_avf.addVariantFilters(mosaicConfig, str(args.data_directory) + str(mosaicInfo['variantFilters']), args.project_id, list(samples.keys()), projectAnnotations, sampleMap, annotationMap)
+  exit(0)
   #vfilt.variantFilters(mosaicConfig, mosaicInfo, rootPath, samples, privateAnnotations, args.project_id, api_vf)
   mos.updateCalypsoAttributes(mosaicConfig, resourceInfo['version'], projectAttributes, publicAttributes, version, args.project_id, api_pa)
 
