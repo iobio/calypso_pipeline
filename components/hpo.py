@@ -32,7 +32,8 @@ def main():
   # Parse the Mosaic config file to get the token and url for the api calls
   mosaicRequired = {'MOSAIC_TOKEN': {'value': args.token, 'desc': 'An access token', 'long': '--token', 'short': '-t'},
                     'MOSAIC_URL': {'value': args.url, 'desc': 'The api url', 'long': '--url', 'short': '-u'}}
-  mosaicConfig = mosaic_config.parseConfig(args.config, mosaicRequired)
+  mosaicConfig   = mosaic_config.mosaicConfigFile(args.config)
+  mosaicConfig   = mosaic_config.commandLineArguments(mosaicConfig, mosaicRequired)
 
   # Determine the family structure
   getProband(args, api_s)
@@ -86,7 +87,7 @@ def getProband(args, api_s):
 
   # Get the samples Mosaic id and store
   samples = {}
-  for sample in api_s.getSampleIds(mosaicConfig, args.project_id): samples[sample['name']] = sample['id']
+  for sample in api_s.getSampleNameId(mosaicConfig, args.project_id): samples[sample['name']] = sample['id']
 
 # Get HPO / gene associations
 def parseHpoGene(args):

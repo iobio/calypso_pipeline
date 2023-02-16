@@ -168,7 +168,6 @@ def main():
   annotationMap = {}
   annotationMap['clinvar_latest'] = mosaicInfo['resources']['clinVar']['annotations']['CLNSIG']['uid']
   pu_avf.addVariantFilters(mosaicConfig, str(args.data_directory) + str(mosaicInfo['variantFilters']), args.project_id, list(samples.keys()), projectAnnotations, sampleMap, annotationMap)
-  exit(0)
   #vfilt.variantFilters(mosaicConfig, mosaicInfo, rootPath, samples, privateAnnotations, args.project_id, api_vf)
   mos.updateCalypsoAttributes(mosaicConfig, resourceInfo['version'], projectAttributes, publicAttributes, version, args.project_id, api_pa)
 
