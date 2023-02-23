@@ -54,6 +54,7 @@ def main():
   import api_project_attributes as api_pa
   import api_project_settings as api_ps
   import api_samples as api_s
+  import api_sample_hpo_terms as api_shpo
   import api_variants as api_v
   import api_variant_annotations as api_va
   import api_variant_filters as api_vf
@@ -69,6 +70,12 @@ def main():
   # Determine the id of the proband, and the order of the samples in the vcf header
   proband, samples = sam.getProband(mosaicConfig, args.ped, args.family_type, args.project_id, api_s)
   sam.getSampleOrder(samples, args.input_vcf)
+
+  # If the HPO terms are not specified on the command line, grab them from the project. If they are specified on the command
+  # line, use these
+  if not args.hpo:
+    hpoTerms = api_shpo.getSampleHpoList(mosaicConfig, args.project_id, samples[proband]['mosaicId'])
+    args.hpo = ','.join(hpoTerms)
 
   # Get all the project attributes in the target Mosaic project
   projectAttributes = mos.getProjectAttributes(mosaicConfig, args.project_id, api_pa)
