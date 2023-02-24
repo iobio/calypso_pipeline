@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 from __future__ import print_function
 
 import os
@@ -48,6 +46,7 @@ def main():
   import api_project_attributes as api_pa
   import api_project_settings as api_ps
   import api_samples as api_s
+  import api_sample_files as api_sf
   import api_sample_hpo_terms as api_shpo
   import api_variants as api_v
   import api_variant_annotations as api_va
@@ -71,8 +70,16 @@ def main():
   rootPath = os.path.dirname( __file__)
   setWorkingDir(resourceInfo['version'])
 
-  # Determine the id of the proband, and the order of the samples in the vcf header
+  # Determine the id of the proband, and the family structure
   proband, samples, familyType = sam.getProband(mosaicConfig, args.ped, args.project_id, api_s, api_ped)
+
+  # Get the vcf file from Mosaic, if it can be determined
+  if not args.input_vcf:
+    vcfFiles = api_sf.getSampleVcfs(mosaicConfig, args.project_id, samples[proband]['mosaicId'])
+    if len(vcfFiles) == 1: args.input_vcf = vcfFiles[list(vcfFiles.keys())[0]]['uri'][7:]
+    else: fail('Mosaic has no, or multiple vcf files associated with it, so the file to use cannot be determined')
+
+  # Determine the order of the samples in the vcf header
   sam.getSampleOrder(samples, args.input_vcf)
 
   # If the HPO terms are not specified on the command line, grab them from the project. If they are specified on the command
@@ -199,7 +206,7 @@ def parseCommandLine():
   #parser.add_argument('--family_type', '-f', required = True, metavar = 'string', help = 'The familty structure. Allowed values: ' + ', '. join(allowedFamily))
   parser.add_argument('--data_directory', '-d', required = True, metavar = 'string', help = 'The path to the directory where the resources live')
   parser.add_argument('--utils_directory', '-l', required = True, metavar = 'string', help = 'The path to the public-utils directory')
-  parser.add_argument('--input_vcf', '-i', required = True, metavar = 'string', help = 'The input vcf file to annotate')
+  parser.add_argument('--input_vcf', '-i', required = False, metavar = 'string', help = 'The input vcf file to annotate')
   parser.add_argument('--ped', '-e', required = False, metavar = 'string', help = 'The pedigree file for the family. Not required for singletons')
   parser.add_argument('--project_id', '-p', required = True, metavar = 'string', help = 'The project id that variants will be uploaded to')
   parser.add_argument('--config', '-c', required = True, metavar = "string", help = "The config file for Mosaic")
@@ -234,10 +241,6 @@ def checkArguments(args):
   # Check that the public-utils directory exists and add to the path so scripts from here can be used
   if args.utils_directory[-1] != "/": args.utils_directory += "/"
   if not os.path.exists(args.utils_directory): fail('public-utils directory could not be found')
-
-  # Check that the input files exist and have the correct extensions
-  if not exists(args.input_vcf): fail('The vcf file could not be found')
-  elif not args.input_vcf.endswith('.vcf.gz'): fail('The input vcf file (--vcf, -v) must be a compressed, indexed vcf and have the extension ".vcf.gz"')
 
 # Create a directory where all Calypso associated files will be stored
 def setWorkingDir(version):
