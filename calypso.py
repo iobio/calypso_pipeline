@@ -42,15 +42,9 @@ def main():
   checkArguments(args)
   sys.path = cpath.buildPath(sys.path, args.utils_directory)
 
-  # Read the resources json file to identify all the resources that will be used in the annotation pipeline
-  if args.resource_json: resourceInfo = res.checkResources(args.reference, args.data_directory, args.resource_json)
-  else: resourceInfo = res.checkResources(args.reference, args.data_directory, args.data_directory + 'resources_GRCh' + str(args.reference) + '.json')
-  resourceInfo = res.readResources(args.reference, resourceInfo)
-  rootPath = os.path.dirname( __file__)
-  setWorkingDir(resourceInfo['version'])
-
   # Import additional tools
   import mosaic_config
+  import api_pedigree as api_ped
   import api_project_attributes as api_pa
   import api_project_settings as api_ps
   import api_samples as api_s
@@ -67,8 +61,18 @@ def main():
   mosaicConfig   = mosaic_config.mosaicConfigFile(args.config)
   mosaicConfig   = mosaic_config.commandLineArguments(mosaicConfig, mosaicRequired)
 
+  # Get the project reference
+  reference = api_ps.getProjectReference(mosaicConfig, args.project_id)
+
+  # Read the resources json file to identify all the resources that will be used in the annotation pipeline
+  if args.resource_json: resourceInfo = res.checkResources(reference, args.data_directory, args.resource_json)
+  else: resourceInfo = res.checkResources(reference, args.data_directory, args.data_directory + 'resources_' + str(reference) + '.json')
+  resourceInfo = res.readResources(reference, resourceInfo)
+  rootPath = os.path.dirname( __file__)
+  setWorkingDir(resourceInfo['version'])
+
   # Determine the id of the proband, and the order of the samples in the vcf header
-  proband, samples = sam.getProband(mosaicConfig, args.ped, args.family_type, args.project_id, api_s)
+  proband, samples, familyType = sam.getProband(mosaicConfig, args.ped, args.project_id, api_s, api_ped)
   sam.getSampleOrder(samples, args.input_vcf)
 
   # If the HPO terms are not specified on the command line, grab them from the project. If they are specified on the command
@@ -91,20 +95,20 @@ def main():
   #updatedResources        = []
   #previousResourceVersion = mos.getPreviousResourceVersion(projectAttributes)
   #if previousResourceVersion and str(previousResourceVersion) != str(resourceInfo['version']):
-  #  previousResourceInfo = res.checkResources(args.reference, args.data_directory, args.data_directory + 'resources_archive/resources_GRCh' + str(args.reference) + '_v' + str(previousResourceVersion) + '.json')
+  #  previousResourceInfo = res.checkResources(args.reference, args.data_directory, args.data_directory + 'resources_archive/resources_' + str(args.reference) + '_v' + str(previousResourceVersion) + '.json')
   #  previousResourceInfo = res.readResources(args.reference, previousResourceInfo)
   #  updatedResources     = rean.compare(previousResourceInfo, resourceInfo)
 #
 #    # If Calypso was updated, see if the difference files for the original and updated ClinVar resources exist. If not, create them
 #    if 'ClinVar' in updatedResources:
-#      cvDir   = str(args.data_directory) + 'GRCh' + str(args.reference) + '/clinvar/'
+#      cvDir   = str(args.data_directory) + str(args.reference) + '/clinvar/'
 #      cvDates = str(updatedResources['ClinVar']['previousVersion']) + '_' + str(updatedResources['ClinVar']['currentVersion'])
 #      compDir = str(cvDir) + str(cvDates)
 #      if not exists(compDir): cv.compare(compDir, previousResourceInfo['resources']['ClinVar']['file'], resourceInfo['resources']['ClinVar']['file'])
 
   # Read the Mosaic json and validate its contents
-  if not args.mosaic_json: args.mosaic_json = args.data_directory + 'resources_mosaic_GRCh' + args.reference + '.json'
-  mosaicInfo         = mosr.readMosaicJson(args.mosaic_json, args.reference)
+  if not args.mosaic_json: args.mosaic_json = args.data_directory + 'resources_mosaic_' + reference + '.json'
+  mosaicInfo         = mosr.readMosaicJson(args.mosaic_json, reference)
   projectAnnotations = mos.getProjectAnnotations(mosaicConfig, args.project_id, api_va)
   publicAnnotations  = mos.getPublicAnnotations(mosaicConfig, args.project_id, api_va)
   privateAnnotations = mos.createPrivateAnnotations(mosaicConfig, mosaicInfo['resources'], projectAnnotations, samples, args.project_id, api_va)
@@ -119,7 +123,7 @@ def main():
   filteredVcf, clinvarVcf, rareVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, args.input_vcf, args.ped, tomlFilename)
   bashScript.samplesFile(bashFile)
   bashScript.cleanedVcf(bashFile)
-  bashScript.annotateVcf(bashFile, resourceInfo, args.family_type)
+  bashScript.annotateVcf(bashFile, resourceInfo, familyType)
   bashScript.filterVariants(bashFile, proband, resourceInfo)
   bashScript.rareDiseaseVariants(bashFile)
   bashScript.clinVarVariants(bashFile)
@@ -139,7 +143,7 @@ def main():
       # Only proceed with HPO terms if an HPO term string has been provided
       if args.hpo: tsvFiles = anno.createHpoTsv(mosaicInfo['resources']['hpo'], os.path.dirname(__file__) + '/components', args.config, args.hpo, args.project_id, resourceInfo['resources']['hpo']['file'], args.utils_directory, bashFile, annotateFiles)
 
-    else: tsvFiles = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', args.reference, args.config, args.mosaic_json, bashFile, annotateFiles)
+    else: tsvFiles = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', reference, args.config, args.mosaic_json, bashFile, annotateFiles)
     for tsv in tsvFiles: upload.uploadAnnotations(args.utils_directory, tsv, mosaicInfo['resources'][resource]['project_id'], args.config, uploadFile)
   upload.closeUploadAnnotationsFile(uploadFilename, uploadFile)
 
@@ -182,22 +186,21 @@ def main():
   upload.uploadVariants(workingDir, args.utils_directory, args.config, args.project_id, filteredVcf, clinvarVcf, rareVcf)
 
   # Output a summary file listing the actions undertaken by Calypso with all version histories
-  res.calypsoSummary(workingDir, version, resourceInfo, args.reference)
+  res.calypsoSummary(workingDir, version, resourceInfo, reference)
   print('Calypso pipeline version ', version, ' completed successfully', sep = '')
 
 # Input options
 def parseCommandLine():
   global version
-  global allowedReferences
   parser = argparse.ArgumentParser(description='Process the command line')
 
   # Required arguments
-  parser.add_argument('--reference', '-r', required = True, metavar = 'string', help = 'The reference genome to use. Allowed values: ' + ', '.join(allowedReferences))
-  parser.add_argument('--family_type', '-f', required = True, metavar = 'string', help = 'The familty structure. Allowed values: ' + ', '. join(allowedFamily))
+  #parser.add_argument('--reference', '-r', required = True, metavar = 'string', help = 'The reference genome to use. Allowed values: ' + ', '.join(allowedReferences))
+  #parser.add_argument('--family_type', '-f', required = True, metavar = 'string', help = 'The familty structure. Allowed values: ' + ', '. join(allowedFamily))
   parser.add_argument('--data_directory', '-d', required = True, metavar = 'string', help = 'The path to the directory where the resources live')
   parser.add_argument('--utils_directory', '-l', required = True, metavar = 'string', help = 'The path to the public-utils directory')
   parser.add_argument('--input_vcf', '-i', required = True, metavar = 'string', help = 'The input vcf file to annotate')
-  parser.add_argument('--ped', '-e', required = True, metavar = 'string', help = 'The pedigree file for the family. Not required for singletons')
+  parser.add_argument('--ped', '-e', required = False, metavar = 'string', help = 'The pedigree file for the family. Not required for singletons')
   parser.add_argument('--project_id', '-p', required = True, metavar = 'string', help = 'The project id that variants will be uploaded to')
   parser.add_argument('--config', '-c', required = True, metavar = "string", help = "The config file for Mosaic")
 
@@ -224,14 +227,6 @@ def parseCommandLine():
 
 # Check the supplied arguments
 def checkArguments(args):
-  global allowedReferences
-  global allowedFamily
-
-  # Check the reference is allowed
-  if args.reference not in allowedReferences:
-    message = 'The allowed references (--reference, -r) are:'
-    for ref in allowedReferences: message += '\n  ' + str(ref)
-    fail(message)
 
   # Ensure the data path ends with a "/", then add the reference directory
   if args.data_directory[-1] != "/": args.data_directory += "/"
@@ -240,16 +235,9 @@ def checkArguments(args):
   if args.utils_directory[-1] != "/": args.utils_directory += "/"
   if not os.path.exists(args.utils_directory): fail('public-utils directory could not be found')
 
-  # Check the family type is allowed
-  if args.family_type not in allowedFamily: fail('The allowed family types (--family-type, -f) are: ' + ', '.join(allowedFamily))
-
   # Check that the input files exist and have the correct extensions
   if not exists(args.input_vcf): fail('The vcf file could not be found')
   elif not args.input_vcf.endswith('.vcf.gz'): fail('The input vcf file (--vcf, -v) must be a compressed, indexed vcf and have the extension ".vcf.gz"')
-  if args.family_type != 'singleton':
-    if not args.ped: fail('A ped file needs to specified (--ped, -e) for family type "' + str(args.family_type) + '"')
-    if not exists(args.ped): fail('The ped file could not be found')
-    elif not args.ped.endswith('.ped'): fail('The input ped file (--ped, -p) must have the extension ".ped"')
 
 # Create a directory where all Calypso associated files will be stored
 def setWorkingDir(version):
@@ -273,10 +261,6 @@ date    = str(date.today())
 
 # The working directory where all created files are kept
 workingDir = os.getcwd() + "/calypso_v" + version + "r"
-
-## Store info on allowed values
-allowedFamily     = ['singleton', 'duo', 'trio', 'quad', 'quintet']
-allowedReferences = ['37', '38']
 
 # Store information related to Mosaic
 mosaicConfig = {}

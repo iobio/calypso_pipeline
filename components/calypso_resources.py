@@ -15,7 +15,7 @@ import importlib
 # Check the supplied arguments
 def checkResources(reference, dataDir, resourceFilename):
   resourceInfo = {}
-  resourceInfo['path']   = dataDir + "GRCh" + str(reference) + "/"
+  resourceInfo['path']   = dataDir + str(reference) + '/'
   if not exists(resourceFilename): fail('The resource file "' + resourceFilename + '" does not exist')
   resourceInfo['json']   = resourceFilename
 
