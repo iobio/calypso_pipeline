@@ -219,7 +219,7 @@ def filterVariants(bashFile, proband, resourceInfo):
   print('    --fasta $REF \\', file = bashFile)
   print('    --dir_cache ', resourceInfo['resources']['vep']['cache'], ' \\', sep = '', file = bashFile)
   print('    --dir_plugins ', resourceInfo['resources']['vep']['plugins'], ' \\', sep = '', file = bashFile)
-  print('    --assembly GRCh', resourceInfo['reference'], '\\', sep = '', file = bashFile)
+  print('    --assembly ', resourceInfo['reference'], '\\', sep = '', file = bashFile)
   print('    --hgvs \\', file = bashFile)
   print('    --fields "SYMBOL,Feature,IMPACT,Consequence,HGVSc,HGVSp" \\', file = bashFile)
   print('    --output_file STDOUT \\', file = bashFile)
@@ -268,7 +268,7 @@ def rareDiseaseVariants(bashFile):
   print(file = bashFile)
 
 # Delete files no longer required
-def deleteFiles(bashFile):
+def deleteFiles(args, bashFile, deletePed):
   print('# Delete files no longer required', file = bashFile)
   print('echo -n "Deleting files..."', file = bashFile)
   print('rm -f $CLEANVCF', file = bashFile)
@@ -279,6 +279,7 @@ def deleteFiles(bashFile):
   print('rm -f $COMPHETS.tbi', file = bashFile)
   print('rm -f samples.txt', file = bashFile)
   print('rm -f proband.txt', file = bashFile)
+  if deletePed: print('rm -f ', args.ped, sep = '', file = bashFile)
   print('echo "complete"', file = bashFile)
   print(file = bashFile)
 

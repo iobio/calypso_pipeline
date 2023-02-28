@@ -29,7 +29,7 @@ def readResources(reference, resourceInfo):
   try: resourceFile = open(resourceInfo['json'], 'r')
   except: fail('The file describing the resource files (' + str(resourceInfo['json']) + ') could not be found')
 
-#  # Extract the json information
+  # Extract the json information
   try: resourceData = json.loads(resourceFile.read())
   except: fail('The json file (' + str(resourceFilename) + ') is not valid')
 

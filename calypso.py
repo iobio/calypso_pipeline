@@ -32,6 +32,9 @@ def main():
   global workingDir
   global version
 
+  print()
+  print('Starting the Calypso pipeline')
+
   # Parse the command line
   args = parseCommandLine()
 
@@ -62,6 +65,7 @@ def main():
 
   # Get the project reference
   reference = api_ps.getProjectReference(mosaicConfig, args.project_id)
+  print('  Using the reference:                  ', reference, sep = '')
 
   # Read the resources json file to identify all the resources that will be used in the annotation pipeline
   if args.resource_json: resourceInfo = res.checkResources(reference, args.data_directory, args.resource_json)
@@ -71,13 +75,16 @@ def main():
   setWorkingDir(resourceInfo['version'])
 
   # Determine the id of the proband, and the family structure
-  proband, samples, familyType = sam.getProband(mosaicConfig, args.ped, args.project_id, api_s, api_ped)
+  args, proband, samples, familyType, deletePed = sam.getProband(mosaicConfig, args, workingDir, api_s, api_ped)
+  print('  Performing analysis on a family type: ', familyType, sep = '')
+  print('  Proband has the name:                 ', proband, sep = '')
 
   # Get the vcf file from Mosaic, if it can be determined
   if not args.input_vcf:
     vcfFiles = api_sf.getSampleVcfs(mosaicConfig, args.project_id, samples[proband]['mosaicId'])
-    if len(vcfFiles) == 1: args.input_vcf = vcfFiles[list(vcfFiles.keys())[0]]['uri'][7:]
+    if len(vcfFiles) == 1: args.input_vcf = vcfFiles[list(vcfFiles.keys())[0]]['uri'][6:]
     else: fail('Mosaic has no, or multiple vcf files associated with it, so the file to use cannot be determined')
+  print('  Using the vcf file:                   ', args.input_vcf, sep = '')
 
   # Determine the order of the samples in the vcf header
   sam.getSampleOrder(samples, args.input_vcf)
@@ -87,6 +94,7 @@ def main():
   if not args.hpo:
     hpoTerms = api_shpo.getSampleHpoList(mosaicConfig, args.project_id, samples[proband]['mosaicId'])
     args.hpo = ','.join(hpoTerms)
+  print('  Using the HPO terms:                  ', args.hpo, sep = '')
 
   # Get all the project attributes in the target Mosaic project
   projectAttributes = mos.getProjectAttributes(mosaicConfig, args.project_id, api_pa)
@@ -134,7 +142,7 @@ def main():
   bashScript.filterVariants(bashFile, proband, resourceInfo)
   bashScript.rareDiseaseVariants(bashFile)
   bashScript.clinVarVariants(bashFile)
-  bashScript.deleteFiles(bashFile)
+  bashScript.deleteFiles(args, bashFile, deletePed)
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
   print('# Generate tsv files to upload annotations to Mosaic', file = bashFile)

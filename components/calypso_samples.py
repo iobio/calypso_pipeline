@@ -1,25 +1,24 @@
-#!/usr/bin/python
-
 from __future__ import print_function
 
 import os
 import json
 
 # Determine the id of the proband
-def getProband(mosaicConfig, ped, projectId, api_s, api_ped):
+def getProband(mosaicConfig, args, workingDir, api_s, api_ped):
   samples         = {}
   mosaicSampleIds = {}
+  deletePed       = False
 
   # Get the samples Mosaic id and store
-  mosaicSamples = api_s.getSampleNamesAndIds(mosaicConfig, projectId)
+  mosaicSamples = api_s.getSampleNamesAndIds(mosaicConfig, args.project_id)
   for sample in mosaicSamples: mosaicSampleIds[mosaicSamples[sample]] = sample
 
   # If a ped file was supplied on the command line, use this instead of the Mosaic information
-  if ped: 
+  if args.ped: 
 
     # Open the ped file and get the samples
-    try: pedFile = open(ped, 'r')
-    except: fail('Couldn\'t open the ped file (' + ped + '). Components/calypso_samples.py (1).')
+    try: pedFile = open(args.ped, 'r')
+    except: fail('Couldn\'t open the ped file (' + args.ped + '). Components/calypso_samples.py (1).')
 
     # Loop over all lines in the ped file
     for line in pedFile:
@@ -57,7 +56,7 @@ def getProband(mosaicConfig, ped, projectId, api_s, api_ped):
   # If no ped was supplied on the command, get the pedigree information from Mosaic
   else:
     for sample in mosaicSamples:
-      for pedInfo in api_ped.getPedigree(mosaicConfig, projectId, mosaicSamples[sample]):
+      for pedInfo in api_ped.getPedigree(mosaicConfig, args.project_id, mosaicSamples[sample]):
         sampleName = pedInfo['name']
         sampleId   = pedInfo['id']
   
@@ -111,8 +110,28 @@ def getProband(mosaicConfig, ped, projectId, api_s, api_ped):
   # If there are more than 4 family members, additional logic needs to be added
   else: fail('Additional logic is required for families with more than 4 members')
 
+  # If no ped was provided, write out a temporary ped file as the bash script will need one
+  if not args.ped:
+    deletePed = True
+    args.ped  = str(workingDir) + 'temp.ped'
+    pedHandle = open(args.ped, 'w')
+    print('#Kindred_ID\tSample_ID\tPaternal_ID\tMaternal_ID\tSex\tAffection_Status', file = pedHandle)
+    for sample in mosaicSamples:
+  
+      # Define the sex and affectation_status
+      if samples[sample]['sex'] == 'male': sex = 1
+      elif samples[sample]['sex'] == 'female': sex = 2
+      else: sex = 0
+      if samples[sample]['isAffected']: affected = 2
+      else: affected = 1
+  
+      # Get the names of the mother and father
+      mother = samples[sample]['mother'] if samples[sample]['mother'] else 0
+      father = samples[sample]['father'] if samples[sample]['father'] else 0
+      print('Kindred', sample, father, mother, sex, affected, sep = '\t', file = pedHandle)
+
   # Return samples information
-  return proband, samples, familyType
+  return args, proband, samples, familyType, deletePed
 
 # Logic for determining structure of a singleton
 def singletonStructures(samples):
