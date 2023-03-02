@@ -113,7 +113,7 @@ def getProband(mosaicConfig, args, workingDir, api_s, api_ped):
   # If no ped was provided, write out a temporary ped file as the bash script will need one
   if not args.ped:
     deletePed = True
-    args.ped  = str(workingDir) + 'temp.ped'
+    args.ped  = str(workingDir) + 'calypso.ped'
     pedHandle = open(args.ped, 'w')
     print('#Kindred_ID\tSample_ID\tPaternal_ID\tMaternal_ID\tSex\tAffection_Status', file = pedHandle)
     for sample in mosaicSamples:
@@ -131,7 +131,7 @@ def getProband(mosaicConfig, args, workingDir, api_s, api_ped):
       print('Kindred', sample, father, mother, sex, affected, sep = '\t', file = pedHandle)
 
   # Return samples information
-  return args, proband, samples, familyType, deletePed
+  return args, proband, samples, familyType
 
 # Logic for determining structure of a singleton
 def singletonStructures(samples):

@@ -268,7 +268,7 @@ def rareDiseaseVariants(bashFile):
   print(file = bashFile)
 
 # Delete files no longer required
-def deleteFiles(args, bashFile, deletePed):
+def deleteFiles(args, bashFile):
   print('# Delete files no longer required', file = bashFile)
   print('echo -n "Deleting files..."', file = bashFile)
   print('rm -f $CLEANVCF', file = bashFile)
@@ -279,7 +279,6 @@ def deleteFiles(args, bashFile, deletePed):
   print('rm -f $COMPHETS.tbi', file = bashFile)
   print('rm -f samples.txt', file = bashFile)
   print('rm -f proband.txt', file = bashFile)
-  if deletePed: print('rm -f ', args.ped, sep = '', file = bashFile)
   print('echo "complete"', file = bashFile)
   print(file = bashFile)
 

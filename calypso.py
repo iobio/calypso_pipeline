@@ -31,6 +31,7 @@ def main():
   global mosaicConfig
   global workingDir
   global version
+  global allowedReferences
 
   print()
   print('Starting the Calypso pipeline')
@@ -64,7 +65,8 @@ def main():
   mosaicConfig   = mosaic_config.commandLineArguments(mosaicConfig, mosaicRequired)
 
   # Get the project reference
-  reference = api_ps.getProjectReference(mosaicConfig, args.project_id)
+  reference = api_ps.getProjectReference(mosaicConfig, args.project_id) if not args.reference else args.reference
+  if reference not in allowedReferences: fail('The specified reference (' + str(reference) + ') is not recognised. Allowed values are: ' + str(', '.join(allowedReferences)))
   print('  Using the reference:                  ', reference, sep = '')
 
   # Read the resources json file to identify all the resources that will be used in the annotation pipeline
@@ -75,7 +77,7 @@ def main():
   setWorkingDir(resourceInfo['version'])
 
   # Determine the id of the proband, and the family structure
-  args, proband, samples, familyType, deletePed = sam.getProband(mosaicConfig, args, workingDir, api_s, api_ped)
+  args, proband, samples, familyType = sam.getProband(mosaicConfig, args, workingDir, api_s, api_ped)
   print('  Performing analysis on a family type: ', familyType, sep = '')
   print('  Proband has the name:                 ', proband, sep = '')
 
@@ -100,27 +102,6 @@ def main():
   projectAttributes = mos.getProjectAttributes(mosaicConfig, args.project_id, api_pa)
   publicAttributes  = mos.getPublicProjectAttributes(mosaicConfig, api_pa)
 
-##############
-##############
-############## Move reanalysis to its own script
-##############
-##############
-  # Get the value for the Calypso resource version attribute. If Calypso has been run previously, this will indicate the last resources
-  # that were used
-  #updatedResources        = []
-  #previousResourceVersion = mos.getPreviousResourceVersion(projectAttributes)
-  #if previousResourceVersion and str(previousResourceVersion) != str(resourceInfo['version']):
-  #  previousResourceInfo = res.checkResources(args.reference, args.data_directory, args.data_directory + 'resources_archive/resources_' + str(args.reference) + '_v' + str(previousResourceVersion) + '.json')
-  #  previousResourceInfo = res.readResources(args.reference, previousResourceInfo)
-  #  updatedResources     = rean.compare(previousResourceInfo, resourceInfo)
-#
-#    # If Calypso was updated, see if the difference files for the original and updated ClinVar resources exist. If not, create them
-#    if 'ClinVar' in updatedResources:
-#      cvDir   = str(args.data_directory) + str(args.reference) + '/clinvar/'
-#      cvDates = str(updatedResources['ClinVar']['previousVersion']) + '_' + str(updatedResources['ClinVar']['currentVersion'])
-#      compDir = str(cvDir) + str(cvDates)
-#      if not exists(compDir): cv.compare(compDir, previousResourceInfo['resources']['ClinVar']['file'], resourceInfo['resources']['ClinVar']['file'])
-
   # Read the Mosaic json and validate its contents
   if not args.mosaic_json: args.mosaic_json = args.data_directory + 'resources_mosaic_' + reference + '.json'
   mosaicInfo         = mosr.readMosaicJson(args.mosaic_json, reference)
@@ -142,7 +123,7 @@ def main():
   bashScript.filterVariants(bashFile, proband, resourceInfo)
   bashScript.rareDiseaseVariants(bashFile)
   bashScript.clinVarVariants(bashFile)
-  bashScript.deleteFiles(args, bashFile, deletePed)
+  bashScript.deleteFiles(args, bashFile)
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
   print('# Generate tsv files to upload annotations to Mosaic', file = bashFile)
@@ -162,10 +143,6 @@ def main():
     for tsv in tsvFiles: upload.uploadAnnotations(args.utils_directory, tsv, mosaicInfo['resources'][resource]['project_id'], args.config, uploadFile)
   upload.closeUploadAnnotationsFile(uploadFilename, uploadFile)
 
-  # If this is a reannotation of the sample and there has been a change to ClinVar, perform a check for ClinVar significance
-  # changes based on the difference files.
-  #if 'ClinVar' in updatedResources: rean.clinvarUpdates(cvDates, compDir, bashFile)
-
   # Close the bash script
   bashScript.finishScript(bashFile, bashFilename, version)
 
@@ -179,22 +156,12 @@ def main():
   mos.importAnnotations(mosaicConfig, mosaicInfo['resources'], projectAnnotations, publicAnnotations, args.project_id, api_va)
   mos.defaultAnnotations(mosaicConfig, mosaicInfo['defaultAnnotations'], publicAnnotations, privateAnnotations, args.project_id, api_ps)
 
-############
-############
-############ SORT OUT NEW VARIANT FILTERS
-############
-############
-  # The variant filters are constructed from json templates. The routine that processes these templates requires
-  # a translation from terms e.g. proband, mother to the sample ids for the project being executed. Create this
-  # map prior to executing the filters
-  sampleMap = {}
-  for sample in samples: sampleMap[samples[sample]['relationship'].lower()] = samples[sample]['mosaicId']
+  # Determine all of the variant filters (from the calypso_mosaic_filters.json) that are to be added; remove any filters that already
+  # exist with the same name; fill out variant filter details not in the json (e.g. the uids of private annotations created by
+  # Calypso); create the filters; and finally update the project settings to put the filters in the correct category and sort order
+  vfilt.readRequiredFilters(mosaicConfig, mosaicInfo, args.data_directory, samples, projectAnnotations, args.project_id, api_ps, api_vf)
 
-  # We also need an annotation map that links the current version of ClinVar to a uid for the filter
-  annotationMap = {}
-  annotationMap['clinvar_latest'] = mosaicInfo['resources']['clinVar']['annotations']['CLNSIG']['uid']
-  pu_avf.addVariantFilters(mosaicConfig, str(args.data_directory) + str(mosaicInfo['variantFilters']), args.project_id, list(samples.keys()), projectAnnotations, sampleMap, annotationMap)
-  #vfilt.variantFilters(mosaicConfig, mosaicInfo, rootPath, samples, privateAnnotations, args.project_id, api_vf)
+  # Update Calypso attributes, e.g. the version that was run, the history of runs etc.
   mos.updateCalypsoAttributes(mosaicConfig, resourceInfo['version'], projectAttributes, publicAttributes, version, args.project_id, api_pa)
 
   # Generate scripts to upload filtered variants to Mosaic
@@ -210,7 +177,6 @@ def parseCommandLine():
   parser = argparse.ArgumentParser(description='Process the command line')
 
   # Required arguments
-  #parser.add_argument('--reference', '-r', required = True, metavar = 'string', help = 'The reference genome to use. Allowed values: ' + ', '.join(allowedReferences))
   #parser.add_argument('--family_type', '-f', required = True, metavar = 'string', help = 'The familty structure. Allowed values: ' + ', '. join(allowedFamily))
   parser.add_argument('--data_directory', '-d', required = True, metavar = 'string', help = 'The path to the directory where the resources live')
   parser.add_argument('--utils_directory', '-l', required = True, metavar = 'string', help = 'The path to the public-utils directory')
@@ -219,10 +185,8 @@ def parseCommandLine():
   parser.add_argument('--project_id', '-p', required = True, metavar = 'string', help = 'The project id that variants will be uploaded to')
   parser.add_argument('--config', '-c', required = True, metavar = "string", help = "The config file for Mosaic")
 
-  # Optional reanalysis arguments
-#  parser.add_argument('--previous_vcf', '-s', required = False, metavar = "string", help = "A previously annotated Calypso vcf file")
-
   # Optional pipeline arguments
+  parser.add_argument('--reference', '-r', required = False, metavar = 'string', help = 'The reference genome to use. Allowed values: ' + ', '.join(allowedReferences))
   parser.add_argument('--resource_json', '-j', required = False, metavar = 'string', help = 'The json file describing the annotation resources')
 #  parser.add_argument('--no_comp_het', '-n', required = False, action = "store_true", help = "If set, comp het determination will be skipped")
 
@@ -275,6 +239,9 @@ workingDir = os.getcwd() + "/calypso_v" + version + "r"
 
 # Store information related to Mosaic
 mosaicConfig = {}
+
+# Store the allowed references that can be specified on the command line
+allowedReferences = ['GRCh37', 'GRCh38']
 
 if __name__ == "__main__":
   main()
