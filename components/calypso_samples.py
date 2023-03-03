@@ -154,7 +154,6 @@ def singletonStructures(samples):
 
 # Logic for determining structure of a duo
 def duoStructures(samples):
-  fail('Duo structures need to be updated to check parental genders')
 
   # Loop over the 2 samples
   for i, sample in enumerate(samples):
@@ -227,11 +226,21 @@ def duoStructures(samples):
       else:
 
         # If the two samples share the same parents, they are either siblings, or, if neither has any parents listed,
-        # they could be 2 unrelated individuals. In this case, fail
+        # they could be 2 unrelated individuals. However, assume these are siblings in this case
         if mother == samples[sample]['mother'] and father == samples[sample]['father']:
 
-          # Potentially unrelated samples
-          if noParents == 0: fail('Pedigree contains 2 samples with no parents, so these could be unrelated samples')
+          # Case 1. Siblings
+          if noParents == 0:
+            if isAffected: 
+              samples[sample]['relationship'] = 'Sibling'
+              samples[name]['relationship']   = 'Proband'
+              proband                         = name
+              familyType                      = 'duo_sibling'
+            else:
+              samples[sample]['relationship'] = 'Proband'
+              samples[name]['relationship']   = 'Sibling'
+              proband                         = sample
+              familyType                      = 'duo_sibling'
 
           # Case 1
           else:

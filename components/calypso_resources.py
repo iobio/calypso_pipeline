@@ -33,6 +33,11 @@ def readResources(reference, resourceInfo):
   try: resourceData = json.loads(resourceFile.read())
   except: fail('The json file (' + str(resourceFilename) + ') is not valid')
 
+  # Check that this is a resources file and not a Mosaic definition file
+  try: resourceInfo['resourceType'] = resourceData['type']
+  except: fail('The resource json file (' + str(resourceInfo['json']) + ') does not include a type (calypso_resource, or mosaic_resource)')
+  if str(resourceInfo['resourceType']) != 'calypso_resource': fail('The specified resource file (' + str(resourceInfo['json']) + ') is not specified as a "calypso_resource" in the "type" field')
+
   # Store the resource data version
   try: resourceInfo['version'] = resourceData['version']
   except: fail('The resource json file (' + str(resourceInfo['json']) + ') does not include a version')

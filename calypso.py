@@ -158,8 +158,9 @@ def main():
 
   # Determine all of the variant filters (from the calypso_mosaic_filters.json) that are to be added; remove any filters that already
   # exist with the same name; fill out variant filter details not in the json (e.g. the uids of private annotations created by
-  # Calypso); create the filters; and finally update the project settings to put the filters in the correct category and sort order
-  vfilt.readRequiredFilters(mosaicConfig, mosaicInfo, args.data_directory, samples, projectAnnotations, args.project_id, api_ps, api_vf)
+  # Calypso); create the filters; and finally update the project settings to put the filters in the correct category and sort order.
+  # Note that the filters to be applied depend on the family structure. E.g. de novo filters won't be added to projects without parents
+  vfilt.readRequiredFilters(mosaicConfig, mosaicInfo, args.data_directory, samples, projectAnnotations, familyType, args.project_id, api_ps, api_vf)
 
   # Update Calypso attributes, e.g. the version that was run, the history of runs etc.
   mos.updateCalypsoAttributes(mosaicConfig, resourceInfo['version'], projectAttributes, publicAttributes, version, args.project_id, api_pa)

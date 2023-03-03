@@ -17,6 +17,11 @@ def readMosaicJson(mosaicFilename, reference):
   try: mosaicData = json.loads(mosaicFile.read())
   except: fail('The json file (' + str(mosaicFilename) + ') is not valid')
 
+  # Check that this is a Mosaic resources file and not a Calypso resources file
+  try: mosaicInfo['resourceType'] = mosaicData['type']
+  except: fail('The resource json file (' + str(mosaicInfo['json']) + ') does not include a type (calypso_resource, or mosaic_resource)')
+  if str(mosaicInfo['resourceType']) != 'mosaic_resource': fail('The specified resource file (' + str(mosaicInfo['json']) + ') is not specified as a "mosaic_resource" in the "type" field')
+
   # Store the data version
   try: mosaicInfo['version'] = mosaicData['version']
   except: fail('The Mosaic json (' + str(mosaicFilename) + ') does not include a version')

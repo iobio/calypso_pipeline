@@ -6,7 +6,7 @@ import math
 import os
 
 # Process the json file describing the filters to apply
-def readRequiredFilters(mosaicConfig, mosaicInfo, dataDirectory, samples, projectAnnotations, projectId, api_ps, api_vf):
+def readRequiredFilters(mosaicConfig, mosaicInfo, dataDirectory, samples, projectAnnotations, familyType, projectId, api_ps, api_vf):
   categories = {}
   filters    = {}
 
@@ -45,11 +45,19 @@ def readRequiredFilters(mosaicConfig, mosaicInfo, dataDirectory, samples, projec
     for position in categories[category]:
       name = categories[category][position]
       if name not in filterInfo['filters']: fail('Filter "' + str(name) + '" appears in filter category "' + str(category) + '", but is not described in the "filters" section')
-    
-      # Check the genotype information for the filter
-      filters[name]['info'] = filterInfo['filters'][name]
-      if 'genotypes' in filters[name]['info']: filters[name]['info'] = checkGenotypeFilters(filters[name]['info'], name, list(samples.keys()), sampleMap)
-      filters[name]['info'] = checkAnnotationFilters(filters[name]['info'], name, projectAnnotations, annotationMap)
+
+      # Check if this filter has any requirements, for example, does it require that the case has parents (for e.g. de novo filters)    
+      filters[name]['useFilter'] = checkRequirements(filterInfo['filters'][name], sampleMap)
+
+      # Only check the rest of the filter information if this filter is to be applied
+      if filters[name]['useFilter']:
+
+        # Check the genotype information for the filter
+        filters[name]['info'] = filterInfo['filters'][name]
+        if 'genotypes' in filters[name]['info']: filters[name]['info'] = checkGenotypeFilters(filters[name]['info'], name, list(samples.keys()), sampleMap)
+
+        # Check all of the annotation filters
+        filters[name]['info'] = checkAnnotationFilters(filters[name]['info'], name, projectAnnotations, annotationMap)
 
   # Get all of the filters that exist in the project, and check which of these share a name with a filter to be created
   deleteFilters(mosaicConfig, projectId, filters, api_vf)
@@ -71,6 +79,20 @@ def readJson(filename):
 
   # Return the json information
   return data
+
+# Check if this filter has any requirements, for example, does it require that the case has parents (for e.g. de novo filters)    
+def checkRequirements(filterInfo, sampleMap):
+  useFilter = True
+
+  # Check if parents are required for this filter. If so, check if they are present in the sample map. If not, this filter
+  # should not be included in the project
+  if 'requires_mother' in filterInfo: 
+    if filterInfo['requires_mother'] and 'mother' not in sampleMap: useFilter = False
+  if 'requires_father' in filterInfo: 
+    if filterInfo['requires_father'] and 'father' not in sampleMap: useFilter = False
+
+  # Return whether this filter passes all requirements
+  return useFilter
 
 # Get information on the genotype filters
 def checkGenotypeFilters(data, name, sampleIds, sampleMap):
@@ -210,24 +232,23 @@ def deleteFilters(mosaicConfig, projectId, filters, api_vf):
 def createFilters(mosaicConfig, projectId, categories, filters, api_ps, api_vf):
   sortedFilters = []
   for category in categories:
-    record = {'category': category, 'sortOrder': []}
+    record      = {'category': category, 'sortOrder': []}
+    useCategory = False
     for sortId in sorted(categories[category]):
       name = categories[category][sortId]
 
-      # Create the filter
-      filterId = api_vf.createVariantFilter(mosaicConfig, projectId, name, category, filters[name]['info']['filters'])
-      record['sortOrder'].append(str(filterId))
+      # Create the filter, unless it has been marked as not to be added
+      if filters[name]['useFilter']:
+        filterId = api_vf.createVariantFilter(mosaicConfig, projectId, name, category, filters[name]['info']['filters'])
+        record['sortOrder'].append(str(filterId))
+        useCategory = True
 
-    # Populate the object used to update the Mosaic project settings
-    sortedFilters.append(record)
+    # Populate the object used to update the Mosaic project settings. If no filters from this category passed the
+    # requirements to be added, skip this step
+    if useCategory: sortedFilters.append(record)
 
   # Set the sort orders for all the categories
-  api_ps.setVariantFilterSortOrder(mosaicConfig, projectId, sortedFilters)
-
-# Create the annotation filter
-def createFilter(data, mosaicConfig, projectId, api_vf):
-  try: execute = json.loads(os.popen(api_vf.postVariantFilter(mosaicConfig, data['name'], data['filters'], projectId)).read())
-  except: fail('Failed to create annotation filter ' + data['name'])
+  if sortedFilters: api_ps.setVariantFilterSortOrder(mosaicConfig, projectId, sortedFilters)
 
 # If the script fails, provide an error message and exit
 def fail(message):
