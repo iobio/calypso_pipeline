@@ -1,8 +1,17 @@
-#!/usr/bin/python
-
-from __future__ import print_function
-
 import os
+
+# Depending on the family type, certain aspects of the pipeline will change. Determine which sections of the
+# pipeline can be omitted in this case
+def determinePipeline(familyType):
+
+  # Compound hets should only be included if both parents are present
+  useInheritance = True if familyType == 'trio' else False
+
+  # Define an object to contain all pipeline modifiers
+  pipelineModifiers = {'useInheritance': useInheritance}
+
+  # Return information on pipeline modifiers
+  return pipelineModifiers
 
 # Open a file to write the annotation pipeline script to
 def openBashScript(workingDir):
@@ -16,7 +25,7 @@ def openBashScript(workingDir):
   return bashFilename, bashFile
 
 # Write all the resource file information to the bash file for the script to use
-def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename):
+def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename, pipelineModifiers):
 
   # Initial information
   print('#! /bin/bash', file = bashFile)
@@ -36,7 +45,9 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename):
   print('ANNOTATEDVCF=' + str(vcfBase) + '_annotated.vcf.gz', sep = '', file = bashFile)
   print('PROBANDVCF=' + str(vcfBase) + '_proband.vcf.gz', sep = '', file = bashFile)
   print('PREANNOVCF=' + str(vcfBase) + '_preanno.vcf.gz', sep = '', file = bashFile)
-  print('COMPHETS=' + str(vcfBase) + '_comphets.vcf.gz', sep = '', file = bashFile)
+
+  # If compound hets are not generated, there is no COMPHETS output
+  if pipelineModifiers['useInheritance']: print('COMPHETS=' + str(vcfBase) + '_comphets.vcf.gz', sep = '', file = bashFile)
   print('FINALVCF=' + str(vcfBase) + '_calypso.vcf.gz', sep = '', file = bashFile)
   print('FILTEREDVCF=' + str(filteredVcf), sep = '', file = bashFile)
   print('CLINVARVCF=' + str(clinvarVcf), sep = '', file = bashFile)
@@ -97,7 +108,7 @@ def cleanedVcf(bashFile):
   print(file = bashFile)
 
 # Annotate the cleaned vcf file using vcfanno
-def annotateVcf(bashFile, resourceInfo, familyType):
+def annotateVcf(bashFile, resourceInfo, pipelineModifiers):
 
   # Annotate the vcf with vcfanno
   print('# Annotate with bcftools csq and add further annotations with vcfanno', file = bashFile)
@@ -106,7 +117,7 @@ def annotateVcf(bashFile, resourceInfo, familyType):
   print('  | vcfanno -p 16 $TOML /dev/stdin 2>> $STDERR \\', file = bashFile)
 
   # If this is a family, also include modes of inheritance using Slivar
-  if familyType != 'singleton':
+  if pipelineModifiers['useInheritance']:
     print('  | slivar_static expr \\', file = bashFile)
     print('  --vcf /dev/stdin \\', file = bashFile)
     print('  --ped $PED \\', file = bashFile)
@@ -126,7 +137,7 @@ def annotateVcf(bashFile, resourceInfo, familyType):
   print(file = bashFile)
 
   # Annotate with compound hets
-  if familyType != 'singleton':
+  if pipelineModifiers['useInheritance']:
 
     # Annotate with compound hets
     print('# Annotate compound hets with Slivar', file = bashFile)

@@ -45,7 +45,7 @@ def getPreviousResourceVersion(projectAttributes):
 def getPublicAnnotations(mosaicConfig, projectId, api_va):
   publicAnnotations = {}
   data = api_va.getVariantAnnotationsImportNameIdUid(mosaicConfig, projectId)
-  for annotation in data: publicAnnotations[annotation['uid']] = {'name': annotation['name'], 'id': annotation['id']}
+  for annotation in data: publicAnnotations[annotation['uid']] = {'name': annotation['name'], 'id': annotation['id'], 'type': annotation['type']}
 
   # Return the dictionary of available public annotations
   return publicAnnotations
@@ -133,8 +133,14 @@ def importAnnotations(mosaicConfig, resources, projectAnnotations, publicAnnotat
       for annotation in resources[resource]['annotations']:
         uid = resources[resource]['annotations'][annotation]['uid']
 
-        # Check if the annotation is already in the target project
-        if uid not in projectAnnotations: api_va.importAnnotation(mosaicConfig, publicAnnotations[uid]['id'], projectId)
+        # Check if the annotation is already in the target project. If not, import the annotation and update the
+        # projectAnnotations dictionary
+        if uid not in projectAnnotations:
+          api_va.importAnnotation(mosaicConfig, publicAnnotations[uid]['id'], projectId)
+          projectAnnotations[uid] = {'id': publicAnnotations[uid]['id'], 'name': publicAnnotations[uid]['name'], 'type': publicAnnotations[uid]['type']}
+
+  # Return the updated projectAnnotations dictionary
+  return projectAnnotations
 
 # Set the projects default annotations. The default annotations are what a new user will see in the table by default
 # and all users will have the option to reset the annotations table to show only the default annotations

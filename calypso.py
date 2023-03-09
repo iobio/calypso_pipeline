@@ -115,11 +115,12 @@ def main():
   tomlFilename = toml.buildToml(workingDir, resourceInfo)
 
   # Generate the bash script to run the annotation pipeline
+  pipelineModifiers = bashScript.determinePipeline(familyType)
   bashFilename, bashFile = bashScript.openBashScript(workingDir)
-  filteredVcf, clinvarVcf, rareVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, args.input_vcf, args.ped, tomlFilename)
+  filteredVcf, clinvarVcf, rareVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, args.input_vcf, args.ped, tomlFilename, pipelineModifiers)
   bashScript.samplesFile(bashFile)
   bashScript.cleanedVcf(bashFile)
-  bashScript.annotateVcf(bashFile, resourceInfo, familyType)
+  bashScript.annotateVcf(bashFile, resourceInfo, pipelineModifiers)
   bashScript.filterVariants(bashFile, proband, resourceInfo)
   bashScript.rareDiseaseVariants(bashFile)
   bashScript.clinVarVariants(bashFile)
@@ -153,7 +154,7 @@ def main():
   # 4. Set up required variant filters
   # 5. Add and set project attributes
   if 'remove' in mosaicInfo: mos.removeAnnotations(mosaicConfig, mosaicInfo['remove'], projectAnnotations, args.project_id, api_va)
-  mos.importAnnotations(mosaicConfig, mosaicInfo['resources'], projectAnnotations, publicAnnotations, args.project_id, api_va)
+  projectAnnotations = mos.importAnnotations(mosaicConfig, mosaicInfo['resources'], projectAnnotations, publicAnnotations, args.project_id, api_va)
   mos.defaultAnnotations(mosaicConfig, mosaicInfo['defaultAnnotations'], publicAnnotations, privateAnnotations, args.project_id, api_ps)
 
   # Determine all of the variant filters (from the calypso_mosaic_filters.json) that are to be added; remove any filters that already
