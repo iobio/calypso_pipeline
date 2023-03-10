@@ -79,13 +79,20 @@ def main():
   # Determine the id of the proband, and the family structure
   args, proband, samples, familyType = sam.getProband(mosaicConfig, args, workingDir, api_s, api_ped)
   print('  Performing analysis on a family type: ', familyType, sep = '')
-  print('  Proband has the name:                 ', proband, sep = '')
+  if len(proband) == 1: print('  Proband has the name:                 ', proband[0], sep = '')
+  else:                 print('  Pedigree has multiple probands:       ', ', '.join(proband), sep = '')
 
   # Get the vcf file from Mosaic, if it can be determined
   if not args.input_vcf:
-    vcfFiles = api_sf.getSampleVcfs(mosaicConfig, args.project_id, samples[proband]['mosaicId'])
-    if len(vcfFiles) == 1: args.input_vcf = vcfFiles[list(vcfFiles.keys())[0]]['uri'][6:]
-    else: fail('Mosaic has no, or multiple vcf files associated with it, so the file to use cannot be determined')
+    vcfFiles = []
+    for sample in proband:
+      sampleVcfFiles = api_sf.getSampleVcfs(mosaicConfig, args.project_id, samples[sample]['mosaicId'])
+      if len(sampleVcfFiles) == 1:
+        uri = sampleVcfFiles[list(sampleVcfFiles.keys())[0]]['uri'][6:]
+        if uri not in vcfFiles: vcfFiles.append(uri)
+      else: fail('Mosaic has no, or multiple vcf files associated with it, so the file to use cannot be determined')
+      if len(vcfFiles) != 1: fail('Mosaic has no, or multiple vcf files associated with it, so the file to use cannot be determined')
+      args.input_vcf = vcfFiles[0]
   print('  Using the vcf file:                   ', args.input_vcf, sep = '')
 
   # Determine the order of the samples in the vcf header
@@ -94,7 +101,11 @@ def main():
   # If the HPO terms are not specified on the command line, grab them from the project. If they are specified on the command
   # line, use these
   if not args.hpo:
-    hpoTerms = api_shpo.getSampleHpoList(mosaicConfig, args.project_id, samples[proband]['mosaicId'])
+    hpoTerms = []
+    for sample in proband:
+      sampleHpoTerms = api_shpo.getSampleHpoList(mosaicConfig, args.project_id, samples[sample]['mosaicId'])
+      for hpo in sampleHpoTerms:
+        if hpo not in hpoTerms: hpoTerms.append(hpo)
     args.hpo = ','.join(hpoTerms)
   print('  Using the HPO terms:                  ', args.hpo, sep = '')
 
@@ -233,7 +244,7 @@ def fail(message):
 # Initialise global variables
 
 # Pipeline version
-version = "1.1.0"
+version = "1.1.1"
 date    = str(date.today())
 
 # The working directory where all created files are kept

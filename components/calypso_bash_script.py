@@ -194,10 +194,12 @@ def annotateVcf(bashFile, resourceInfo, pipelineModifiers):
 # basic annotations
 def filterVariants(bashFile, proband, resourceInfo):
 
-  # Create a file containing the name of the proband for use in the filter
-  print('# Create file containing the proband only', file = bashFile)
-  print('echo -n "Creating proband file..."', file = bashFile)
-  print('echo ', proband, ' > proband.txt', sep = '', file = bashFile)
+  # Create a file containing the name of the proband for use in the filter. Note that there can be multiple probands, e.g.
+  # if the family is two affected siblings
+  print('# Create file containing the proband(s) only', file = bashFile)
+  print('echo -n "Creating proband(s) file..."', file = bashFile)
+  print('touch proband.txt', file = bashFile)
+  for sample in proband: print('echo ', sample, ' >> proband.txt', sep = '', file = bashFile)
   print('echo "complete"', file = bashFile)
   print(file = bashFile)
 

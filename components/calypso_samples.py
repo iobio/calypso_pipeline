@@ -146,7 +146,7 @@ def singletonStructures(samples):
     # ...and they are affected, they are the proband.
     else:
       samples[sample]['relationship'] = 'Proband'
-      proband                         = samples[sample]['mosaicId']
+      proband                         = [samples[sample]['mosaicId']]
       familyType                      = 'singleton'
 
   # Return the updated samples along with the name of the proband and the family structure
@@ -168,7 +168,7 @@ def duoStructures(samples):
 
     # Get information on the second sample and determine the family structure. The following duo pedigrees are allowed:
     # 1. A proband and an unaffected sibling
-    # 2. A proband and an affected sibling, but this requires additional information on which sample is the proband
+    # 2. A proband and an affected sibling
     # 3. A proband and an unaffected parent
     # 4. A proband and an affected parent
     else:
@@ -182,8 +182,12 @@ def duoStructures(samples):
         # If the samples are siblings, they will have the same parents
         if mother == samples[sample]['mother'] and father == samples[sample]['father']:
 
-          # Case 2
-          if samples[sample]['noParents'] == 0: fail('The pedigree contains 2 affected sibligs (e.g. neither sample has parents), so the proband needs to be defined')
+          # Case 2. This pedigree is assumed to be two affected siblings. In this case, both samples are set as proband
+          if samples[sample]['noParents'] == 0:
+            samples[sample]['relationship'] = 'Proband'
+            samples[name]['relationship']   = 'Proband'
+            proband                         = [name, sample]
+            familyType                      = 'two_affected_siblings'
 
           # If the samples are siblings, but the pedigree contains information about parents, the pedigree is incomplete as
           # there is no information about the parents
@@ -203,22 +207,22 @@ def duoStructures(samples):
           if name == samples[sample]['mother']:
             samples[sample]['relationship'] = 'Proband'
             samples[name]['relationship']   = 'Mother'
-            proband                         = sample
+            proband                         = [sample]
             familyType                      = 'duo_affected_mother'
           elif name == samples[sample]['father']:
             samples[sample]['relationship'] = 'Proband'
             samples[name]['relationship']   = 'Father'
-            proband                         = sample
+            proband                         = [sample]
             familyType                      = 'duo_affected_father'
           elif sample == mother:
             samples[sample]['relationship'] = 'Mother'
             samples[name]['relationship']   = 'Proband'
-            proband                         = name
+            proband                         = [name]
             familyType                      = 'duo_affected_mother'
           elif sample == father:
             samples[sample]['relationship'] = 'Father'
             samples[name]['relationship']   = 'Proband'
-            proband                         = name
+            proband                         = [name]
             familyType                      = 'duo_affected_father'
           else: fail('Unknown duo structure')
 
@@ -234,12 +238,12 @@ def duoStructures(samples):
             if isAffected: 
               samples[sample]['relationship'] = 'Sibling'
               samples[name]['relationship']   = 'Proband'
-              proband                         = name
+              proband                         = [name]
               familyType                      = 'duo_sibling'
             else:
               samples[sample]['relationship'] = 'Proband'
               samples[name]['relationship']   = 'Sibling'
-              proband                         = sample
+              proband                         = [sample]
               familyType                      = 'duo_sibling'
 
           # Case 1
@@ -247,12 +251,12 @@ def duoStructures(samples):
             if isAffected: 
               samples[sample]['relationship'] = 'Sibling'
               samples[name]['relationship']   = 'Proband'
-              proband                         = name
+              proband                         = [name]
               familyType                      = 'duo_sibling'
             else:
               samples[sample]['relationship'] = 'Proband'
               samples[name]['relationship']   = 'Sibling'
-              proband                         = sample
+              proband                         = [sample]
               familyType                      = 'duo_sibling'
 
         # If the samples do not have the same parents, this must be case 3
@@ -261,25 +265,25 @@ def duoStructures(samples):
             if isAffected: fail('The defined pedigree (affected mother and unaffected child) is not supported')
             samples[sample]['relationship'] = 'Proband'
             samples[name]['relationship']   = 'Mother'
-            proband                         = sample
+            proband                         = [sample]
             familyType                      = 'duo_unaffected_mother'
           elif name == samples[sample]['father']:
             if isAffected: fail('The defined pedigree (affected father and unaffected child) is not supported')
             samples[sample]['relationship'] = 'Proband'
             samples[name]['relationship']   = 'Father'
-            proband                         = sample
+            proband                         = [sample]
             familyType                      = 'duo_unaffected_father'
           elif sample == mother:
             if not isAffected: fail('The defined pedigree (affected mother and unaffected child) is not supported')
             samples[sample]['relationship'] = 'Mother'
             samples[name]['relationship']   = 'Proband'
-            proband                         = name
+            proband                         = [name]
             familyType                      = 'duo_unaffected_mother'
           elif sample == father:
             if not isAffected: fail('The defined pedigree (affected father and unaffected child) is not supported')
             samples[sample]['relationship'] = 'Father'
             samples[name]['relationship']   = 'Proband'
-            proband                         = name
+            proband                         = [name]
             familyType                      = 'duo_unaffected_father'
           else: fail('Unknown duo structure')
   
@@ -296,9 +300,23 @@ def trioStructures(samples):
     if samples[sample]['isAffected']: noAffecteds += 1
     if samples[sample]['noParents'] != 0: noWithParents += 1
 
+  # If none of the samples have parents, this is assumed to correspond to three siblings. Determine which sibs are
+  # affected and set the proband accordingly
+  if noWithParents == 0:
+    proband = []
+    for sample in samples:
+      if samples[sample]['isAffected']:
+        proband.append(sample)
+        samples[sample]['relationship'] = 'Proband'
+      else: samples[sample] = 'sibling'
+    if len(proband) == 0: fail('The pedigree consists of multiple unaffected siblings. At least one sample must be affected')
+    elif len(proband) == 1: familyType = 'one_affected_two_unaffected_siblings'
+    elif len(proband) == 2: familyType = 'two_affected_one_unaffected_siblings'
+    elif len(proband) == 3: familyType = 'three_affected_siblings'
+
   # If there is a single sample with parents, check that the parents are correct. If so, this is a single
   # proband with unaffected parents
-  if noWithParents == 1:
+  elif noWithParents == 1:
 
     # Loop over the samples, find the sample with parents and check they are the other two samples in the pedigree
     for sample in samples:
@@ -320,7 +338,7 @@ def trioStructures(samples):
         samples[sample]['relationship'] = 'Proband'
         samples[mother]['relationship'] = 'Mother'
         samples[father]['relationship'] = 'Father'
-        proband                         = sample
+        proband                         = [sample]
         familyType                      = 'trio'
 
   # Not handled other structures of parents
