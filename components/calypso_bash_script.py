@@ -192,14 +192,16 @@ def annotateVcf(bashFile, resourceInfo, pipelineModifiers):
 
 # Filter the final vcf file to only include variants present in the proband, and based on some
 # basic annotations
-def filterVariants(bashFile, proband, resourceInfo):
+def filterVariants(bashFile, samples, resourceInfo):
 
   # Create a file containing the name of the proband for use in the filter. Note that there can be multiple probands, e.g.
   # if the family is two affected siblings
   print('# Create file containing the proband(s) only', file = bashFile)
   print('echo -n "Creating proband(s) file..."', file = bashFile)
   print('touch proband.txt', file = bashFile)
-  for sample in proband: print('echo ', sample, ' >> proband.txt', sep = '', file = bashFile)
+  #for sample in proband: print('echo ', sample, ' >> proband.txt', sep = '', file = bashFile)
+  for sample in samples:
+    if samples[sample]['isAffected']: print('echo ', sample, ' >> proband.txt', sep = '', file = bashFile)
   print('echo "complete"', file = bashFile)
   print(file = bashFile)
 
@@ -281,15 +283,16 @@ def rareDiseaseVariants(bashFile):
   print(file = bashFile)
 
 # Delete files no longer required
-def deleteFiles(args, bashFile):
+def deleteFiles(args, pipelineModifiers, bashFile):
   print('# Delete files no longer required', file = bashFile)
   print('echo -n "Deleting files..."', file = bashFile)
   print('rm -f $CLEANVCF', file = bashFile)
   print('rm -f $CLEANVCF.tbi', file = bashFile)
   print('rm -f $ANNOTATEDVCF', file = bashFile)
   print('rm -f $ANNOTATEDVCF.tbi', file = bashFile)
-  print('rm -f $COMPHETS', file = bashFile)
-  print('rm -f $COMPHETS.tbi', file = bashFile)
+  if pipelineModifiers['useInheritance']:
+    print('rm -f $COMPHETS', file = bashFile)
+    print('rm -f $COMPHETS.tbi', file = bashFile)
   print('rm -f samples.txt', file = bashFile)
   print('rm -f proband.txt', file = bashFile)
   print('echo "complete"', file = bashFile)

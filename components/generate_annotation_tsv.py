@@ -468,6 +468,7 @@ def processClassClinvar(vcf, tags, outputFile):
   allowedClinVar['Benign,_confers_sensitivity']              = 'Benign'
   allowedClinVar['Benign|_association|_confers_sensitivity'] = 'Benign'
   allowedClinVar['Benign,_association,_confers_sensitivity'] = 'Benign'
+  allowedClinVar['Benign|association|confers_sensitivity']   = 'Benign'
 
   # Loop over all records in the vcf file
   for record in os.popen(bcftools.query(vcf, tags)).readlines():

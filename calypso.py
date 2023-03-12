@@ -79,7 +79,8 @@ def main():
   # Determine the id of the proband, and the family structure
   args, proband, samples, familyType = sam.getProband(mosaicConfig, args, workingDir, api_s, api_ped)
   print('  Performing analysis on a family type: ', familyType, sep = '')
-  if len(proband) == 1: print('  Proband has the name:                 ', proband[0], sep = '')
+  if len(proband) == 0: print('  No proband could be determined:       ')
+  elif len(proband) == 1: print('  Proband has the name:                 ', proband[0], sep = '')
   else:                 print('  Pedigree has multiple probands:       ', ', '.join(proband), sep = '')
 
   # Get the vcf file from Mosaic, if it can be determined
@@ -118,7 +119,7 @@ def main():
   mosaicInfo         = mosr.readMosaicJson(args.mosaic_json, reference)
   projectAnnotations = mos.getProjectAnnotations(mosaicConfig, args.project_id, api_va)
   publicAnnotations  = mos.getPublicAnnotations(mosaicConfig, args.project_id, api_va)
-  privateAnnotations = mos.createPrivateAnnotations(mosaicConfig, mosaicInfo['resources'], projectAnnotations, samples, args.project_id, api_va)
+  privateAnnotations, projectAnnotations = mos.createPrivateAnnotations(mosaicConfig, mosaicInfo['resources'], projectAnnotations, samples, args.project_id, api_va)
   mosr.checkPublicAnnotations(mosaicConfig, mosaicInfo['resources'], publicAnnotations, args.project_id, api_va)
 
   # Build the toml file for vcfanno. This defines all of the annotations that vcfanno needs to use
@@ -132,10 +133,10 @@ def main():
   bashScript.samplesFile(bashFile)
   bashScript.cleanedVcf(bashFile)
   bashScript.annotateVcf(bashFile, resourceInfo, pipelineModifiers)
-  bashScript.filterVariants(bashFile, proband, resourceInfo)
+  bashScript.filterVariants(bashFile, samples, resourceInfo)
   bashScript.rareDiseaseVariants(bashFile)
   bashScript.clinVarVariants(bashFile)
-  bashScript.deleteFiles(args, bashFile)
+  bashScript.deleteFiles(args, pipelineModifiers, bashFile)
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
   print('# Generate tsv files to upload annotations to Mosaic', file = bashFile)
@@ -244,7 +245,7 @@ def fail(message):
 # Initialise global variables
 
 # Pipeline version
-version = "1.1.1"
+version = "1.1.2"
 date    = str(date.today())
 
 # The working directory where all created files are kept

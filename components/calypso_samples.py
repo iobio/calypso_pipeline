@@ -105,7 +105,7 @@ def getProband(mosaicConfig, args, workingDir, api_s, api_ped):
   elif len(samples) == 1: samples, proband, familyType = singletonStructures(samples)
   elif len(samples) == 2: samples, proband, familyType = duoStructures(samples)
   elif len(samples) == 3: samples, proband, familyType = trioStructures(samples)
-  #elif len(samples) == 4:
+  elif len(samples) == 4: samples, proband, familyType = quadStructures(samples)
 
   # If there are more than 4 family members, additional logic needs to be added
   else: fail('Additional logic is required for families with more than 4 members')
@@ -318,31 +318,68 @@ def trioStructures(samples):
   # proband with unaffected parents
   elif noWithParents == 1:
 
-    # Loop over the samples, find the sample with parents and check they are the other two samples in the pedigree
+    # Loop over all the samples and find the sample with parents and determine if this is a traditional trio (proband with parents)
     for sample in samples:
       if samples[sample]['noParents'] == 0: continue
       else:
         mother = samples[sample]['mother']
         father = samples[sample]['father']
-        if mother not in samples: fail('Proband in trio does not have the mother listed in the pedigree')
-        if father not in samples: fail('Proband in trio does not have the father listed in the pedigree')
 
-        # Ensure the parental sex's are correct
-        if samples[mother]['sex'] != 'female': fail('The mother of the proband in a family trio is not listed as female in the pedigree')
-        if samples[father]['sex'] != 'male': fail('The father of the proband in a family trio is not listed as male in the pedigree')
+        # If this is a traditional trio, the sample with parents will have a mother and a father defined
+        if mother in samples and father in samples: samples, proband, familyType = traditionalTrio(samples, sample, mother, father)
 
-        # This sample is the proband, so must be listed as affected
-        if not samples[sample]['isAffected']: fail('The child in a family trio is not listed as affected, which is not handled')
-
-        # Update the family information
-        samples[sample]['relationship'] = 'Proband'
-        samples[mother]['relationship'] = 'Mother'
-        samples[father]['relationship'] = 'Father'
-        proband                         = [sample]
-        familyType                      = 'trio'
+        # This trio consists of one sample with a parent and one other sample, most likely a sibling of the parent
+        elif mother not in samples:
+          for checkSample in samples:
+            if checkSample != sample and checkSample != father: unknownSample = checkSample
+          samples[sample]['relationship'] = 'Proband'
+          samples[father]['relationship'] = 'Father'
+          samples[checkSample]['relationship'] = 'Unknown'
+          proband    = [sample] if samples[sample]['isAffected'] else []
+          familyType = 'child_father_and_unknown'
+        elif father not in samples:
+          for checkSample in samples:
+            if checkSample != sample and checkSample != mother: unknownSample = checkSample
+          samples[sample]['relationship'] = 'Proband'
+          samples[mother]['relationship'] = 'Mother'
+          samples[checkSample]['relationship'] = 'Unknown'
+          proband    = [sample] if samples[sample]['isAffected'] else []
+          familyType = 'child_mother_and_unknown'
 
   # Not handled other structures of parents
   else: fail('Unknown trio structure - logic needs updating to accommodate')
+
+  # Return the updated samples along with the name of the proband and the family structure
+  return samples, proband, familyType
+
+# Set details for a traditional trio
+def traditionalTrio(samples, sample, mother, father):
+
+  # Ensure the parental sex's are correct
+  if samples[mother]['sex'] != 'female': fail('The mother of the proband in a family trio is not listed as female in the pedigree')
+  if samples[father]['sex'] != 'male': fail('The father of the proband in a family trio is not listed as male in the pedigree')
+
+  # This sample is the proband, so must be listed as affected
+  if not samples[sample]['isAffected']: fail('The child in a family trio is not listed as affected, which is not handled')
+
+  # Update the family information
+  samples[sample]['relationship'] = 'Proband'
+  samples[mother]['relationship'] = 'Mother'
+  samples[father]['relationship'] = 'Father'
+  proband                         = [sample]
+  familyType                      = 'trio'
+
+  # Return the information
+  return samples, proband, familyType
+
+# Logic for determining structure of quads
+def quadStructures(samples):
+
+  print('test')
+  # Loop over the samples
+  for sample in samples:
+    print(sample, samples[sample])
+  exit(0)
 
   # Return the updated samples along with the name of the proband and the family structure
   return samples, proband, familyType

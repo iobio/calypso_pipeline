@@ -100,8 +100,11 @@ def createPrivateAnnotations(mosaicConfig, resources, projectAnnotations, sample
         privateAnnotations[data['uid']] = {'name': annotation, 'id': data['id']}
         resources[resource]['annotations'][annotation] = {'uid': data['uid'], 'type': valueType, 'id': data['id']}
 
+        # Add the created private annotation to the projectAnnotations dictionary
+        projectAnnotations[data['uid']] = {'id': data['id'], 'name': annotation, 'type': valueType}
+
   # Return the created private annotations
-  return privateAnnotations
+  return privateAnnotations, projectAnnotations
 
 # Get all the project annotations already in a Mosaic project
 def getProjectAnnotations(mosaicConfig, projectId, api_va):
