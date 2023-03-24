@@ -28,8 +28,16 @@ def openBashScript(workingDir):
 def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename, pipelineModifiers):
 
   # Initial information
-  print('#! /bin/bash', file = bashFile)
+  #print('#! /bin/bash', file = bashFile)
   print('set -eou pipefail', file = bashFile)
+  print(file = bashFile)
+
+  # Define the tools to use
+  print('# Define the tools to use while executing the Calypso pipeline', file = bashFile)
+  if 'toolsPath' in resourceInfo:
+    print('BCFTOOLS=', resourceInfo['toolsPath'], 'bcftools/bcftools', sep = '', file = bashFile)
+  else:
+    print('BCFTOOLS=bcftools', file = bashFile)
   print(file = bashFile)
 
   # Define the names of the input and output files
@@ -93,9 +101,9 @@ def cleanedVcf(bashFile):
   print('echo -n "Subsetting and normalizing input VCF..."', file = bashFile)
 
   # Generate a samples text file from the ped file
-  print('bcftools norm -m - -w 10000 -f $REF $VCF 2> $STDERR\\', file = bashFile)
-  print('  | bcftools view -a -c 1 -S samples.txt 2>> $STDERR \\', file = bashFile)
-  print('  | bcftools annotate -x INFO -O z -o $CLEANVCF \\', file = bashFile)
+  print('$BCFTOOLS norm -m - -w 10000 -f $REF $VCF 2> $STDERR\\', file = bashFile)
+  print('  | $BCFTOOLS view -a -c 1 -S samples.txt 2>> $STDERR \\', file = bashFile)
+  print('  | $BCFTOOLS annotate -x INFO -O z -o $CLEANVCF \\', file = bashFile)
   print('  > $STDOUT 2>> $STDERR', file = bashFile)
   print('echo "complete"', file = bashFile)
   print(file = bashFile)
@@ -103,7 +111,7 @@ def cleanedVcf(bashFile):
   # Index the clean vcf file
   print('# Index the clean VCF file', file = bashFile)
   print('echo -n "Indexing cleaned VCF..."', file = bashFile)
-  print('bcftools index -t $CLEANVCF', file = bashFile)
+  print('$BCFTOOLS index -t $CLEANVCF', file = bashFile)
   print('echo "complete"', file = bashFile)
   print(file = bashFile)
 
@@ -111,9 +119,9 @@ def cleanedVcf(bashFile):
 def annotateVcf(bashFile, resourceInfo, pipelineModifiers):
 
   # Annotate the vcf with vcfanno
-  print('# Annotate with bcftools csq and add further annotations with vcfanno', file = bashFile)
+  print('# Annotate with $BCFTOOLS csq and add further annotations with vcfanno', file = bashFile)
   print('echo -n "Annotating cleaned VCF..."', file = bashFile)
-  print('bcftools csq -f $REF --ncsq 40 -l -g $GFF $CLEANVCF 2>> $STDERR \\', file = bashFile)
+  print('$BCFTOOLS csq -f $REF --ncsq 40 -l -g $GFF $CLEANVCF 2>> $STDERR \\', file = bashFile)
   print('  | vcfanno -p 16 $TOML /dev/stdin 2>> $STDERR \\', file = bashFile)
 
   # If this is a family, also include modes of inheritance using Slivar
@@ -131,7 +139,7 @@ def annotateVcf(bashFile, resourceInfo, pipelineModifiers):
     print('  -o $ANNOTATEDVCF \\', file = bashFile)
 
   # If this is a singleton, the inheritance annoatations will not be performed and this is the final vcf
-  else: print('  | bcftools view -O z -o $FINALVCF - \\', file = bashFile)
+  else: print('  | $BCFTOOLS view -O z -o $FINALVCF - \\', file = bashFile)
   print('  >> $STDOUT 2>> $STDERR', file = bashFile)
   print('echo "complete"', file = bashFile)
   print(file = bashFile)
@@ -165,28 +173,28 @@ def annotateVcf(bashFile, resourceInfo, pipelineModifiers):
     # Index the annotated VCF
     print('# Index the annotated VCF file', file = bashFile)
     print('echo -n "Indexing annotated VCF..."', file = bashFile)
-    print('bcftools index -t $ANNOTATEDVCF', file = bashFile)
+    print('$BCFTOOLS index -t $ANNOTATEDVCF', file = bashFile)
     print('echo "complete"', file = bashFile)
     print(file = bashFile)
 
     # Index the comphets vcf file
     print('# Index the comphets VCF file', file = bashFile)
     print('echo -n "Indexing comphets VCF..."', file = bashFile)
-    print('bcftools index -t $COMPHETS', file = bashFile)
+    print('$BCFTOOLS index -t $COMPHETS', file = bashFile)
     print('echo "complete"', file = bashFile)
     print(file = bashFile)
 
     # Merge the compound hets into the annotated vcf
     print('# Merge annotated VCF with comphets', file = bashFile)
     print('echo -n "Merging annotated and compound hets VCF files..."', file = bashFile)
-    print('bcftools annotate \\', file = bashFile)
+    print('$BCFTOOLS annotate \\', file = bashFile)
     print('  -a $COMPHETS \\', file = bashFile)
     print('  -c \'INFO/slivar_comphet,INFO/comphet_side\' \\', file = bashFile)
     print('  -O z \\', file = bashFile)
     print('  -o $FINALVCF \\', file = bashFile)
     print('  $ANNOTATEDVCF \\', file = bashFile)
     print('  >> $STDOUT 2>> $STDERR', file = bashFile)
-    print('bcftools index -t $FINALVCF', file = bashFile)
+    print('$BCFTOOLS index -t $FINALVCF', file = bashFile)
     print('echo "complete"', file = bashFile)
     print(file = bashFile)
 
@@ -213,7 +221,7 @@ def filterVariants(bashFile, samples, resourceInfo):
   #   4. The proband has a genotype containing the alt allele
   print('# Filter the VCF file to generate variants to pass to Mosaic', file = bashFile)
   print('echo -n "Filtering final VCF file..."', file = bashFile)
-  print('bcftools view \\', file = bashFile)
+  print('$BCFTOOLS view \\', file = bashFile)
   print('  -i \'GT[@proband.txt]="alt" & GT[@proband.txt]!="mis"\' \\', file = bashFile)
   print('  $FINALVCF \\', file = bashFile)
   print('  2>> $STDERR \\', file = bashFile)
@@ -239,10 +247,10 @@ def filterVariants(bashFile, samples, resourceInfo):
   print('    --fields "SYMBOL,Feature,IMPACT,Consequence,HGVSc,HGVSp" \\', file = bashFile)
   print('    --output_file STDOUT \\', file = bashFile)
   print('    2>> $STDERR \\', file = bashFile)
-  print('  | bcftools view -O z -o $FILTEREDVCF - \\', file = bashFile)
+  print('  | $BCFTOOLS view -O z -o $FILTEREDVCF - \\', file = bashFile)
   print('  >> $STDOUT 2>> $STDERR', file = bashFile)
   print('echo "complete"', file = bashFile)
-  print('bcftools index -t $FILTEREDVCF', file = bashFile)
+  print('$BCFTOOLS index -t $FILTEREDVCF', file = bashFile)
   print(file = bashFile)
 
 # Extract all variants that have "athogenic" in the ClinVar significance. This will extract all Pathogenic,
@@ -250,20 +258,20 @@ def filterVariants(bashFile, samples, resourceInfo):
 def clinVarVariants(bashFile):
   print('# Extract all variants with some pathogenic significance', file = bashFile)
   print('echo -n "Generating clinVar variants file..."', file = bashFile)
-  print('bcftools view -O z \\', file = bashFile)
+  print('$BCFTOOLS view -O z \\', file = bashFile)
   print('  -o $CLINVARVCF \\', file = bashFile)
   print('  -i \'INFO/CLNSIG~"athogenic"\' \\', file = bashFile)
   print('  $FINALVCF \\', file = bashFile)
   print('  >> $STDOUT 2>> $STDERR', file = bashFile)
   print('echo "complete"', file = bashFile)
-  print('bcftools index -t $CLINVARVCF', file = bashFile)
+  print('$BCFTOOLS index -t $CLINVARVCF', file = bashFile)
   print(file = bashFile)
 
 # Use Slivar to extract variants based on the Slivar rare disease wiki
 def rareDiseaseVariants(bashFile):
   print('# Generate rare disease variants based on Slivar wiki', file = bashFile)
   print('echo -n "Generating rare disease variants..."', file = bashFile)
-  print('bcftools csq -s - --ncsq 40 -g $GFF -l -f $REF $FILTEREDVCF -O u \\', file = bashFile)
+  print('$BCFTOOLS csq -s - --ncsq 40 -g $GFF -l -f $REF $FILTEREDVCF -O u \\', file = bashFile)
   print('  2>> $STDERR \\', file = bashFile)
   print('  | slivar_static expr --vcf - \\', file = bashFile)
   print('  --ped $PED \\', file = bashFile)
@@ -279,7 +287,7 @@ def rareDiseaseVariants(bashFile):
   print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && INFO.gnomad_nhomalt < 10\' \\', file = bashFile)
   print('  >> $STDOUT 2>> $STDERR', file = bashFile)
   print('echo "complete"', file = bashFile)
-  print('bcftools index -t $RAREDISEASEVCF', file = bashFile)
+  print('$BCFTOOLS index -t $RAREDISEASEVCF', file = bashFile)
   print(file = bashFile)
 
 # Delete files no longer required

@@ -70,8 +70,8 @@ def main():
   print('  Using the reference:                  ', reference, sep = '')
 
   # Read the resources json file to identify all the resources that will be used in the annotation pipeline
-  if args.resource_json: resourceInfo = res.checkResources(reference, args.data_directory, args.resource_json)
-  else: resourceInfo = res.checkResources(reference, args.data_directory, args.data_directory + 'resources_' + str(reference) + '.json')
+  if args.resource_json: resourceInfo = res.checkResources(reference, args.data_directory, args.tools_directory, args.resource_json)
+  else: resourceInfo = res.checkResources(reference, args.data_directory, args.tools_directory, args.data_directory + 'resources_' + str(reference) + '.json')
   resourceInfo = res.readResources(reference, resourceInfo)
   rootPath = os.path.dirname( __file__)
   setWorkingDir(resourceInfo['version'])
@@ -97,7 +97,7 @@ def main():
   print('  Using the vcf file:                   ', args.input_vcf, sep = '')
 
   # Determine the order of the samples in the vcf header
-  sam.getSampleOrder(samples, args.input_vcf)
+  sam.getSampleOrder(resourceInfo, samples, args.input_vcf)
 
   # If the HPO terms are not specified on the command line, grab them from the project. If they are specified on the command
   # line, use these
@@ -193,6 +193,7 @@ def parseCommandLine():
   # Required arguments
   #parser.add_argument('--family_type', '-f', required = True, metavar = 'string', help = 'The familty structure. Allowed values: ' + ', '. join(allowedFamily))
   parser.add_argument('--data_directory', '-d', required = True, metavar = 'string', help = 'The path to the directory where the resources live')
+  parser.add_argument('--tools_directory', '-s', required = False, metavar = 'string', help = 'The path to the directory where the tools to use live')
   parser.add_argument('--utils_directory', '-l', required = True, metavar = 'string', help = 'The path to the public-utils directory')
   parser.add_argument('--input_vcf', '-i', required = False, metavar = 'string', help = 'The input vcf file to annotate')
   parser.add_argument('--ped', '-e', required = False, metavar = 'string', help = 'The pedigree file for the family. Not required for singletons')

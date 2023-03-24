@@ -13,9 +13,14 @@ import glob
 import importlib
 
 # Check the supplied arguments
-def checkResources(reference, dataDir, resourceFilename):
+def checkResources(reference, dataDir, toolsDir, resourceFilename):
   resourceInfo = {}
   resourceInfo['path']   = dataDir + str(reference) + '/'
+
+  # Store the directory where tools reside if defined
+  if toolsDir:
+    resourceInfo['toolsPath'] = str(toolsDir) if toolsDir.endswith('/') else str(toolsDir) + str('/')
+
   if not exists(resourceFilename): fail('The resource file "' + resourceFilename + '" does not exist')
   resourceInfo['json']   = resourceFilename
 

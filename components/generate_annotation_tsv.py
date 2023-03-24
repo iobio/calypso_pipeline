@@ -20,6 +20,12 @@ def main():
   # Parse the command line
   args = parseCommandLine()
 
+  # Define the executable bcftools command
+  if args.tools_directory:
+    if not args.tools_directory.endswith('/'): args.tools_directory = str(args.tools_directory) + '/'
+    bcftoolsExe = args.tools_directory + 'bcftools/bcftools'
+  else: bcftoolsExe = 'bcftools'
+
   # Read the mosaicJson file to get information on how to process different annotations
   mosaicInfo = mosr.readMosaicJson(args.mosaic_json, args.reference)
 
@@ -40,7 +46,7 @@ def main():
     elif processClass == 'OMIM': processClassOMIM(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == 'compound': processClassCompound(args.resource, mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == 'spliceai': processClassSpliceAI(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.split(','), outputFile)
-    elif processClass == 'clinvar': processClassClinvar(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
+    elif processClass == 'clinvar': processClassClinvar(resourceInfo, args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
   
     # Close the output tsv file
     outputFile.close()
@@ -61,6 +67,7 @@ def parseCommandLine():
   parser.add_argument('--reference', '-r', required = True, metavar = 'string', help = 'The genome reference file used')
   parser.add_argument('--tags', '-g', required = True, metavar = 'string', help = 'A comma separated list of VCF INFO tags to be extracted')
   parser.add_argument('--uids', '-d', required = True, metavar = 'string', help = 'A comma separated list of uids for the resource annotations')
+  parser.add_argument('--tools_directory', '-s', required = False, metavar = 'string', help = 'The path to the directory where the tools live')
   parser.add_argument('--mosaic_json', '-m', required = True, metavar = 'string', help = 'The json file describing the Mosaic parameters')
 
   # Optional mosaic arguments
@@ -84,7 +91,7 @@ def parseCommandLine():
 def processClassA(vcf, tags, outputFile):
 
   # Loop over all records in the vcf file
-  for record in os.popen(bcftools.query(vcf, tags)).readlines():
+  for record in os.popen(bcftools.query(bcftoolsExe, vcf, tags)).readlines():
 
     # Split the record on tabs
     fields = record.rstrip().split('\t')
@@ -124,7 +131,7 @@ def processClassA(vcf, tags, outputFile):
 def processClassB(vcf, tags, outputFile):
 
   # Loop over all records in the vcf file
-  for record in os.popen(bcftools.query(vcf, tags)).readlines():
+  for record in os.popen(bcftools.query(bcftoolsExe, vcf, tags)).readlines():
 
     # Split the record on tabs
     fields = record.rstrip().split('\t')
@@ -148,7 +155,7 @@ def processClassB(vcf, tags, outputFile):
 def processClassC(mosaicInfo, resource, vcf, tags, outputFile):
 
   # Loop over all records in the vcf file
-  for record in os.popen(bcftools.queryFormat(vcf, resource)).readlines():
+  for record in os.popen(bcftools.queryFormat(bcftoolsExe, vcf, resource)).readlines():
 
     # Split the record on tabs
     fields = record.rstrip().split('\t')
@@ -179,7 +186,7 @@ def processClassCompound(resource, resourceInfo, vcf, tags, outputFile):
     return
 
   # Loop over all records in the vcf file
-  for record in os.popen(bcftools.splitvepQuery(vcf, [resourceInfo['info_field']])).readlines():
+  for record in os.popen(bcftools.splitvepQuery(bcftoolsExe, vcf, [resourceInfo['info_field']])).readlines():
 
     # Split the record on tabs
     fields = record.rstrip().split('\t')
@@ -206,7 +213,7 @@ def processClassCompound(resource, resourceInfo, vcf, tags, outputFile):
 def processClassOMIM(vcf, tags, outputFile):
 
   # Loop over all records in the vcf file
-  for record in os.popen(bcftools.query(vcf, tags)).readlines():
+  for record in os.popen(bcftools.query(bcftoolsExe, vcf, tags)).readlines():
 
     # Split the record on tabs
     fields = record.rstrip().split('\t')
@@ -237,7 +244,7 @@ def processClassOMIM(vcf, tags, outputFile):
 def processClassSpliceAI(resourceInfo, vcf, tags, outputFile):
 
   # Loop over all records in the vcf file
-  for record in os.popen(bcftools.query(vcf, [resourceInfo['info_field']])).readlines():
+  for record in os.popen(bcftools.query(bcftoolsExe, vcf, [resourceInfo['info_field']])).readlines():
 
     # Split the record on tabs
     fields = record.rstrip().split('\t')
@@ -286,7 +293,7 @@ def processClassSpliceAI(resourceInfo, vcf, tags, outputFile):
       print('\t'.join(fields + finalSet), file = outputFile)
 
 # Process ClinVar annotations
-def processClassClinvar(vcf, tags, outputFile):
+def processClassClinvar(resourceInfo, vcf, tags, outputFile):
   skippedValues    = {}
   noRecords        = 0
   noOutputRecords  = 0
@@ -471,7 +478,7 @@ def processClassClinvar(vcf, tags, outputFile):
   allowedClinVar['Benign|association|confers_sensitivity']   = 'Benign'
 
   # Loop over all records in the vcf file
-  for record in os.popen(bcftools.query(vcf, tags)).readlines():
+  for record in os.popen(bcftools.query(bcftoolsExe, vcf, tags)).readlines():
     noRecords += 1
 
     # Split the record on tabs

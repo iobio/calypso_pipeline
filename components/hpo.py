@@ -29,6 +29,12 @@ def main():
   import mosaic_config
   import api_samples as api_s
 
+  # Define the executable bcftools command
+  if args.tools_directory:
+    if not args.tools_directory.endswith('/'): args.tools_directory = str(args.tools_directory) + '/'
+    bcftoolsExe = args.tools_directory + 'bcftools/bcftools'
+  else: bcftoolsExe = 'bcftools'
+
   # Parse the Mosaic config file to get the token and url for the api calls
   mosaicRequired = {'MOSAIC_TOKEN': {'value': args.token, 'desc': 'An access token', 'long': '--token', 'short': '-t'},
                     'MOSAIC_URL': {'value': args.url, 'desc': 'The api url', 'long': '--url', 'short': '-u'}}
@@ -45,7 +51,7 @@ def main():
   parseHpoGene(args)
 
   # Parse vcf file
-  parseVcf(args)
+  parseVcf(args, bcftoolsExe)
 
 # Input options
 def parseCommandLine():
@@ -63,6 +69,7 @@ def parseCommandLine():
   parser.add_argument('--labels_uid', '-b', required = True, metavar = "string", help = "The uid for the HPO labels annotation")
   parser.add_argument('--overlaps_uid', '-d', required = True, metavar = "string", help = "The uid for the HPO overlaps annotation")
   parser.add_argument('--utils_directory', '-l', required = True, metavar = 'string', help = 'The path to the public-utils directory')
+  parser.add_argument('--tools_directory', '-s', required = False, metavar = 'string', help = 'The path to the tools directory')
 
   # Optional mosaic arguments
   parser.add_argument('--config', '-c', required = False, metavar = "string", help = "The config file for Mosaic")
@@ -119,7 +126,7 @@ def parseHpoGene(args):
   hpoFile.close()
 
 # Parse vcf file
-def parseVcf(args):
+def parseVcf(args, bcftoolsExe):
   global hpoGene
   global hpoLabels
   global patientTerms
@@ -133,7 +140,7 @@ def parseVcf(args):
   print(headerBase, args.terms_uid, args.labels_uid, args.overlaps_uid, sep = '\t', file = hpoFile)
 
   # Read the standard input
-  for line in os.popen(bcftools.query(args.input_vcf, ['BCSQ'])).readlines():
+  for line in os.popen(bcftools.query(bcftoolsExe, args.input_vcf, ['BCSQ'])).readlines():
 
     # Skip header lines
     if line.startswith('#'): continue

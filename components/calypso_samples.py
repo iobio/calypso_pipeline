@@ -385,10 +385,12 @@ def quadStructures(samples):
   return samples, proband, familyType
 
 # Get the order that the samples appear in, in the vcf header
-def getSampleOrder(samples, vcf):
+def getSampleOrder(resourceInfo, samples, vcf):
+  bcftools = str(resourceInfo['toolsPath']) + 'bcftools/bcftools' if 'toolsPath' in resourceInfo else 'bcftools'
 
   # Get the final head line
-  data = os.popen('bcftools view -h ' + str(vcf) + ' | tail -1').read().rstrip().split("\t")
+  data = os.popen(bcftools + ' view -h ' + str(vcf) + ' | tail -1').read().rstrip().split("\t")
+  data = os.popen(bcftools + ' view -h ' + str(vcf) + ' | tail -1').read().rstrip().split("\t")
 
   # Read through the samples and define the sample order
   for index, sample in enumerate(data[9:]):
