@@ -18,8 +18,8 @@ def checkResources(reference, dataDir, toolsDir, resourceFilename):
   resourceInfo['path']   = dataDir + str(reference) + '/'
 
   # Store the directory where tools reside if defined
-  if toolsDir:
-    resourceInfo['toolsPath'] = str(toolsDir) if toolsDir.endswith('/') else str(toolsDir) + str('/')
+  if toolsDir: resourceInfo['toolsPath'] = str(toolsDir) if toolsDir.endswith('/') else str(toolsDir) + str('/')
+  else: resourceInfo['toolsPath'] = False
 
   if not exists(resourceFilename): fail('The resource file "' + resourceFilename + '" does not exist')
   resourceInfo['json']   = resourceFilename
@@ -107,7 +107,14 @@ def readResources(reference, resourceInfo):
       except: fail('The VEP resource description does not include the "cache"')
       try: resourceInfo['resources']['vep']['plugins'] = resources['vep']['plugins']
       except: fail('The VEP resource description does not include "plugins"')
-    
+
+      # If the vep cache / plugins directories include "TOOLS", this should be replaced with the path to the
+      # tools
+      if 'TOOLS' in resourceInfo['resources']['vep']['cache']:
+        if not resourceInfo['toolsPath']: fail('The resources json includes "TOOLS" in the vep cache path, which requires a tools path be defined on the command line')
+        resourceInfo['resources']['vep']['cache']   = resourceInfo['resources']['vep']['cache'].replace('TOOLS/', resourceInfo['toolsPath'])
+        resourceInfo['resources']['vep']['plugins'] = resourceInfo['resources']['vep']['plugins'].replace('TOOLS/', resourceInfo['toolsPath'])
+
       # Check that the supplied directories exist
       if not exists(resourceInfo['resources']['vep']['cache']): fail('VEP cache does not exist')
       if not exists(resourceInfo['resources']['vep']['plugins']): fail('VEP plugins directory does not exist')

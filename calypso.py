@@ -246,7 +246,7 @@ def fail(message):
 # Initialise global variables
 
 # Pipeline version
-version = "1.1.2"
+version = "1.1.3"
 date    = str(date.today())
 
 # The working directory where all created files are kept

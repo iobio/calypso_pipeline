@@ -36,8 +36,14 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename, pi
   print('# Define the tools to use while executing the Calypso pipeline', file = bashFile)
   if 'toolsPath' in resourceInfo:
     print('BCFTOOLS=', resourceInfo['toolsPath'], 'bcftools/bcftools', sep = '', file = bashFile)
+    print('VEP=', resourceInfo['toolsPath'], 'ensembl-vep/vep', sep = '', file = bashFile)
+    print('SLIVAR=', resourceInfo['toolsPath'], 'slivar', sep = '', file = bashFile)
+    print('VCFANNO=', resourceInfo['toolsPath'], 'vcfanno', sep = '', file = bashFile)
   else:
     print('BCFTOOLS=bcftools', file = bashFile)
+    print('VEP=vep', file = bashFile)
+    print('SLIVAR=slivar', file = bashFile)
+    print('VCFANNO=vcfanno', file = bashFile)
   print(file = bashFile)
 
   # Define the names of the input and output files
@@ -122,11 +128,11 @@ def annotateVcf(bashFile, resourceInfo, pipelineModifiers):
   print('# Annotate with $BCFTOOLS csq and add further annotations with vcfanno', file = bashFile)
   print('echo -n "Annotating cleaned VCF..."', file = bashFile)
   print('$BCFTOOLS csq -f $REF --ncsq 40 -l -g $GFF $CLEANVCF 2>> $STDERR \\', file = bashFile)
-  print('  | vcfanno -p 16 $TOML /dev/stdin 2>> $STDERR \\', file = bashFile)
+  print('  | $VCFANNO -p 16 $TOML /dev/stdin 2>> $STDERR \\', file = bashFile)
 
   # If this is a family, also include modes of inheritance using Slivar
   if pipelineModifiers['useInheritance']:
-    print('  | slivar_static expr \\', file = bashFile)
+    print('  | $SLIVAR expr \\', file = bashFile)
     print('  --vcf /dev/stdin \\', file = bashFile)
     print('  --ped $PED \\', file = bashFile)
     print('  --js $JS \\', file = bashFile)
@@ -150,7 +156,7 @@ def annotateVcf(bashFile, resourceInfo, pipelineModifiers):
     # Annotate with compound hets
     print('# Annotate compound hets with Slivar', file = bashFile)
     print('echo -n "Adding in compound hets..."', file = bashFile)
-    print('slivar_static expr \\', file = bashFile)
+    print('$SLIVAR expr \\', file = bashFile)
     print('  --pass-only \\', file = bashFile)
     print('  --vcf $ANNOTATEDVCF \\', file = bashFile)
     print('  --ped $PED \\', file = bashFile)
@@ -159,7 +165,7 @@ def annotateVcf(bashFile, resourceInfo, pipelineModifiers):
     print('  --family-expr \'denovo:fam.every(segregating_denovo) && INFO.gnomad_popmax_af < 0.001\' \\', file = bashFile)
     print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && INFO.gnomad_popmax_af < 0.005\' \\', file = bashFile)
     print('  2>> $STDERR \\', file = bashFile)
-    print('  | slivar_static compound-hets \\', file = bashFile)
+    print('  | $SLIVAR compound-hets \\', file = bashFile)
     print('  --vcf /dev/stdin \\', file = bashFile)
     print('  --skip NONE \\', file = bashFile)
     print('  -s comphet_side \\', file = bashFile)
@@ -225,11 +231,11 @@ def filterVariants(bashFile, samples, resourceInfo):
   print('  -i \'GT[@proband.txt]="alt" & GT[@proband.txt]!="mis"\' \\', file = bashFile)
   print('  $FINALVCF \\', file = bashFile)
   print('  2>> $STDERR \\', file = bashFile)
-  print('  | slivar_static expr --vcf - \\', file = bashFile)
+  print('  | $SLIVAR expr --vcf - \\', file = bashFile)
   print('  --info \'INFO.gnomad_popmax_af < 0.01 && variant.FILTER == "PASS" && variant.ALT[0] != "*"\' \\', file = bashFile)
   print('  --pass-only \\', file = bashFile)
   print('  2>> $STDERR \\', file = bashFile)
-  print('  | vep \\', file = bashFile)
+  print('  | $VEP \\', file = bashFile)
   print('    --vcf \\', file = bashFile)
   print('    --force \\', file = bashFile)
   print('    --check_existing \\', file = bashFile)
@@ -238,6 +244,7 @@ def filterVariants(bashFile, samples, resourceInfo):
   print('    --format vcf \\', file = bashFile)
   print('    --force_overwrite \\', file = bashFile)
   print('    --cache \\', file = bashFile)
+  print('    --offline \\', file = bashFile)
   print('    --no_stats \\', file = bashFile)
   print('    --fasta $REF \\', file = bashFile)
   print('    --dir_cache ', resourceInfo['resources']['vep']['cache'], ' \\', sep = '', file = bashFile)
@@ -273,7 +280,7 @@ def rareDiseaseVariants(bashFile):
   print('echo -n "Generating rare disease variants..."', file = bashFile)
   print('$BCFTOOLS csq -s - --ncsq 40 -g $GFF -l -f $REF $FILTEREDVCF -O u \\', file = bashFile)
   print('  2>> $STDERR \\', file = bashFile)
-  print('  | slivar_static expr --vcf - \\', file = bashFile)
+  print('  | $SLIVAR expr --vcf - \\', file = bashFile)
   print('  --ped $PED \\', file = bashFile)
   print('  -o $RAREDISEASEVCF \\', file = bashFile)
   print('  --pass-only \\', file = bashFile)
