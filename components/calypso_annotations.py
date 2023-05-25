@@ -5,7 +5,7 @@ from __future__ import print_function
 import os
 
 # Call the command to extract annotations from the filtered vcf into a tsv file
-def createAnnotationTsv(mosaicInfo, resource, scriptDir, reference, configFile, mosaicJson, bashFile, files):
+def createAnnotationTsv(mosaicInfo, resource, scriptDir, reference, configFile, mosaicJson, toolsDir, bashFile, files):
   tags = ''
   uids = ''
   outputFiles = []
@@ -34,6 +34,7 @@ def createAnnotationTsv(mosaicInfo, resource, scriptDir, reference, configFile, 
     print('    -m ', mosaicJson, ' \\', sep = '', file = bashFile)
     print('    -g "', tags, '" \\', sep = '', file = bashFile)
     print('    -d "', uids, '" \\', sep = '', file = bashFile)
+    if toolsDir: print('    -s "', toolsDir, '" \\', sep = '', file = bashFile)
     print('    -i ', annotateFile, ' \\', sep = '', file = bashFile)
     print('    -o ', outputFile, sep = '', file = bashFile)
   print('  echo "complete"', file = bashFile)
@@ -42,7 +43,7 @@ def createAnnotationTsv(mosaicInfo, resource, scriptDir, reference, configFile, 
   return outputFiles
 
 # Call the command to extract HPO annotations from the filtered vcf into a tsv file
-def createHpoTsv(hpoInfo, scriptDir, configFile, hpoString, projectId, genePhenotype, utils, bashFile, files):
+def createHpoTsv(hpoInfo, scriptDir, configFile, hpoString, projectId, genePhenotype, utils, toolsDir, bashFile, files):
   uids        = {}
   outputFiles = []
 
@@ -69,6 +70,7 @@ def createHpoTsv(hpoInfo, scriptDir, configFile, hpoString, projectId, genePheno
     print('    -d "', uids['HPO Overlaps'], '" \\', sep = '', file = bashFile)
     print('    -e "', uids['HPO Terms'], '" \\', sep = '', file = bashFile)
     print('    -b "', uids['HPO Labels'], '" \\', sep = '', file = bashFile)
+    if toolsDir: print('    -s "', toolsDir, '" \\', sep = '', file = bashFile)
     print('    -i ', annotateFile, ' \\', sep = '', file = bashFile)
     print('    -o ', outputFile, sep = '', file = bashFile)
   print('  echo "complete"', file = bashFile)

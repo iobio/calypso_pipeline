@@ -23,6 +23,7 @@ import calypso_path as cpath
 import calypso_reanalysis as rean
 import calypso_resources as res
 import calypso_samples as sam
+import calypso_slivar_family as famFilt
 import calypso_toml as toml
 import calypso_upload as upload
 import calypso_variant_filters as vfilt
@@ -43,6 +44,7 @@ def main():
   # to be accessed for Calypso
   checkArguments(args)
   sys.path = cpath.buildPath(sys.path, args.utils_directory)
+  rootPath = os.path.dirname(__file__)
 
   # Import additional tools
   import mosaic_config
@@ -72,8 +74,12 @@ def main():
   # Read the resources json file to identify all the resources that will be used in the annotation pipeline
   if args.resource_json: resourceInfo = res.checkResources(reference, args.data_directory, args.tools_directory, args.resource_json)
   else: resourceInfo = res.checkResources(reference, args.data_directory, args.tools_directory, args.data_directory + 'resources_' + str(reference) + '.json')
-  resourceInfo = res.readResources(reference, resourceInfo)
-  rootPath = os.path.dirname( __file__)
+  resourceInfo = res.readResources(reference, rootPath, resourceInfo)
+
+  # Define the tools to be used by Calypso
+  resourceInfo = res.calypsoTools(resourceInfo)
+
+  # Define paths to be used by Calypso
   setWorkingDir(resourceInfo['version'])
 
   # Determine the id of the proband, and the family structure
@@ -129,13 +135,20 @@ def main():
   # Generate the bash script to run the annotation pipeline
   pipelineModifiers = bashScript.determinePipeline(familyType)
   bashFilename, bashFile = bashScript.openBashScript(workingDir)
-  filteredVcf, clinvarVcf, rareVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, args.input_vcf, args.ped, tomlFilename, pipelineModifiers)
+  filteredVcf, clinvarVcf, rareVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, args.input_vcf, args.ped, tomlFilename, familyType, pipelineModifiers)
   bashScript.samplesFile(bashFile)
-  bashScript.cleanedVcf(bashFile)
-  bashScript.annotateVcf(bashFile, resourceInfo, pipelineModifiers)
+  bashScript.annotateVcf(resourceInfo, bashFile)
+  #bashScript.annotateVcf(bashFile, familyType)#resourceInfo, pipelineModifiers)
+  #bashScript.cleanedVcf(bashFile)
+  #bashScript.annotateVcf(bashFile, resourceInfo, pipelineModifiers)
   bashScript.filterVariants(bashFile, samples, resourceInfo)
-  bashScript.rareDiseaseVariants(bashFile)
+  #bashScript.rareDiseaseVariants(bashFile)
   bashScript.clinVarVariants(bashFile)
+
+  # Perform filtering based on the family type. This filter will generate a small set of prioritized
+  # variants based on the available family structure
+  if familyType == 'trio': famFilt.annotateTrio(resourceInfo, bashFile)
+  else: print('**** WARNING: Filtering for family type ' + str(familyType) + ' has not yet been implemented')
   bashScript.deleteFiles(args, pipelineModifiers, bashFile)
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
@@ -150,9 +163,10 @@ def main():
     if resource == 'hpo':
 
       # Only proceed with HPO terms if an HPO term string has been provided
-      if args.hpo: tsvFiles = anno.createHpoTsv(mosaicInfo['resources']['hpo'], os.path.dirname(__file__) + '/components', args.config, args.hpo, args.project_id, resourceInfo['resources']['hpo']['file'], args.utils_directory, bashFile, annotateFiles)
-
-    else: tsvFiles = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', reference, args.config, args.mosaic_json, bashFile, annotateFiles)
+      info     = mosaicInfo['resources']['hpo']
+      fileInfo = resourceInfo['resources']['hpo']['file']
+      if args.hpo: tsvFiles = anno.createHpoTsv(info, os.path.dirname(__file__) + '/components', args.config, args.hpo, args.project_id, fileInfo, args.utils_directory, args.tools_directory, bashFile, annotateFiles)
+    else: tsvFiles = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', reference, args.config, args.mosaic_json, args.tools_directory, bashFile, annotateFiles)
     for tsv in tsvFiles: upload.uploadAnnotations(args.utils_directory, tsv, mosaicInfo['resources'][resource]['project_id'], args.config, uploadFile)
   upload.closeUploadAnnotationsFile(uploadFilename, uploadFile)
 
@@ -246,7 +260,7 @@ def fail(message):
 # Initialise global variables
 
 # Pipeline version
-version = "1.1.3"
+version = "1.1.5"
 date    = str(date.today())
 
 # The working directory where all created files are kept

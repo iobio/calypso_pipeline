@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import os
 import json
+import tools_bcftools as bcf
 
 # Determine the id of the proband
 def getProband(mosaicConfig, args, workingDir, api_s, api_ped):
@@ -386,11 +387,10 @@ def quadStructures(samples):
 
 # Get the order that the samples appear in, in the vcf header
 def getSampleOrder(resourceInfo, samples, vcf):
-  bcftools = str(resourceInfo['toolsPath']) + 'bcftools/bcftools' if 'toolsPath' in resourceInfo else 'bcftools'
+  #bcftools = str(resourceInfo['toolsPath']) + 'bcftools/bcftools' if 'toolsPath' in resourceInfo else 'bcftools'
 
   # Get the final head line
-  data = os.popen(bcftools + ' view -h ' + str(vcf) + ' | tail -1').read().rstrip().split("\t")
-  data = os.popen(bcftools + ' view -h ' + str(vcf) + ' | tail -1').read().rstrip().split("\t")
+  data = os.popen(bcf.getHeader(resourceInfo['tools']['bcftools'], vcf)).readlines()[-1].rstrip().split('\t')
 
   # Read through the samples and define the sample order
   for index, sample in enumerate(data[9:]):
@@ -398,7 +398,7 @@ def getSampleOrder(resourceInfo, samples, vcf):
 
   # Check that every sample in samples has vcf_position set
   for sample in samples:
-    if 'vcf_position' not in samples[sample]: fail('Sample ' + str(sample) + 'is listed in the ped file, but does not appear in the vcf header')
+    if 'vcf_position' not in samples[sample]: fail('Sample ' + str(sample) + ' is listed in the ped file, but does not appear in the vcf header')
 
 # If the script fails, provide an error message and exit
 def fail(message):

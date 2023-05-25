@@ -25,7 +25,7 @@ def openBashScript(workingDir):
   return bashFilename, bashFile
 
 # Write all the resource file information to the bash file for the script to use
-def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename, pipelineModifiers):
+def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename, familyType, pipelineModifiers):
 
   # Initial information
   #print('#! /bin/bash', file = bashFile)
@@ -34,11 +34,13 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename, pi
 
   # Define the tools to use
   print('# Define the tools to use while executing the Calypso pipeline', file = bashFile)
-  if 'toolsPath' in resourceInfo:
-    print('BCFTOOLS=', resourceInfo['toolsPath'], 'bcftools/bcftools', sep = '', file = bashFile)
-    print('VEP=', resourceInfo['toolsPath'], 'ensembl-vep/vep', sep = '', file = bashFile)
-    print('SLIVAR=', resourceInfo['toolsPath'], 'slivar', sep = '', file = bashFile)
-    print('VCFANNO=', resourceInfo['toolsPath'], 'vcfanno', sep = '', file = bashFile)
+  if resourceInfo['toolsPath']:
+    print('TOOLPATH=', resourceInfo['toolsPath'], sep = '', file = bashFile)
+    print('BCFTOOLS=$TOOLPATH/bcftools/bcftools', sep = '', file = bashFile)
+    print('export BCFTOOLS_PLUGINS=$TOOLPATH/bcftools/plugins', file = bashFile)
+    print('VEP=$TOOLPATH/ensembl-vep/vep', sep = '', file = bashFile)
+    print('SLIVAR=$TOOLPATH/slivar', sep = '', file = bashFile)
+    print('VCFANNO=$TOOLPATH/vcfanno', sep = '', file = bashFile)
   else:
     print('BCFTOOLS=bcftools', file = bashFile)
     print('VEP=vep', file = bashFile)
@@ -49,28 +51,39 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename, pi
   # Define the names of the input and output files
   print('# Following are the input VCF and output files created by the pipeline', file = bashFile)
   print('VCF=', os.path.abspath(vcf), sep = '', file = bashFile)
+  print(file = bashFile)
 
   # Generate the names of the intermediate and final vcf files
-  vcfBase     = workingDir + os.path.abspath(vcf).split('/')[-1].rstrip('vcf.gz')
+  #vcfBase     = workingDir + os.path.abspath(vcf).split('/')[-1].rstrip('vcf.gz')
+  vcfBase     = os.path.abspath(vcf).split('/')[-1].rstrip('vcf.gz')
   filteredVcf = str(vcfBase) + '_calypso_filtered.vcf.gz'
+  slivar1Vcf  = str(vcfBase) + '_calypso_slivar1.vcf.gz'
+  slivar2Vcf  = str(vcfBase) + '_calypso_slivar2.vcf.gz'
+  slivarFilt  = str(vcfBase) + '_calypso_slivar_filtered.vcf.gz'
+  comphetVcf  = str(vcfBase) + '_calypso_comphet.vcf.gz'
   clinvarVcf  = str(vcfBase) + '_calypso_clinVar.vcf.gz'
   rareVcf     = str(vcfBase) + '_calypso_rare_disease.vcf.gz'
-  print('CLEANVCF=' + str(vcfBase) + '_clean.vcf.gz', sep = '', file = bashFile)
-  print('ANNOTATEDVCF=' + str(vcfBase) + '_annotated.vcf.gz', sep = '', file = bashFile)
-  print('PROBANDVCF=' + str(vcfBase) + '_proband.vcf.gz', sep = '', file = bashFile)
-  print('PREANNOVCF=' + str(vcfBase) + '_preanno.vcf.gz', sep = '', file = bashFile)
+  print('FILEPATH=', workingDir, sep = '', file = bashFile)
+  #print('CLEANVCF=' + str(vcfBase) + '_clean.vcf.gz', sep = '', file = bashFile)
+  print('ANNOTATEDVCF=$FILEPATH/' + str(vcfBase) + '_annotated.vcf.gz', sep = '', file = bashFile)
+  #print('PROBANDVCF=$FILEPATH/' + str(vcfBase) + '_proband.vcf.gz', sep = '', file = bashFile)
+  #print('PREANNOVCF=$FILEPATH/' + str(vcfBase) + '_preanno.vcf.gz', sep = '', file = bashFile)
 
   # If compound hets are not generated, there is no COMPHETS output
-  if pipelineModifiers['useInheritance']: print('COMPHETS=' + str(vcfBase) + '_comphets.vcf.gz', sep = '', file = bashFile)
-  print('FINALVCF=' + str(vcfBase) + '_calypso.vcf.gz', sep = '', file = bashFile)
-  print('FILTEREDVCF=' + str(filteredVcf), sep = '', file = bashFile)
-  print('CLINVARVCF=' + str(clinvarVcf), sep = '', file = bashFile)
-  print('RAREDISEASEVCF=' + str(rareVcf), sep = '', file = bashFile)
+  #if pipelineModifiers['useInheritance']: print('COMPHETS=$FILEPATH/' + str(vcfBase) + '_comphets.vcf.gz', sep = '', file = bashFile)
+  #print('FINALVCF=$FILEPATH/' + str(vcfBase) + '_calypso.vcf.gz', sep = '', file = bashFile)
+  print('FILTEREDVCF=$FILEPATH/' + str(filteredVcf), sep = '', file = bashFile)
+  print('SLIVAR1VCF=$FILEPATH/' + str(slivar1Vcf), sep = '', file = bashFile)
+  print('SLIVAR2VCF=$FILEPATH/' + str(slivar2Vcf), sep = '', file = bashFile)
+  print('SLIVARFILTEREDVCF=$FILEPATH/' + str(slivarFilt), sep = '', file = bashFile)
+  print('COMPHETSVCF=$FILEPATH/' + str(comphetVcf), sep = '', file = bashFile)
+  print('CLINVARVCF=$FILEPATH/' + str(clinvarVcf), sep = '', file = bashFile)
+  #print('RAREDISEASEVCF=$FILEPATH/' + str(rareVcf), sep = '', file = bashFile)
   print('STDOUT=calypso_annotation_pipeline.stdout', file = bashFile)
   print('STDERR=calypso_annotation_pipeline.stderr', file = bashFile)
 
   # Write the ped file, if necessary
-  print('PED=', os.path.abspath(ped), sep = '', file = bashFile)
+  print('PED=', ped, sep = '', file = bashFile)
   print(file = bashFile)
 
   # Define the required resources
@@ -79,11 +92,20 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename, pi
   except: fail('The resources json does not define a reference fasta file')
   try: print('GFF=', resourceInfo['resources']['gff']['file'], sep = '', file = bashFile)
   except: fail('The resources json does not define a gff file')
-  try: print('SLIVAR_GNOMAD=', resourceInfo['resources']['slivar_gnomAD']['file'], sep = '', file = bashFile)
-  except: fail('The resources json does not define a gnomAD zip file')
-  try: print('JS=', resourceInfo['resources']['slivar_js']['file'], sep = '', file = bashFile)
-  except: fail('The resources json does not define the Slivar functions js file')
   print('TOML=', tomlFilename, sep = '', file = bashFile)
+
+  # The Slivar pipeline uses data from gnomAD v2 and v3 for filtering
+  try: print('SLIVAR_GNOMAD_V2=', resourceInfo['resources']['slivar_gnomad_v2']['file'], sep = '', file = bashFile)
+  except: fail('The resources json does not define a gnomAD v2 zip file')
+  try: print('SLIVAR_GNOMAD_V3=', resourceInfo['resources']['slivar_gnomad_v3']['file'], sep = '', file = bashFile)
+  except: fail('The resources json does not define a gnomAD v3 zip file')
+  #try: print('SLIVAR_GNOMAD_V2=', resourceInfo['resources']['slivar_gnomAD']['file'], sep = '', file = bashFile)
+  #except: fail('The resources json does not define a gnomAD zip file')
+
+  # The slivar js file is based on the family structure. Check that a file exists for the current family
+  jsFile = 'slivar_' + familyType + '_js'
+  try: print('JS=', resourceInfo['resources'][jsFile]['file'], sep = '', file = bashFile)
+  except: fail('The resources json does not define the Slivar functions js file for a family of type ' + str(familyType) + '. Expected "' + str(jsFile) + '" in the resources json')
   print(file = bashFile)
 
   # Return the name of the filtered vcf file
@@ -91,6 +113,8 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename, pi
 
 # Generate a text file containing all the samples
 def samplesFile(bashFile):
+
+  # Generate a samples text file from the ped file
   print('# Generate a text file containing all samples in the family', file = bashFile)
   print('echo -n "Creating text file of samples..." > $STDOUT', file = bashFile)
   print('echo -n "Creating text file of samples..."', file = bashFile)
@@ -99,110 +123,148 @@ def samplesFile(bashFile):
   print('echo "complete" >> $STDOUT', file = bashFile)
   print(file = bashFile)
 
-# Generate a normalized vcf containing only family members and no annotations
-def cleanedVcf(bashFile):
+# Annotate the vcf file using bcftools, vcfanno, and VEP
+def annotateVcf(resourceInfo, bashFile):
+
+  # Generate the list of annotations to be output from VEP
+  annotationString = ''
+  for annotation in resourceInfo['resources']['vep']['fields']: annotationString += annotation + ','
+  annotationString = annotationString.rstrip(',')
 
   # Print out status messages
-  print('# Normalize and subset original VCF', file = bashFile)
-  print('echo -n "Subsetting and normalizing input VCF..."', file = bashFile)
-
-  # Generate a samples text file from the ped file
-  print('$BCFTOOLS norm -m - -w 10000 -f $REF $VCF 2> $STDERR\\', file = bashFile)
+  print('# Normalize, subset, and annotate original VCF', file = bashFile)
+  print('echo -n "Subsetting, normalizing, and annotating input VCF..."', file = bashFile)
+  if 'export' in resourceInfo['resources']['vep']:
+    for newPath in resourceInfo['resources']['vep']['export']: print(newPath, file = bashFile)
+  print('$BCFTOOLS norm -m - -w 10000 -f $REF $VCF 2> $STDERR \\', file = bashFile)
   print('  | $BCFTOOLS view -a -c 1 -S samples.txt 2>> $STDERR \\', file = bashFile)
-  print('  | $BCFTOOLS annotate -x INFO -O z -o $CLEANVCF \\', file = bashFile)
-  print('  > $STDOUT 2>> $STDERR', file = bashFile)
-  print('echo "complete"', file = bashFile)
-  print(file = bashFile)
-
-  # Index the clean vcf file
-  print('# Index the clean VCF file', file = bashFile)
-  print('echo -n "Indexing cleaned VCF..."', file = bashFile)
-  print('$BCFTOOLS index -t $CLEANVCF', file = bashFile)
-  print('echo "complete"', file = bashFile)
-  print(file = bashFile)
-
-# Annotate the cleaned vcf file using vcfanno
-def annotateVcf(bashFile, resourceInfo, pipelineModifiers):
-
-  # Annotate the vcf with vcfanno
-  print('# Annotate with $BCFTOOLS csq and add further annotations with vcfanno', file = bashFile)
-  print('echo -n "Annotating cleaned VCF..."', file = bashFile)
-  print('$BCFTOOLS csq -f $REF --ncsq 40 -l -g $GFF $CLEANVCF 2>> $STDERR \\', file = bashFile)
+  print('  | $BCFTOOLS annotate -x INFO 2>> $STDERR \\', file = bashFile)
+  print('  | $BCFTOOLS csq -f $REF --ncsq 40 -l -g $GFF 2>> $STDERR \\', file = bashFile)
   print('  | $VCFANNO -p 16 $TOML /dev/stdin 2>> $STDERR \\', file = bashFile)
+  print('  | $VEP \\', file = bashFile)
+  print('    --assembly ', resourceInfo['reference'], '\\', sep = '', file = bashFile)
+  print('    --fasta $REF \\', file = bashFile)
+  print('    --cache \\', file = bashFile)
+  print('    --dir_cache ', resourceInfo['resources']['vep']['cache'], ' \\', sep = '', file = bashFile)
+  print('    --dir_plugins ', resourceInfo['resources']['vep']['plugins'], ' \\', sep = '', file = bashFile)
+  print('    --offline \\', file = bashFile)
+  print('    --vcf \\', file = bashFile)
+  print('    --force \\', file = bashFile)
+  print('    --check_existing \\', file = bashFile)
+  print('    --quiet \\', file = bashFile)
+  print('    --fork 40 \\', file = bashFile)
+  print('    --format vcf \\', file = bashFile)
+  print('    --force_overwrite \\', file = bashFile)
 
-  # If this is a family, also include modes of inheritance using Slivar
-  if pipelineModifiers['useInheritance']:
-    print('  | $SLIVAR expr \\', file = bashFile)
-    print('  --vcf /dev/stdin \\', file = bashFile)
-    print('  --ped $PED \\', file = bashFile)
-    print('  --js $JS \\', file = bashFile)
-    print('  -g $SLIVAR_GNOMAD \\', file = bashFile)
-    print('  --info \'INFO.gnomad_popmax_af < 0.01 && variant.FILTER == "PASS" && variant.ALT[0] != "*"\' \\', file = bashFile)
-    print('  --family-expr \'denovo:fam.every(segregating_denovo) && INFO.gnomad_popmax_af < 0.001\' \\', file = bashFile)
-    print('  --family-expr \'x_denovo:(variant.CHROM == "X" || variant.CHROM == "chrX") && fam.every(segregating_denovo_x) && INFO.gnomad_popmax_af < 0.001\' \\', file = bashFile)
-    print('  --family-expr \'recessive:fam.every(segregating_recessive)\' \\', file = bashFile)
-    print('  --family-expr \'dominant:fam.every(segregating_dominant)\' \\', file = bashFile)
-    print('  -o $ANNOTATEDVCF \\', file = bashFile)
+  # Add additional options defined in the resource json
+  if 'options' in resourceInfo['resources']['vep']:
+    for vepOption in resourceInfo['resources']['vep']['options']: print('    ', vepOption, ' \\', sep = '', file = bashFile)
+  #print('    --hgvs \\', file = bashFile)
+  #print('    --sift b \\', file = bashFile)
+  #print('    --polyphen b \\', file = bashFile)
+  #print('    --pubmed \\', file = bashFile)
+  #print('    --mane \\', file = bashFile)
+  #print('    --gene_phenotype \\', file = bashFile)
+  #print('    --regulatory \\', file = bashFile)
 
-  # If this is a singleton, the inheritance annoatations will not be performed and this is the final vcf
-  else: print('  | $BCFTOOLS view -O z -o $FINALVCF - \\', file = bashFile)
+  # Include all plugins
+  if 'active_plugins' in resourceInfo['resources']['vep']:
+    for plugin in resourceInfo['resources']['vep']['active_plugins']:
+      if 'files' in resourceInfo['resources']['vep']['active_plugins'][plugin]: print('    --plugin ', plugin, ',', resourceInfo['resources']['vep']['active_plugins'][plugin]['files'], ' \\', sep = '', file = bashFile)
+      else: print('    --plugin ', plugin, ' \\', sep = '', file = bashFile)
+  print('    --fields "', annotationString, '" \\', sep = '', file = bashFile)
+  #print('    --fields "', resourceInfo['resources']['vep']['fields'], '" \\', sep = '', file = bashFile)
+  #print('    --fields "SYMBOL,Feature,IMPACT,Consequence,HGVSc,HGVSp,MaxEntScan_diff,MaxEntScan_alt,GeneSplicer,five_prime_UTR_variant_annotation,SIFT,PolyPhen,PUBMED,LoFtool" \\', file = bashFile)
+  print('    --no_stats \\', file = bashFile)
+  print('    --output_file STDOUT \\', file = bashFile)
+  print('    2>> $STDERR \\', file = bashFile)
+  print('  | $BCFTOOLS view -O z -o $ANNOTATEDVCF - \\', file = bashFile)
   print('  >> $STDOUT 2>> $STDERR', file = bashFile)
   print('echo "complete"', file = bashFile)
   print(file = bashFile)
 
-  # Annotate with compound hets
-  if pipelineModifiers['useInheritance']:
-
-    # Annotate with compound hets
-    print('# Annotate compound hets with Slivar', file = bashFile)
-    print('echo -n "Adding in compound hets..."', file = bashFile)
-    print('$SLIVAR expr \\', file = bashFile)
-    print('  --pass-only \\', file = bashFile)
-    print('  --vcf $ANNOTATEDVCF \\', file = bashFile)
-    print('  --ped $PED \\', file = bashFile)
-    print('  --js $JS \\', file = bashFile)
-    print('  -g $SLIVAR_GNOMAD \\', file = bashFile)
-    print('  --family-expr \'denovo:fam.every(segregating_denovo) && INFO.gnomad_popmax_af < 0.001\' \\', file = bashFile)
-    print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && INFO.gnomad_popmax_af < 0.005\' \\', file = bashFile)
-    print('  2>> $STDERR \\', file = bashFile)
-    print('  | $SLIVAR compound-hets \\', file = bashFile)
-    print('  --vcf /dev/stdin \\', file = bashFile)
-    print('  --skip NONE \\', file = bashFile)
-    print('  -s comphet_side \\', file = bashFile)
-    print('  -s denovo \\', file = bashFile)
-    print('  -p $PED \\', file = bashFile)
-    print('  -o $COMPHETS \\', file = bashFile)
-    print('  >> $STDOUT 2>> $STDERR', file = bashFile)
-    print('echo "complete"', file = bashFile)
-    print(file = bashFile)
-
-    # Index the annotated VCF
-    print('# Index the annotated VCF file', file = bashFile)
-    print('echo -n "Indexing annotated VCF..."', file = bashFile)
-    print('$BCFTOOLS index -t $ANNOTATEDVCF', file = bashFile)
-    print('echo "complete"', file = bashFile)
-    print(file = bashFile)
-
-    # Index the comphets vcf file
-    print('# Index the comphets VCF file', file = bashFile)
-    print('echo -n "Indexing comphets VCF..."', file = bashFile)
-    print('$BCFTOOLS index -t $COMPHETS', file = bashFile)
-    print('echo "complete"', file = bashFile)
-    print(file = bashFile)
-
-    # Merge the compound hets into the annotated vcf
-    print('# Merge annotated VCF with comphets', file = bashFile)
-    print('echo -n "Merging annotated and compound hets VCF files..."', file = bashFile)
-    print('$BCFTOOLS annotate \\', file = bashFile)
-    print('  -a $COMPHETS \\', file = bashFile)
-    print('  -c \'INFO/slivar_comphet,INFO/comphet_side\' \\', file = bashFile)
-    print('  -O z \\', file = bashFile)
-    print('  -o $FINALVCF \\', file = bashFile)
-    print('  $ANNOTATEDVCF \\', file = bashFile)
-    print('  >> $STDOUT 2>> $STDERR', file = bashFile)
-    print('$BCFTOOLS index -t $FINALVCF', file = bashFile)
-    print('echo "complete"', file = bashFile)
-    print(file = bashFile)
+## Annotate the cleaned vcf file using vcfanno
+#def annotateVcf(bashFile, resourceInfo, pipelineModifiers):
+#
+#  # Annotate the vcf with vcfanno
+#  print('# Annotate with $BCFTOOLS csq and add further annotations with vcfanno', file = bashFile)
+#  print('echo -n "Annotating cleaned VCF..."', file = bashFile)
+#  print('$BCFTOOLS csq -f $REF --ncsq 40 -l -g $GFF $CLEANVCF 2>> $STDERR \\', file = bashFile)
+#  print('  | $VCFANNO -p 16 $TOML /dev/stdin 2>> $STDERR \\', file = bashFile)
+#
+#  # If this is a family, also include modes of inheritance using Slivar
+#  if pipelineModifiers['useInheritance']:
+#    print('  | $SLIVAR expr \\', file = bashFile)
+#    print('  --vcf /dev/stdin \\', file = bashFile)
+#    print('  --ped $PED \\', file = bashFile)
+#    print('  --js $JS \\', file = bashFile)
+#    print('  -g $SLIVAR_GNOMAD \\', file = bashFile)
+#    print('  --info \'INFO.gnomad_popmax_af < 0.01 && variant.FILTER == "PASS" && variant.ALT[0] != "*"\' \\', file = bashFile)
+#    print('  --family-expr \'denovo:fam.every(segregating_denovo) && INFO.gnomad_popmax_af < 0.001\' \\', file = bashFile)
+#    print('  --family-expr \'x_denovo:(variant.CHROM == "X" || variant.CHROM == "chrX") && fam.every(segregating_denovo_x) && INFO.gnomad_popmax_af < 0.001\' \\', file = bashFile)
+#    print('  --family-expr \'recessive:fam.every(segregating_recessive)\' \\', file = bashFile)
+#    print('  --family-expr \'dominant:fam.every(segregating_dominant)\' \\', file = bashFile)
+#    print('  -o $ANNOTATEDVCF \\', file = bashFile)
+#
+#  # If this is a singleton, the inheritance annoatations will not be performed and this is the final vcf
+#  else: print('  | $BCFTOOLS view -O z -o $FINALVCF - \\', file = bashFile)
+#  print('  >> $STDOUT 2>> $STDERR', file = bashFile)
+#  print('echo "complete"', file = bashFile)
+#  print(file = bashFile)
+#
+#  # Annotate with compound hets
+#  if pipelineModifiers['useInheritance']:
+#
+#    # Annotate with compound hets
+#    print('# Annotate compound hets with Slivar', file = bashFile)
+#    print('echo -n "Adding in compound hets..."', file = bashFile)
+#    print('$SLIVAR expr \\', file = bashFile)
+#    print('  --pass-only \\', file = bashFile)
+#    print('  --vcf $ANNOTATEDVCF \\', file = bashFile)
+#    print('  --ped $PED \\', file = bashFile)
+#    print('  --js $JS \\', file = bashFile)
+#    print('  -g $SLIVAR_GNOMAD \\', file = bashFile)
+#    print('  --family-expr \'denovo:fam.every(segregating_denovo) && INFO.gnomad_popmax_af < 0.001\' \\', file = bashFile)
+#    print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && INFO.gnomad_popmax_af < 0.005\' \\', file = bashFile)
+#    print('  2>> $STDERR \\', file = bashFile)
+#    print('  | $SLIVAR compound-hets \\', file = bashFile)
+#    print('  --vcf /dev/stdin \\', file = bashFile)
+#    print('  --skip NONE \\', file = bashFile)
+#    print('  -s comphet_side \\', file = bashFile)
+#    print('  -s denovo \\', file = bashFile)
+#    print('  -p $PED \\', file = bashFile)
+#    print('  -o $COMPHETS \\', file = bashFile)
+#    print('  >> $STDOUT 2>> $STDERR', file = bashFile)
+#    print('echo "complete"', file = bashFile)
+#    print(file = bashFile)
+#
+#    # Index the annotated VCF
+#    print('# Index the annotated VCF file', file = bashFile)
+#    print('echo -n "Indexing annotated VCF..."', file = bashFile)
+#    print('$BCFTOOLS index -t $ANNOTATEDVCF', file = bashFile)
+#    print('echo "complete"', file = bashFile)
+#    print(file = bashFile)
+#
+#    # Index the comphets vcf file
+#    print('# Index the comphets VCF file', file = bashFile)
+#    print('echo -n "Indexing comphets VCF..."', file = bashFile)
+#    print('$BCFTOOLS index -t $COMPHETS', file = bashFile)
+#    print('echo "complete"', file = bashFile)
+#    print(file = bashFile)
+#
+#    # Merge the compound hets into the annotated vcf
+#    print('# Merge annotated VCF with comphets', file = bashFile)
+#    print('echo -n "Merging annotated and compound hets VCF files..."', file = bashFile)
+#    print('$BCFTOOLS annotate \\', file = bashFile)
+#    print('  -a $COMPHETS \\', file = bashFile)
+#    print('  -c \'INFO/slivar_comphet,INFO/comphet_side\' \\', file = bashFile)
+#    print('  -O z \\', file = bashFile)
+#    print('  -o $FINALVCF \\', file = bashFile)
+#    print('  $ANNOTATEDVCF \\', file = bashFile)
+#    print('  >> $STDOUT 2>> $STDERR', file = bashFile)
+#    print('$BCFTOOLS index -t $FINALVCF', file = bashFile)
+#    print('echo "complete"', file = bashFile)
+#    print(file = bashFile)
 
 # Filter the final vcf file to only include variants present in the proband, and based on some
 # basic annotations
@@ -229,31 +291,32 @@ def filterVariants(bashFile, samples, resourceInfo):
   print('echo -n "Filtering final VCF file..."', file = bashFile)
   print('$BCFTOOLS view \\', file = bashFile)
   print('  -i \'GT[@proband.txt]="alt" & GT[@proband.txt]!="mis"\' \\', file = bashFile)
-  print('  $FINALVCF \\', file = bashFile)
+  print('  $ANNOTATEDVCF \\', file = bashFile)
   print('  2>> $STDERR \\', file = bashFile)
   print('  | $SLIVAR expr --vcf - \\', file = bashFile)
   print('  --info \'INFO.gnomad_popmax_af < 0.01 && variant.FILTER == "PASS" && variant.ALT[0] != "*"\' \\', file = bashFile)
   print('  --pass-only \\', file = bashFile)
   print('  2>> $STDERR \\', file = bashFile)
-  print('  | $VEP \\', file = bashFile)
-  print('    --vcf \\', file = bashFile)
-  print('    --force \\', file = bashFile)
-  print('    --check_existing \\', file = bashFile)
-  print('    --quiet \\', file = bashFile)
-  print('    --fork 40 \\', file = bashFile)
-  print('    --format vcf \\', file = bashFile)
-  print('    --force_overwrite \\', file = bashFile)
-  print('    --cache \\', file = bashFile)
-  print('    --offline \\', file = bashFile)
-  print('    --no_stats \\', file = bashFile)
-  print('    --fasta $REF \\', file = bashFile)
-  print('    --dir_cache ', resourceInfo['resources']['vep']['cache'], ' \\', sep = '', file = bashFile)
-  print('    --dir_plugins ', resourceInfo['resources']['vep']['plugins'], ' \\', sep = '', file = bashFile)
-  print('    --assembly ', resourceInfo['reference'], '\\', sep = '', file = bashFile)
-  print('    --hgvs \\', file = bashFile)
-  print('    --fields "SYMBOL,Feature,IMPACT,Consequence,HGVSc,HGVSp" \\', file = bashFile)
-  print('    --output_file STDOUT \\', file = bashFile)
-  print('    2>> $STDERR \\', file = bashFile)
+#  print('  | $VEP \\', file = bashFile)
+#  print('    --fasta $REF \\', file = bashFile)
+#  print('    --dir_cache ', resourceInfo['resources']['vep']['cache'], ' \\', sep = '', file = bashFile)
+#  print('    --dir_plugins ', resourceInfo['resources']['vep']['plugins'], ' \\', sep = '', file = bashFile)
+#  print('    --assembly ', resourceInfo['reference'], '\\', sep = '', file = bashFile)
+#  print('    --vcf \\', file = bashFile)
+#  print('    --force \\', file = bashFile)
+#  print('    --check_existing \\', file = bashFile)
+#  print('    --quiet \\', file = bashFile)
+#  print('    --fork 40 \\', file = bashFile)
+#  print('    --format vcf \\', file = bashFile)
+#  print('    --force_overwrite \\', file = bashFile)
+#  print('    --cache \\', file = bashFile)
+#  print('    --offline \\', file = bashFile)
+#  print('    --no_stats \\', file = bashFile)
+#  print('    --hgvs \\', file = bashFile)
+#  print('    --plugin UTRannotator \\', file = bashFile)
+#  print('    --fields "SYMBOL,Feature,IMPACT,Consequence,HGVSc,HGVSp" \\', file = bashFile)
+#  print('    --output_file STDOUT \\', file = bashFile)
+#  print('    2>> $STDERR \\', file = bashFile)
   print('  | $BCFTOOLS view -O z -o $FILTEREDVCF - \\', file = bashFile)
   print('  >> $STDOUT 2>> $STDERR', file = bashFile)
   print('echo "complete"', file = bashFile)
@@ -268,7 +331,7 @@ def clinVarVariants(bashFile):
   print('$BCFTOOLS view -O z \\', file = bashFile)
   print('  -o $CLINVARVCF \\', file = bashFile)
   print('  -i \'INFO/CLNSIG~"athogenic"\' \\', file = bashFile)
-  print('  $FINALVCF \\', file = bashFile)
+  print('  $ANNOTATEDVCF \\', file = bashFile)
   print('  >> $STDOUT 2>> $STDERR', file = bashFile)
   print('echo "complete"', file = bashFile)
   print('$BCFTOOLS index -t $CLINVARVCF', file = bashFile)
@@ -301,13 +364,13 @@ def rareDiseaseVariants(bashFile):
 def deleteFiles(args, pipelineModifiers, bashFile):
   print('# Delete files no longer required', file = bashFile)
   print('echo -n "Deleting files..."', file = bashFile)
-  print('rm -f $CLEANVCF', file = bashFile)
-  print('rm -f $CLEANVCF.tbi', file = bashFile)
-  print('rm -f $ANNOTATEDVCF', file = bashFile)
-  print('rm -f $ANNOTATEDVCF.tbi', file = bashFile)
+  #print('rm -f $CLEANVCF', file = bashFile)
+  #print('rm -f $CLEANVCF.tbi', file = bashFile)
+  #print('rm -f $ANNOTATEDVCF', file = bashFile)
+  #print('rm -f $ANNOTATEDVCF.tbi', file = bashFile)
   if pipelineModifiers['useInheritance']:
-    print('rm -f $COMPHETS', file = bashFile)
-    print('rm -f $COMPHETS.tbi', file = bashFile)
+    print('rm -f $COMPHETSVCF', file = bashFile)
+    print('rm -f $COMPHETSVCF.tbi', file = bashFile)
   print('rm -f samples.txt', file = bashFile)
   print('rm -f proband.txt', file = bashFile)
   print('echo "complete"', file = bashFile)

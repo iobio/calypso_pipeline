@@ -16,6 +16,7 @@ import calypso_mosaic_resources as mosr
 
 def main():
   global allowedClasses
+  global bcftoolsExe
 
   # Parse the command line
   args = parseCommandLine()
@@ -46,7 +47,7 @@ def main():
     elif processClass == 'OMIM': processClassOMIM(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == 'compound': processClassCompound(args.resource, mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == 'spliceai': processClassSpliceAI(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.split(','), outputFile)
-    elif processClass == 'clinvar': processClassClinvar(resourceInfo, args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
+    elif processClass == 'clinvar': processClassClinvar(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
   
     # Close the output tsv file
     outputFile.close()
@@ -89,6 +90,7 @@ def parseCommandLine():
 #   - pLI
 #   - REVEL
 def processClassA(vcf, tags, outputFile):
+  global bcftoolsExe
 
   # Loop over all records in the vcf file
   for record in os.popen(bcftools.query(bcftoolsExe, vcf, tags)).readlines():
@@ -129,6 +131,7 @@ def processClassA(vcf, tags, outputFile):
 # Process class B annotations. This is for annotations that are strings that do not undergo any modifications
 #   - dbSNP
 def processClassB(vcf, tags, outputFile):
+  global bcftoolsExe
 
   # Loop over all records in the vcf file
   for record in os.popen(bcftools.query(bcftoolsExe, vcf, tags)).readlines():
@@ -153,6 +156,7 @@ def processClassB(vcf, tags, outputFile):
 # Process class C annotations. This is for annotations that are found in the genotype (FORMAT) strings in the vcf
 #   - GQ
 def processClassC(mosaicInfo, resource, vcf, tags, outputFile):
+  global bcftoolsExe
 
   # Loop over all records in the vcf file
   for record in os.popen(bcftools.queryFormat(bcftoolsExe, vcf, resource)).readlines():
@@ -177,6 +181,7 @@ def processClassC(mosaicInfo, resource, vcf, tags, outputFile):
 
 # Process compound annotations
 def processClassCompound(resource, resourceInfo, vcf, tags, outputFile):
+  global bcftoolsExe
 
   # Check that the delimeter is provided to determine how to split up the compound annotation. If it is not set, then provide a
   # warning and do not preceed with this annotation
@@ -211,6 +216,7 @@ def processClassCompound(resource, resourceInfo, vcf, tags, outputFile):
 
 # Process OMIM annotations
 def processClassOMIM(vcf, tags, outputFile):
+  global bcftoolsExe
 
   # Loop over all records in the vcf file
   for record in os.popen(bcftools.query(bcftoolsExe, vcf, tags)).readlines():
@@ -242,6 +248,7 @@ def processClassOMIM(vcf, tags, outputFile):
 
 # Process SpliceAI annotations
 def processClassSpliceAI(resourceInfo, vcf, tags, outputFile):
+  global bcftoolsExe
 
   # Loop over all records in the vcf file
   for record in os.popen(bcftools.query(bcftoolsExe, vcf, [resourceInfo['info_field']])).readlines():
@@ -294,6 +301,8 @@ def processClassSpliceAI(resourceInfo, vcf, tags, outputFile):
 
 # Process ClinVar annotations
 def processClassClinvar(resourceInfo, vcf, tags, outputFile):
+  global bcftoolsExe
+
   skippedValues    = {}
   noRecords        = 0
   noOutputRecords  = 0
@@ -539,6 +548,9 @@ def fail(message):
 
 # Pipeline version
 version = "0.0.1"
+
+# Define the bcftools executable
+bcftoolsExe = False
 
 # Define the allowed annotation classes
 allowedClasses = ['A', 'B', 'C', 'clinvar', 'compound', 'OMIM', 'spliceai']

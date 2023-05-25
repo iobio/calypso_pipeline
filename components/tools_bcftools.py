@@ -5,6 +5,11 @@ from datetime import date
 from os.path import exists
 from sys import path
 
+# Get the bcftools version
+def version(bcftools):
+  command = bcftools + ' -v'
+  return command
+
 # Use bcftools query to return records in vcf format, but with only the selected INFO fields
 def queryVcf(bcftools, vcf, tags):
   command = bcftools + ' query -f \'%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\t%QUAL\\t%FILTER'
@@ -52,9 +57,14 @@ def isecIntNoHeader(bcftools, vcfA, vcfB):
   command = bcftools + ' isec -n =2 -w 1 -H ' + str(vcfA) + ' ' + str(vcfB)
   return command
 
-# Use bcftools view to get a vcf header
-def getHeader(bcftools, inVcf, outVcf):
+# Use bcftools view to generate a vcf header as a vcf file
+def createHeaderVcf(bcftools, inVcf, outVcf):
   command = bcftools + ' view -h -O v -o ' + str(outVcf) + ' ' + str(inVcf)
+  return command
+
+# Use bcftools view to return a vcf header
+def getHeader(bcftools, vcf):
+  command = bcftools + ' view -h ' + str(vcf)
   return command
 
 # Compress a vcf file

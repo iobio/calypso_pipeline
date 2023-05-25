@@ -110,7 +110,7 @@ def unique(compDir, bashScript):
   print(file = bashScript['file'])
   print('echo -n "Getting the vcf header..."', file = bashScript['file'])
   header = str(compDir) + '/header.vcf'
-  print(bcf.getHeader(cUniqueVcf, header), file = bashScript['file'])
+  print(bcf.createHeaderVcf(cUniqueVcf, header), file = bashScript['file'])
   print('echo "complete"', file = bashScript['file'])
 
   # Open output files to store variants and add the header
@@ -151,9 +151,6 @@ def shared(compDir, createdFiles, bashScript):
   # Get the name of the "new" ClinVar vcf file
   pSharedVcf = str(compDir) + '/0002.vcf.gz'
   cSharedVcf = str(compDir) + '/0003.vcf.gz'
-
-  # Get the header from the vcf
-  #header = os.popen(bcf.getHeader(cSharedVcf)).readlines()
 
   # Open output files to store variants and add the header
   pFiles = initialiseFiles(compDir, 'previous', header, bashScript)
