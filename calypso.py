@@ -23,7 +23,7 @@ import calypso_path as cpath
 import calypso_reanalysis as rean
 import calypso_resources as res
 import calypso_samples as sam
-import calypso_slivar_family as famFilt
+import calypso_slivar_trio as slivarTrio
 import calypso_toml as toml
 import calypso_upload as upload
 import calypso_variant_filters as vfilt
@@ -147,7 +147,7 @@ def main():
 
   # Perform filtering based on the family type. This filter will generate a small set of prioritized
   # variants based on the available family structure
-  if familyType == 'trio': famFilt.annotateTrio(resourceInfo, bashFile)
+  if familyType == 'trio': slivarTrio.annotateTrio(resourceInfo, bashFile)
   else: print('**** WARNING: Filtering for family type ' + str(familyType) + ' has not yet been implemented')
   bashScript.deleteFiles(args, pipelineModifiers, bashFile)
 

@@ -101,7 +101,7 @@ def processClassA(vcf, tags, outputFile):
     # Check that the annotation has a value. If not, skip this record. The only records that will be output are those with values
     hasValue = False
     for i in range(5, len(fields)):
-      if fields[5] != '.':
+      if fields[i] != '.':
         hasValue = True
         break
     if hasValue:
@@ -117,13 +117,15 @@ def processClassA(vcf, tags, outputFile):
             if float(value) > float(outputValue): outputValue = value
           fields[i] = str(outputValue)
   
-      # Check that the value is a float
-      try: typeTest = float(fields[5])
-      except: fail('Invalid value for annotation: ' + record.rstrip())
+        # If the value is '.', set it to a blank. Otherwise, check that the value is a float
+        if fields[i] == '.': fields[i] = '' 
+        else: 
+          try: typeTest = float(fields[i])
+          except: fail('Invalid value for annotation: ' + record.rstrip())
   
-      # Make sure the value falls between 1E-37 and 1E+37
-      if float(fields[5]) <= 1e-37: fields[5] = "1e-37"
-      elif float(fields[5]) >= 1e37: fields[5] = "1e37"
+          # Make sure the value falls between 1E-37 and 1E+37
+          if float(fields[i]) <= 1e-37: fields[i] = "1e-37"
+          elif float(fields[i]) >= 1e37: fields[i] = "1e37"
   
       # Build the output record from the updated fields
       print('\t'.join(fields), file = outputFile)
