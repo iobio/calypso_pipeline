@@ -120,7 +120,7 @@ def readResources(reference, rootPath, resourceInfo):
       # If the vep cache / plugins directories include "TOOLS", this should be replaced with the path to the
       # tools
       if 'TOOLS' in resourceInfo['resources']['vep']['cache']:
-        if not resourceInfo['toolsPath']: continue #fail('The resources json includes "TOOLS" in the vep cache path, which requires a tools path be defined on the command line')
+        if not resourceInfo['toolsPath']: fail('The resources json includes "TOOLS" in the vep cache path, which requires a tools path be defined on the command line')
         resourceInfo['resources']['vep']['cache']   = resourceInfo['resources']['vep']['cache'].replace('TOOLS/', resourceInfo['toolsPath'])
         resourceInfo['resources']['vep']['plugins'] = resourceInfo['resources']['vep']['plugins'].replace('TOOLS/', resourceInfo['toolsPath'])
         if resourceInfo['resources']['vep']['plugins'].endswith('/'): resourceInfo['resources']['vep']['plugins'].rstrip('/')
