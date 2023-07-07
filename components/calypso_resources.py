@@ -78,8 +78,8 @@ def readResources(reference, rootPath, resourceInfo):
 
     # Get the associated resource file and attach the data directory to the file.
     try: resourceInfo['resources'][resource]['file'] = resources[resource]['file']
-    except: fail("File for resource \"" + str(resource) + "\" was not included in the resources json")
-    if resourceInfo['resources'][resource]['file']: resourceInfo["resources"][resource]["file"] = resourceInfo["path"] + resources[resource]["file"]
+    except: fail('File for resource "' + str(resource) + '" was not included in the resources json')
+    #if resourceInfo['resources'][resource]['file']: resourceInfo["resources"][resource]["file"] = resourceInfo["path"] + resources[resource]["file"]
 
     # Annotation resources that are added using vcfanno need to be included in a toml file. The json
     # needs to include a Boolean to identify these
@@ -96,7 +96,9 @@ def readResources(reference, rootPath, resourceInfo):
       except: fail('The resources json did not indicate the toml "ops" commands for resource "' + str(resource) + '"')
 
     # Check that the specified resource file exists
-    if not exists(resourceInfo['resources'][resource]['file']): fail('Resource file ' + str(resourceInfo['resources'][resource]['file']) + ' does not exist')
+    if resourceInfo['resources'][resource]['file']:
+      fullFilePath = resourceInfo['path'] + resourceInfo['resources'][resource]['file']
+      if not exists(fullFilePath): fail('Resource file ' + str(resourceInfo['resources'][resource]['file']) + ' does not exist')
 
     # Check if there are any postannotation commands for vcfanno
     if 'post_annotation' in resources[resource]:

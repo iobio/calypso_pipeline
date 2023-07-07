@@ -64,7 +64,7 @@ def createHeaderVcf(bcftools, inVcf, outVcf):
 
 # Use bcftools view to return a vcf header
 def getHeader(bcftools, vcf):
-  command = bcftools + ' view -h ' + str(vcf)
+  command = bcftools + ' view -h ' + str(vcf) + ' 2> /dev/null'
   return command
 
 # Compress a vcf file

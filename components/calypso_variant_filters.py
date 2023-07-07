@@ -6,7 +6,7 @@ import math
 import os
 
 # Process the json file describing the filters to apply
-def readRequiredFilters(mosaicConfig, mosaicInfo, dataDirectory, samples, projectAnnotations, familyType, projectId, api_ps, api_vf):
+def readRequiredFilters(mosaicConfig, api_ps, api_vf, mosaicInfo, projectId, dataDirectory, variantFiltersJson, samples, projectAnnotations, familyType):
   categories = {}
   filters    = {}
 
@@ -14,12 +14,16 @@ def readRequiredFilters(mosaicConfig, mosaicInfo, dataDirectory, samples, projec
   sampleMap = {}
   for sample in samples: sampleMap[samples[sample]['relationship'].lower()] = samples[sample]['mosaicId']
 
+  # Convert the projectAnnotations into a dictionary with the name as key and uid as value
+  annotations = {}
+  for annotation in projectAnnotations: annotations[projectAnnotations[annotation]['name']] = annotation
+
   # We also need an annotation map that links the current version of ClinVar to a uid for the filter
   annotationMap = {}
   annotationMap['clinvar_latest'] = mosaicInfo['resources']['clinVar']['annotations']['CLNSIG']['uid']
 
   # Read the json
-  filterInfo = readJson(str(dataDirectory) + str(mosaicInfo['variantFilters']))
+  filterInfo = readJson(str(variantFiltersJson))
 
   # The path to the files must be provided
   if 'path_to_files' not in filterInfo: fail('The json file describing variant filters is missing the "path_to_files" section')
@@ -59,11 +63,26 @@ def readRequiredFilters(mosaicConfig, mosaicInfo, dataDirectory, samples, projec
         # Check all of the annotation filters
         filters[name]['info'] = checkAnnotationFilters(filters[name]['info'], name, projectAnnotations, annotationMap)
 
+        # Now check if display is present. If so, this will describe how to update the variant table if this filter is applied. The only
+        # allowable fields in this section are 'columns' which defines which column should show in the variant table, and 'sort' which
+        # determines which annotation should be sorted on and how (ascending / descending). Set the "setDisplay" flag if this is required
+        if 'display' in filterInfo['filters'][name]:
+          filters[name]['setDisplay'] = True
+          for field in filterInfo['filters'][name]['display']:
+            if field == 'columns': filters[name]['columnNames'] = filterInfo['filters'][name]['display'][field]
+            elif field == 'sort':
+              if 'column' not in filterInfo['filters'][name]['display']['sort']: fail('Field "column" is missing from the "display" > "sort" section for filter ' + str(name))
+              if 'direction' not in filterInfo['filters'][name]['display']['sort']: fail('Field "direction" is missing from the "display" > "sort" section for filter ' + str(name))
+              filters[name]['sortColumnName'] = filterInfo['filters'][name]['display'][field]['column']
+              filters[name]['sortDirection'] = filterInfo['filters'][name]['display'][field]['direction']
+            else: fail('Unknown field in the "display" section for filter ' + str(name))
+        else: filters[name]['setDisplay'] = False
+
   # Get all of the filters that exist in the project, and check which of these share a name with a filter to be created
   deleteFilters(mosaicConfig, projectId, filters, api_vf)
 
   # Create all the required filters and update their categories and sort order in the project settings
-  createFilters(mosaicConfig, projectId, categories, filters, api_ps, api_vf)
+  createFilters(mosaicConfig, annotations, projectId, categories, filters, api_ps, api_vf)
 
 # Read the input json file to get all of the filters and their categories and sort orders
 def readJson(filename):
@@ -172,6 +191,7 @@ def checkAnnotationFilters(data, name, uids, annotationMap):
     # occur, for example, if the annotation is the genotype quality of the mother, but there is no mother for this case, and so the
     # private annotation was never created, and so no filter should be created for this
     isOptional = False
+    if uid not in uids: fail('calypso_variant_filters.py: uid in variant filters json (' + str(uid) + ') is not in the Mosaic project. Check the variant filter json file')
     if 'optional' in aFilter: isOptional = aFilter.pop('optional')
     if not uid and isOptional: continue
     elif not uid: fail('No uid can be determined for annotation filter ' + str(name))
@@ -229,7 +249,7 @@ def deleteFilters(mosaicConfig, projectId, filters, api_vf):
   for filterId in removeFilters: api_vf.deleteVariantFilter(mosaicConfig, projectId, filterId)
 
 # Create all the required filters and update their categories and sort order in the project settings
-def createFilters(mosaicConfig, projectId, categories, filters, api_ps, api_vf):
+def createFilters(mosaicConfig, annotations, projectId, categories, filters, api_ps, api_vf):
   sortedFilters = []
   for category in categories:
     record      = {'category': category, 'sortOrder': []}
@@ -239,7 +259,21 @@ def createFilters(mosaicConfig, projectId, categories, filters, api_ps, api_vf):
 
       # Create the filter, unless it has been marked as not to be added
       if filters[name]['useFilter']:
-        filterId = api_vf.createVariantFilter(mosaicConfig, projectId, name, category, filters[name]['info']['filters'])
+
+        # If the variant table display is getting modified, get the ids of the columns to show in the table as an array,
+        # the id of the column to sort on and the sort direction
+        if filters[name]['setDisplay']:
+          columnUids = []
+          for columnName in filters[name]['columnNames']:
+            columnUids.append('"' + str(annotations[columnName]) + '"') if columnName in annotations else fail('Unknown column (' + str(columnName) + ') in "display" > "columns" for filter ' + str(name))
+          sortColumnName = filters[name]['sortColumnName']
+          sortColumnUid  = annotations[sortColumnName] if sortColumnName in annotations else fail('Unknown sort column (' + str(sortColumnName) + ') in "display" > "sort" > "column" for filter ' + str(name))
+          sortDirection  = filters[name]['sortDirection']
+          if sortDirection != 'ascending' and sortDirection != 'descending': fail('Sort direction must be "ascending" or "descending" for filter ' + str(name))
+          filterId = api_vf.createVariantFilterWithDisplay(mosaicConfig, projectId, name, category, columnUids, sortColumnUid, sortDirection, filters[name]['info']['filters'])
+
+        # If no display needs to be set, create the filter
+        else: filterId = api_vf.createVariantFilter(mosaicConfig, projectId, name, category, filters[name]['info']['filters'])
         record['sortOrder'].append(str(filterId))
         useCategory = True
 

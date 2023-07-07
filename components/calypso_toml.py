@@ -8,15 +8,19 @@ import os
 def buildToml(workingDir, resourceInfo):
 
   # Create a toml file
-  tomlFilename  = workingDir + 'calypso_annotations.toml'
-  try: tomlFile = open(tomlFilename, 'w')
+  tomlFilename  = 'calypso_annotations.toml'
+  toml          = str(workingDir) + str(tomlFilename)
+  try: tomlFile = open(toml, 'w')
   except: fail('There was a problem opening a file (calypso_annotations.toml) to write to')
+
+  # Get the path to the data
+  datapath = resourceInfo['path']
 
   # Add each required resource to the toml file
   for resource in resourceInfo['resources']:
     if resourceInfo['resources'][resource]['toml']:
       print('[[annotation]]', file = tomlFile)
-      print('file="', resourceInfo['resources'][resource]['file'], '"', sep = '', file = tomlFile)
+      print('file="', str(datapath), str(resourceInfo['resources'][resource]['file']), '"', sep = '', file = tomlFile)
 
       # Some of the annotations include "fields", "columns", and "names". Include these in the toml if they exist
       if 'fields' in resourceInfo['resources'][resource]:

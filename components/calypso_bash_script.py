@@ -25,7 +25,7 @@ def openBashScript(workingDir):
   return bashFilename, bashFile
 
 # Write all the resource file information to the bash file for the script to use
-def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename, familyType, pipelineModifiers):
+def bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, ped, tomlFilename, familyType, pipelineModifiers):
 
   # Initial information
   #print('#! /bin/bash', file = bashFile)
@@ -34,6 +34,7 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename, fa
 
   # Define the tools to use
   print('# Define the tools to use while executing the Calypso pipeline', file = bashFile)
+  print('DATAPATH=', resourceInfo['path'], sep = '', file = bashFile)
   if resourceInfo['toolsPath']:
     print('TOOLPATH=', resourceInfo['toolsPath'], sep = '', file = bashFile)
     print('BCFTOOLS=$TOOLPATH/bcftools/bcftools', sep = '', file = bashFile)
@@ -50,11 +51,10 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename, fa
 
   # Define the names of the input and output files
   print('# Following are the input VCF and output files created by the pipeline', file = bashFile)
-  print('VCF=', os.path.abspath(vcf), sep = '', file = bashFile)
+  print('VCF=', vcf, sep = '', file = bashFile)
   print(file = bashFile)
 
   # Generate the names of the intermediate and final vcf files
-  #vcfBase     = workingDir + os.path.abspath(vcf).split('/')[-1].rstrip('vcf.gz')
   vcfBase     = os.path.abspath(vcf).split('/')[-1].rstrip('vcf.gz')
   filteredVcf = str(vcfBase) + '_calypso_filtered.vcf.gz'
   slivar1Vcf  = str(vcfBase) + '_calypso_slivar1.vcf.gz'
@@ -88,24 +88,28 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, ped, tomlFilename, fa
 
   # Define the required resources
   print('# Following is a list of required resources', file = bashFile)
-  try: print('REF=', resourceInfo['resources']['fasta']['file'], sep = '', file = bashFile)
+  try: print('REF=$DATAPATH/', resourceInfo['resources']['fasta']['file'], sep = '', file = bashFile)
   except: fail('The resources json does not define a reference fasta file')
-  try: print('GFF=', resourceInfo['resources']['gff']['file'], sep = '', file = bashFile)
+  try: print('GFF=$DATAPATH/', resourceInfo['resources']['gff']['file'], sep = '', file = bashFile)
   except: fail('The resources json does not define a gff file')
-  print('TOML=', tomlFilename, sep = '', file = bashFile)
+  print('TOML=$FILEPATH/', tomlFilename, sep = '', file = bashFile)
 
   # The Slivar pipeline uses data from gnomAD v2 and v3 for filtering
-  try: print('SLIVAR_GNOMAD_V2=', resourceInfo['resources']['slivar_gnomad_v2']['file'], sep = '', file = bashFile)
+  try: print('SLIVAR_GNOMAD_V2=$DATAPATH/', resourceInfo['resources']['slivar_gnomad_v2']['file'], sep = '', file = bashFile)
   except: fail('The resources json does not define a gnomAD v2 zip file')
-  try: print('SLIVAR_GNOMAD_V3=', resourceInfo['resources']['slivar_gnomad_v3']['file'], sep = '', file = bashFile)
+  try: print('SLIVAR_GNOMAD_V3=$DATAPATH/', resourceInfo['resources']['slivar_gnomad_v3']['file'], sep = '', file = bashFile)
   except: fail('The resources json does not define a gnomAD v3 zip file')
   #try: print('SLIVAR_GNOMAD_V2=', resourceInfo['resources']['slivar_gnomAD']['file'], sep = '', file = bashFile)
   #except: fail('The resources json does not define a gnomAD zip file')
 
+  # If the chr map is required, include the path to it. If the VCF uses 1 instead of chr1, it needs to be converted in order
+  # to be compatible with the resources. chrFormat is False if not in the 'chr1' format.
+  if not chrFormat: print('CHR_MAP=$DATAPATH/chr_map.txt', sep = '', file = bashFile)
+
   # The slivar js file is based on the family structure. Check that a file exists for the current family
-  jsFile = 'slivar_' + familyType + '_js'
-  try: print('JS=', resourceInfo['resources'][jsFile]['file'], sep = '', file = bashFile)
-  except: fail('The resources json does not define the Slivar functions js file for a family of type ' + str(familyType) + '. Expected "' + str(jsFile) + '" in the resources json')
+#  jsFile = 'slivar_' + familyType + '_js'
+#  try: print('JS=', resourceInfo['resources'][jsFile]['file'], sep = '', file = bashFile)
+#  except: fail('The resources json does not define the Slivar functions js file for a family of type ' + str(familyType) + '. Expected "' + str(jsFile) + '" in the resources json')
   print(file = bashFile)
 
   # Return the name of the filtered vcf file
@@ -124,7 +128,12 @@ def samplesFile(bashFile):
   print(file = bashFile)
 
 # Annotate the vcf file using bcftools, vcfanno, and VEP
-def annotateVcf(resourceInfo, bashFile):
+def annotateVcf(resourceInfo, bashFile, chrFormat, samples):
+
+  # Generate a comma separated list of samples to extract from the vcf file
+  sampleList = ''
+  for sample in samples: sampleList += samples[sample]['vcf_sample_name'] + ','
+  sampleList = sampleList.rstrip(',')
 
   # Generate the list of annotations to be output from VEP
   annotationString = ''
@@ -136,8 +145,12 @@ def annotateVcf(resourceInfo, bashFile):
   print('echo -n "Subsetting, normalizing, and annotating input VCF..."', file = bashFile)
   if 'export' in resourceInfo['resources']['vep']:
     for newPath in resourceInfo['resources']['vep']['export']: print(newPath, file = bashFile)
-  print('$BCFTOOLS norm -m - -w 10000 -f $REF $VCF 2> $STDERR \\', file = bashFile)
-  print('  | $BCFTOOLS view -a -c 1 -S samples.txt 2>> $STDERR \\', file = bashFile)
+  #print('$BCFTOOLS view -a -c 1 -S samples.txt $VCF 2>> $STDERR \\', file = bashFile)
+  print('$BCFTOOLS view -a -c 1 -s "', sampleList, '" $VCF 2>> $STDERR \\', sep = '', file = bashFile)
+  if not chrFormat: print('  | $BCFTOOLS annotate --rename-chrs $CHR_MAP 2>> $STDERR \\', file = bashFile)
+  print('  | $BCFTOOLS norm -m - -w 10000 -f $REF 2> $STDERR \\', file = bashFile)
+  #print('  | $BCFTOOLS view -a -c 1 -S samples.txt 2>> $STDERR \\', file = bashFile)
+  print('  | $BCFTOOLS view -a -c 1 -s "', sampleList, '" 2>> $STDERR \\', sep = '', file = bashFile)
   print('  | $BCFTOOLS annotate -x INFO 2>> $STDERR \\', file = bashFile)
   print('  | $BCFTOOLS csq -f $REF --ncsq 40 -l -g $GFF 2>> $STDERR \\', file = bashFile)
   print('  | $VCFANNO -p 16 $TOML /dev/stdin 2>> $STDERR \\', file = bashFile)
@@ -268,7 +281,7 @@ def annotateVcf(resourceInfo, bashFile):
 
 # Filter the final vcf file to only include variants present in the proband, and based on some
 # basic annotations
-def filterVariants(bashFile, samples, resourceInfo):
+def filterVariants(bashFile, samples, proband, resourceInfo):
 
   # Create a file containing the name of the proband for use in the filter. Note that there can be multiple probands, e.g.
   # if the family is two affected siblings
@@ -276,8 +289,10 @@ def filterVariants(bashFile, samples, resourceInfo):
   print('echo -n "Creating proband(s) file..."', file = bashFile)
   print('touch proband.txt', file = bashFile)
   #for sample in proband: print('echo ', sample, ' >> proband.txt', sep = '', file = bashFile)
-  for sample in samples:
-    if samples[sample]['isAffected']: print('echo ', sample, ' >> proband.txt', sep = '', file = bashFile)
+  print('echo ', samples[proband]['vcf_sample_name'], ' >> proband.txt', sep = '', file = bashFile)
+#  for sample in samples:
+#    print('TEST', sample, samples[sample])
+#    if samples[sample]['isAffected']: print('echo ', sample, ' >> proband.txt', sep = '', file = bashFile)
   print('echo "complete"', file = bashFile)
   print(file = bashFile)
 

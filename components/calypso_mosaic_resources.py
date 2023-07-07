@@ -98,6 +98,7 @@ def readMosaicJson(mosaicFilename, reference):
       # Check if the "positions" value is set. This defines the position in a compound annotation that the desired annotation can be found
       mosaicInfo['resources'][resource]['annotations'][annotation]['positions'] = resources[resource]['annotations'][annotation]['positions'] if 'positions' in resources[resource]['annotations'][annotation] else False
 
+  # Return the mosaic information
   return mosaicInfo
 
 # Loop over all of the public annotations defined in the Mosaic resources json file and check that they exist
@@ -113,6 +114,28 @@ def checkPublicAnnotations(mosaicConfig, resources, publicAnnotations, projectId
         # If the annotation uid is not in the publicAnnotations dictionary, then this annotation does not exist for
         # import. Fail and indicate that the resource file may contain errors
         if uid not in publicAnnotations: fail('Annotation with uid ' + str(uid) + ', for resource ' + str(resource) + ', is not available for import. Check that the uid in the Mosaic resources file is correct')
+
+# Loop over all of the public annotations defined in the Mosaic resources json file and check if they exist
+def createPublicAnnotations(mosaicConfig, api_va, resources, publicAnnotations):
+  for resource in resources:
+    if resources[resource]['annotation_type'] == 'public':
+
+      # Loop over all the annotations required for this resource
+      for annotation in resources[resource]['annotations']:
+        annotationInfo = resources[resource]['annotations'][annotation]
+        uid            = annotationInfo['uid']
+
+        # If the annotation uid is not in the publicAnnotations dictionary, then this annotation needs to be created
+        if uid not in publicAnnotations:
+          print('ADD', annotation, uid)
+          print(annotationInfo['name'])
+          print(annotationInfo['type'])
+          print(annotationInfo['category'])
+          print(annotationInfo['display_type'])
+          print(annotationInfo['severity'])
+          #annotationId, annotationUid = api_va.createAnnotationWithAll(mosaicConfig, projectId, annotation, valueType, privacy, category, displayType, severity)
+          exit(0)
+        else: print('Already availabe:', annotation, uid)
 
 # If the script fails, provide an error message and exit
 def fail(message):

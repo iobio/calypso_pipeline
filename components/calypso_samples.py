@@ -4,15 +4,44 @@ import os
 import json
 import tools_bcftools as bcf
 
-# Determine the id of the proband
-def getProband(mosaicConfig, args, workingDir, api_s, api_ped):
+# Get all samples in a Mosaic project and store the required sample attributes
+def getMosaicSamples(mosaicConfig, api_s, api_sa, projectId):
+  mosaicSamples   = {}
+  mosaicSampleIds = api_s.getSampleNamesAndIds(mosaicConfig, projectId)
+  for sample in mosaicSampleIds:
+    mosaicSamples[sample] = {'id': mosaicSampleIds[sample], 'relation': False}
+
+    # Loop over the sample attributes and store what is required
+    data = api_sa.getAttributesForSample(mosaicConfig, projectId, mosaicSampleIds[sample])
+    for attribute in data:
+      if attribute['name'] == 'Relation':
+        for value in attribute['values']:
+          if value['sample_id'] == mosaicSampleIds[sample]:
+            mosaicSamples[sample]['relation'] = value['value']
+            break
+
+  # Return the sample information
+  return mosaicSamples
+
+# If the proband is defined with a sample attribute, determine the proband
+def getProband(mosaicConfig, mosaicSamples):
+  proband   = False
+  for sample in mosaicSamples:
+    if mosaicSamples[sample]['relation'] == 'Proband':
+      if proband: fail('Multiple samples in the Mosaic project are listed as the proband')
+      else: proband = sample
+
+  # Return the name and id of the proband
+  return proband
+
+# Determine the family structure and the proband
+def getFamily(mosaicConfig, args, workingDir, api_ped, mosaicSamples):
   samples         = {}
   mosaicSampleIds = {}
   deletePed       = False
 
-  # Get the samples Mosaic id and store
-  mosaicSamples = api_s.getSampleNamesAndIds(mosaicConfig, args.project_id)
-  for sample in mosaicSamples: mosaicSampleIds[mosaicSamples[sample]] = sample
+  # Get the sample's Mosaic id and store
+  for sample in mosaicSamples: mosaicSampleIds[mosaicSamples[sample]['id']] = sample
 
   # If a ped file was supplied on the command line, use this instead of the Mosaic information
   if args.ped: 
@@ -48,7 +77,7 @@ def getProband(mosaicConfig, args, workingDir, api_s, api_ped):
         samples[sample] = {'noParents': noParents, 'father': father, 'mother': mother, 'isAffected': isAffected, 'sex': sex}
   
         # Attach the Mosaic sample id
-        try: samples[sample]['mosaicId'] = mosaicSamples[sample]
+        try: samples[sample]['mosaicId'] = mosaicSamples[sample]['id']
         except: fail('Sample ' + str(sample) + ' is not present in the Mosaic project. Components/calypso_samples.py (4)')
   
     # Close the ped file
@@ -57,7 +86,7 @@ def getProband(mosaicConfig, args, workingDir, api_s, api_ped):
   # If no ped was supplied on the command, get the pedigree information from Mosaic
   else:
     for sample in mosaicSamples:
-      for pedInfo in api_ped.getPedigree(mosaicConfig, args.project_id, mosaicSamples[sample]):
+      for pedInfo in api_ped.getPedigree(mosaicConfig, args.project_id, mosaicSamples[sample]['id']):
         sampleName = pedInfo['name']
         sampleId   = pedInfo['id']
   
@@ -131,8 +160,18 @@ def getProband(mosaicConfig, args, workingDir, api_s, api_ped):
       father = samples[sample]['father'] if samples[sample]['father'] else 0
       print('Kindred', sample, father, mother, sex, affected, sep = '\t', file = pedHandle)
 
+    # Close the created ped file
+    pedHandle.close()
+
+###################
+###################
+################### UPDATE FAMILY ROUTINES TO EXTRACT INFORMATION FROM SAMPLES, E.G. USE RELATION ATTRIBUTE
+###################
+###################
+
   # Return samples information
-  return args, proband, samples, familyType
+  #return args, proband, samples, familyType
+  return args, samples, familyType
 
 # Logic for determining structure of a singleton
 def singletonStructures(samples):
@@ -376,29 +415,53 @@ def traditionalTrio(samples, sample, mother, father):
 # Logic for determining structure of quads
 def quadStructures(samples):
 
-  print('test')
-  # Loop over the samples
-  for sample in samples:
-    print(sample, samples[sample])
-  exit(0)
+#  print('test')
+#  # Loop over the samples
+#  for sample in samples:
+#    print(sample, samples[sample])
+#  exit(0)
+#  proband = ['UDN151536']
+#  samples['UDN151536']['relationship'] = 'Proband'
+#  samples['UDN562736']['relationship'] = 'Daughter'
+#  samples['UDN997875']['relationship'] = 'Sister'
+#  samples['UDN588544']['relationship'] = 'Father'
+#  familyType = 'quad'
 
   # Return the updated samples along with the name of the proband and the family structure
   return samples, proband, familyType
 
 # Get the order that the samples appear in, in the vcf header
-def getSampleOrder(resourceInfo, samples, vcf):
+#def getSampleOrder(resourceInfo, samples, vcf):
+def getSampleOrder(resourceInfo, mosaicSamples):
   #bcftools = str(resourceInfo['toolsPath']) + 'bcftools/bcftools' if 'toolsPath' in resourceInfo else 'bcftools'
 
-  # Get the final head line
-  data = os.popen(bcf.getHeader(resourceInfo['tools']['bcftools'], vcf)).readlines()[-1].rstrip().split('\t')
+  # Loop over all the samples. For each sample, get the header final header line from its associated vcf file (which
+  # contains the list of all samples in the vcf) and determine at which position this sample appears
+  for sample in mosaicSamples:
+    vcf           = mosaicSamples[sample]['vcf_file']
+    vcfSampleName = mosaicSamples[sample]['vcf_sample_name']
 
-  # Read through the samples and define the sample order
-  for index, sample in enumerate(data[9:]):
-    if sample in samples: samples[sample]['vcf_position'] = index
+####################
+####################
+#################### HACK FOR UDN S3 files
+#################### DELETE
+####################
+####################
+    if vcf.startswith('s3://udn-joint-analysis/wgs/joint-by-family/'): vcf = vcf.replace('s3://udn-joint-analysis/wgs/joint-by-family/', './')
+
+    # Get the final head line
+    data = os.popen(bcf.getHeader(resourceInfo['tools']['bcftools'], vcf)).readlines()[-1].rstrip().split('\t')
+
+    # Read through the samples and define the sample order
+    for index, vcfSample in enumerate(data[9:]):
+      if vcfSample == vcfSampleName: mosaicSamples[sample]['vcf_position'] = index
 
   # Check that every sample in samples has vcf_position set
-  for sample in samples:
-    if 'vcf_position' not in samples[sample]: fail('Sample ' + str(sample) + ' is listed in the ped file, but does not appear in the vcf header')
+  for sample in mosaicSamples:
+    if 'vcf_position' not in mosaicSamples[sample]: fail('Sample ' + str(sample) + ' is listed in the ped file, but does not appear in the vcf header')
+
+  # Return the updated mosaicSamples
+  return mosaicSamples
 
 # If the script fails, provide an error message and exit
 def fail(message):

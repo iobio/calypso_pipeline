@@ -27,6 +27,8 @@ import calypso_slivar_trio as slivarTrio
 import calypso_toml as toml
 import calypso_upload as upload
 import calypso_variant_filters as vfilt
+import calypso_vcf_files as vcfs
+import tools_bcftools as bcftools
 
 def main():
   global mosaicConfig
@@ -52,6 +54,7 @@ def main():
   import api_project_attributes as api_pa
   import api_project_settings as api_ps
   import api_samples as api_s
+  import api_sample_attributes as api_sa
   import api_sample_files as api_sf
   import api_sample_hpo_terms as api_shpo
   import api_variants as api_v
@@ -82,39 +85,75 @@ def main():
   # Define paths to be used by Calypso
   setWorkingDir(resourceInfo['version'])
 
-  # Determine the id of the proband, and the family structure
-  args, proband, samples, familyType = sam.getProband(mosaicConfig, args, workingDir, api_s, api_ped)
-  print('  Performing analysis on a family type: ', familyType, sep = '')
-  if len(proband) == 0: print('  No proband could be determined:       ')
-  elif len(proband) == 1: print('  Proband has the name:                 ', proband[0], sep = '')
-  else:                 print('  Pedigree has multiple probands:       ', ', '.join(proband), sep = '')
+  # Get the samples in the Mosaic projects and determine the id of the proband, and the family structure
+  mosaicSamples = sam.getMosaicSamples(mosaicConfig, api_s, api_sa, args.project_id)
+  proband       = sam.getProband(mosaicConfig, mosaicSamples)
+  if not proband: fail('Could not find a proband for this project')
 
-  # Get the vcf file from Mosaic, if it can be determined
-  if not args.input_vcf:
-    vcfFiles = []
-    for sample in proband:
-      sampleVcfFiles = api_sf.getSampleVcfs(mosaicConfig, args.project_id, samples[sample]['mosaicId'])
-      if len(sampleVcfFiles) == 1:
-        uri = sampleVcfFiles[list(sampleVcfFiles.keys())[0]]['uri'][6:]
-        if uri not in vcfFiles: vcfFiles.append(uri)
-      else: fail('Mosaic has no, or multiple vcf files associated with it, so the file to use cannot be determined')
-      if len(vcfFiles) != 1: fail('Mosaic has no, or multiple vcf files associated with it, so the file to use cannot be determined')
-      args.input_vcf = vcfFiles[0]
-  print('  Using the vcf file:                   ', args.input_vcf, sep = '')
+  args, samples, familyType = sam.getFamily(mosaicConfig, args, workingDir, api_ped, mosaicSamples)
+  print('  Performing analysis on a family type: ', familyType, sep = '')
+  print('  Proband has the name: ', proband, sep = '')
+  #if len(proband) == 0: print('  No proband could be determined:       ')
+  #elif len(proband) == 1: print('  Proband has the name:                 ', proband[0], sep = '')
+  #else:                 print('  Pedigree has multiple probands:       ', ', '.join(proband), sep = '')
+
+  # Get the vcf file for each sample. Currently, Calypso only works for projects with a single multi-sample vcf.
+  # Determine the name of this vcf file, then determine if this file has chromosomes listed as e.g. '1' or 'chr1'
+  mosaicSamples = vcfs.getVcfFiles(mosaicConfig, api_sf, args.project_id, mosaicSamples)
+  vcf           = mosaicSamples[list(mosaicSamples.keys())[0]]['vcf_file']
+##########
+##########
+########## DELETE WHEN HANDLED S3 FILES
+##########
+##########
+  if vcf.startswith('s3'): vcf = vcf.split('/')[-1]
+  #vcf = '/scratch/ucgd/lustre-work/marth/u0991467/analysis/udn/udn_instance/UDN076156/brca1.vcf.gz'
+  #print('TEST', vcf)
+  chrFormat     = vcfs.determineChromosomeFormat(resourceInfo['tools']['bcftools'], vcf)
+
+######################
+######################
+###################### GETTING VCF FILES IS ASSUMING A SINGLE MULTI-SAMPLE VCF
+######################
+######################
+#  # Get the vcf file from Mosaic, if it can be determined
+#  if not args.input_vcf:
+##    vcfFiles = []
+##    for sample in proband:
+##      sampleVcfFiles = api_sf.getSampleVcfs(mosaicConfig, args.project_id, samples[sample]['mosaicId'])
+##      if len(sampleVcfFiles) == 1:
+##        uri = sampleVcfFiles[list(sampleVcfFiles.keys())[0]]['uri'][6:]
+##        if uri not in vcfFiles: vcfFiles.append(uri)
+##      else: fail('Mosaic has no, or multiple vcf files associated with it, so the file to use cannot be determined')
+##      if len(vcfFiles) != 1: fail('Mosaic has no, or multiple vcf files associated with it, so the file to use cannot be determined')
+##      args.input_vcf = vcfFiles[0]
+##  print('  Using the vcf file:                   ', args.input_vcf, sep = '')
+#    sampleVcfFiles = api_sf.getSampleVcfs(mosaicConfig, args.project_id, mosaicSamples[proband]['id'])
+#    if len(sampleVcfFiles) == 1:
+#        for vcfFile in sampleVcfFiles:
+#          uri = sampleVcfFiles[vcfFile]['uri']
+#          print(sampleVcfFiles[vcfFile])
+#
+#          # If the uri begins with 'file://', this needs to be removed
+#          args.input_vcf = uri[6:] if uri.startswith('file://') else uri
+#    else: fail('Mosaic has no, or multiple vcf files associated with it, so the file to use cannot be determined')
+#  print('  Using the vcf file: ', args.input_vcf, sep = '')
+#  exit(0)
 
   # Determine the order of the samples in the vcf header
-  sam.getSampleOrder(resourceInfo, samples, args.input_vcf)
+  #sam.getSampleOrder(resourceInfo, samples, args.input_vcf)
+  mosaicSamples = sam.getSampleOrder(resourceInfo, mosaicSamples)
 
   # If the HPO terms are not specified on the command line, grab them from the project. If they are specified on the command
   # line, use these
   if not args.hpo:
     hpoTerms = []
-    for sample in proband:
-      sampleHpoTerms = api_shpo.getSampleHpoList(mosaicConfig, args.project_id, samples[sample]['mosaicId'])
-      for hpo in sampleHpoTerms:
-        if hpo not in hpoTerms: hpoTerms.append(hpo)
-    args.hpo = ','.join(hpoTerms)
-  print('  Using the HPO terms:                  ', args.hpo, sep = '')
+    #for sample in proband:
+    sampleHpoTerms = api_shpo.getSampleHpoList(mosaicConfig, args.project_id, mosaicSamples[proband]['id'])
+    for hpo in sampleHpoTerms:
+      if hpo not in hpoTerms: hpoTerms.append(hpo)
+  args.hpo = ','.join(hpoTerms)
+  print('  Using the HPO terms: ', args.hpo, sep = '')
 
   # Get all the project attributes in the target Mosaic project
   projectAttributes = mos.getProjectAttributes(mosaicConfig, args.project_id, api_pa)
@@ -135,20 +174,20 @@ def main():
   # Generate the bash script to run the annotation pipeline
   pipelineModifiers = bashScript.determinePipeline(familyType)
   bashFilename, bashFile = bashScript.openBashScript(workingDir)
-  filteredVcf, clinvarVcf, rareVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, args.input_vcf, args.ped, tomlFilename, familyType, pipelineModifiers)
-  bashScript.samplesFile(bashFile)
-  bashScript.annotateVcf(resourceInfo, bashFile)
+  filteredVcf, clinvarVcf, rareVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, args.ped, tomlFilename, familyType, pipelineModifiers)
+  #bashScript.samplesFile(bashFile)
+  bashScript.annotateVcf(resourceInfo, bashFile, chrFormat, mosaicSamples)
   #bashScript.annotateVcf(bashFile, familyType)#resourceInfo, pipelineModifiers)
   #bashScript.cleanedVcf(bashFile)
   #bashScript.annotateVcf(bashFile, resourceInfo, pipelineModifiers)
-  bashScript.filterVariants(bashFile, samples, resourceInfo)
+  bashScript.filterVariants(bashFile, mosaicSamples, proband, resourceInfo)
   #bashScript.rareDiseaseVariants(bashFile)
   bashScript.clinVarVariants(bashFile)
 
   # Perform filtering based on the family type. This filter will generate a small set of prioritized
   # variants based on the available family structure
-  if familyType == 'trio': slivarTrio.annotateTrio(resourceInfo, bashFile)
-  else: print('**** WARNING: Filtering for family type ' + str(familyType) + ' has not yet been implemented')
+#  if familyType == 'trio': slivarTrio.annotateTrio(resourceInfo, bashFile)
+#  else: print('**** WARNING: Filtering for family type ' + str(familyType) + ' has not yet been implemented')
   bashScript.deleteFiles(args, pipelineModifiers, bashFile)
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
@@ -164,7 +203,7 @@ def main():
 
       # Only proceed with HPO terms if an HPO term string has been provided
       info     = mosaicInfo['resources']['hpo']
-      fileInfo = resourceInfo['resources']['hpo']['file']
+      fileInfo = str(resourceInfo['path']) + str(resourceInfo['resources']['hpo']['file'])
       if args.hpo: tsvFiles = anno.createHpoTsv(info, os.path.dirname(__file__) + '/components', args.config, args.hpo, args.project_id, fileInfo, args.utils_directory, args.tools_directory, bashFile, annotateFiles)
     else: tsvFiles = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', reference, args.config, args.mosaic_json, args.tools_directory, bashFile, annotateFiles)
     for tsv in tsvFiles: upload.uploadAnnotations(args.utils_directory, tsv, mosaicInfo['resources'][resource]['project_id'], args.config, uploadFile)
@@ -187,7 +226,7 @@ def main():
   # exist with the same name; fill out variant filter details not in the json (e.g. the uids of private annotations created by
   # Calypso); create the filters; and finally update the project settings to put the filters in the correct category and sort order.
   # Note that the filters to be applied depend on the family structure. E.g. de novo filters won't be added to projects without parents
-  vfilt.readRequiredFilters(mosaicConfig, mosaicInfo, args.data_directory, samples, projectAnnotations, familyType, args.project_id, api_ps, api_vf)
+  vfilt.readRequiredFilters(mosaicConfig, api_ps, api_vf, mosaicInfo, args.project_id, args.data_directory, args.variant_filters, samples, projectAnnotations, familyType)
 
   # Update Calypso attributes, e.g. the version that was run, the history of runs etc.
   mos.updateCalypsoAttributes(mosaicConfig, resourceInfo['version'], projectAttributes, publicAttributes, version, args.project_id, api_pa)
@@ -205,14 +244,14 @@ def parseCommandLine():
   parser = argparse.ArgumentParser(description='Process the command line')
 
   # Required arguments
-  #parser.add_argument('--family_type', '-f', required = True, metavar = 'string', help = 'The familty structure. Allowed values: ' + ', '. join(allowedFamily))
   parser.add_argument('--data_directory', '-d', required = True, metavar = 'string', help = 'The path to the directory where the resources live')
   parser.add_argument('--tools_directory', '-s', required = False, metavar = 'string', help = 'The path to the directory where the tools to use live')
   parser.add_argument('--utils_directory', '-l', required = True, metavar = 'string', help = 'The path to the public-utils directory')
   parser.add_argument('--input_vcf', '-i', required = False, metavar = 'string', help = 'The input vcf file to annotate')
   parser.add_argument('--ped', '-e', required = False, metavar = 'string', help = 'The pedigree file for the family. Not required for singletons')
   parser.add_argument('--project_id', '-p', required = True, metavar = 'string', help = 'The project id that variants will be uploaded to')
-  parser.add_argument('--config', '-c', required = True, metavar = "string", help = "The config file for Mosaic")
+  parser.add_argument('--config', '-c', required = True, metavar = 'string', help = 'The config file for Mosaic')
+  parser.add_argument('--variant_filters', '-f', required = True, metavar = 'string', help = 'The json file describing the variant filters to apply to each project')
 
   # Optional pipeline arguments
   parser.add_argument('--reference', '-r', required = False, metavar = 'string', help = 'The reference genome to use. Allowed values: ' + ', '.join(allowedReferences))
@@ -221,6 +260,7 @@ def parseCommandLine():
 
   # Optional argument to handle HPO terms
   parser.add_argument('--hpo', '-o', required = False, metavar = "string", help = "A comma separate list of hpo ids for the proband")
+
 
   # Optional mosaic arguments
   parser.add_argument('--token', '-t', required = False, metavar = "string", help = "The Mosaic authorization token")
