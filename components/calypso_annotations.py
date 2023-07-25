@@ -42,6 +42,32 @@ def createAnnotationTsv(mosaicInfo, resource, scriptDir, reference, configFile, 
   # Return the name of the output file
   return outputFiles
 
+# Create the tsv files for SpliceAI annotations
+def createSpliceAITsv(bashFile, scriptDir, configFile, mosaicResourseJson, reference, files):
+  outputFiles = []
+
+  print(file = bashFile)
+  print('  # Resource: SpliceAI', sep = '', file = bashFile)
+  print('  echo -n "Creating tsv file for resource SpliceAI..."', sep = '', file = bashFile)
+
+  # Generate a command for each independent VCF file created
+  for i, annotateFile in enumerate(files):
+
+    # Define the name of the output file
+    outputFile = 'spliceai_' + str(i + 1) + '.tsv'
+    outputFiles.append(outputFile)
+
+    print('  python ', scriptDir, '/generate_spliceai_tsv.py \\', sep = '', file = bashFile)
+    print('    -c "', configFile, '" \\', sep = '', file = bashFile)
+    print('    -m "', mosaicResourseJson, '" \\', sep = '', file = bashFile)
+    print('    -r "', reference, '" \\', sep = '', file = bashFile)
+    print('    -i ', annotateFile, ' \\', sep = '', file = bashFile)
+    print('    -o ', outputFile, sep = '', file = bashFile)
+  print('  echo "complete"', file = bashFile)
+
+  # Return the name of the output file
+  return outputFiles
+
 # Call the command to extract HPO annotations from the filtered vcf into a tsv file
 def createHpoTsv(hpoInfo, scriptDir, configFile, hpoString, projectId, genePhenotype, utils, toolsDir, bashFile, files):
   uids        = {}

@@ -32,7 +32,7 @@ def checkResources(reference, dataDir, toolsDir, resourceFilename):
   return resourceInfo
 
 # Read the json file describing the resources for the selected genome build, check the files exist, and store the versions.
-def readResources(reference, rootPath, resourceInfo):
+def readResources(reference, rootPath, resourceInfo, useVep):
 
   # Try and open the file
   try: resourceFile = open(resourceInfo['json'], 'r')
@@ -112,6 +112,8 @@ def readResources(reference, rootPath, resourceInfo):
 
     # If the resource is vep, handle this separately
     if resource == 'vep':
+      if useVep: resourceInfo['resources']['vep']['ignore'] = False
+      else: resourceInfo['resources']['vep']['ignore'] = True
 
       # VEP requires a cache and plugins directory to run. Get these directories and check they exist
       try: resourceInfo['resources']['vep']['cache'] = resources['vep']['cache']

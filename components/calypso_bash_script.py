@@ -104,7 +104,9 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, ped, tomlF
 
   # If the chr map is required, include the path to it. If the VCF uses 1 instead of chr1, it needs to be converted in order
   # to be compatible with the resources. chrFormat is False if not in the 'chr1' format.
-  if not chrFormat: print('CHR_MAP=$DATAPATH/chr_map.txt', sep = '', file = bashFile)
+  if not chrFormat:
+    print('CHR_NOCHR_MAP=$DATAPATH/chr_nochr_map.txt', sep = '', file = bashFile)
+    print('NOCHR_CHR_MAP=$DATAPATH/nochr_chr_map.txt', sep = '', file = bashFile)
 
   # The slivar js file is based on the family structure. Check that a file exists for the current family
 #  jsFile = 'slivar_' + familyType + '_js'
@@ -143,55 +145,67 @@ def annotateVcf(resourceInfo, bashFile, chrFormat, samples):
   # Print out status messages
   print('# Normalize, subset, and annotate original VCF', file = bashFile)
   print('echo -n "Subsetting, normalizing, and annotating input VCF..."', file = bashFile)
+
+  # Include additional resources for VEP
   if 'export' in resourceInfo['resources']['vep']:
     for newPath in resourceInfo['resources']['vep']['export']: print(newPath, file = bashFile)
-  #print('$BCFTOOLS view -a -c 1 -S samples.txt $VCF 2>> $STDERR \\', file = bashFile)
-  print('$BCFTOOLS view -a -c 1 -s "', sampleList, '" $VCF 2>> $STDERR \\', sep = '', file = bashFile)
-  if not chrFormat: print('  | $BCFTOOLS annotate --rename-chrs $CHR_MAP 2>> $STDERR \\', file = bashFile)
+
+  # Start the script by extracting the required samples from the vcf, and limiting to the autosome and X chromosomes.
+  # Ensure the correct format is used for the chromosomes
+  if not chrFormat:
+    chroms = '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,X'
+    print('$BCFTOOLS view -a -c 1 -s "', sampleList, '" -r "', chroms, '" $VCF 2>> $STDERR \\', sep = '', file = bashFile)
+    print('  | $BCFTOOLS annotate -x INFO --rename-chrs $NOCHR_CHR_MAP 2>> $STDERR \\', file = bashFile)
+  else:
+    chroms = 'chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22,chrX'
+    print('$BCFTOOLS view -a -c 1 -s "', sampleList, '" -r "', chroms, '" $VCF 2>> $STDERR \\', sep = '', file = bashFile)
+    print('  | $BCFTOOLS annotate -x INFO 2>> $STDERR \\', file = bashFile)
+
+  # Normalize and decompose the vcf, then extract the variants present in the required samples
   print('  | $BCFTOOLS norm -m - -w 10000 -f $REF 2> $STDERR \\', file = bashFile)
-  #print('  | $BCFTOOLS view -a -c 1 -S samples.txt 2>> $STDERR \\', file = bashFile)
   print('  | $BCFTOOLS view -a -c 1 -s "', sampleList, '" 2>> $STDERR \\', sep = '', file = bashFile)
-  print('  | $BCFTOOLS annotate -x INFO 2>> $STDERR \\', file = bashFile)
+
+  # Annotate the vcf file using both bcftools csq and vcfanno
   print('  | $BCFTOOLS csq -f $REF --ncsq 40 -l -g $GFF 2>> $STDERR \\', file = bashFile)
   print('  | $VCFANNO -p 16 $TOML /dev/stdin 2>> $STDERR \\', file = bashFile)
-  print('  | $VEP \\', file = bashFile)
-  print('    --assembly ', resourceInfo['reference'], '\\', sep = '', file = bashFile)
-  print('    --fasta $REF \\', file = bashFile)
-  print('    --cache \\', file = bashFile)
-  print('    --dir_cache ', resourceInfo['resources']['vep']['cache'], ' \\', sep = '', file = bashFile)
-  print('    --dir_plugins ', resourceInfo['resources']['vep']['plugins'], ' \\', sep = '', file = bashFile)
-  print('    --offline \\', file = bashFile)
-  print('    --vcf \\', file = bashFile)
-  print('    --force \\', file = bashFile)
-  print('    --check_existing \\', file = bashFile)
-  print('    --quiet \\', file = bashFile)
-  print('    --fork 40 \\', file = bashFile)
-  print('    --format vcf \\', file = bashFile)
-  print('    --force_overwrite \\', file = bashFile)
 
-  # Add additional options defined in the resource json
-  if 'options' in resourceInfo['resources']['vep']:
-    for vepOption in resourceInfo['resources']['vep']['options']: print('    ', vepOption, ' \\', sep = '', file = bashFile)
-  #print('    --hgvs \\', file = bashFile)
-  #print('    --sift b \\', file = bashFile)
-  #print('    --polyphen b \\', file = bashFile)
-  #print('    --pubmed \\', file = bashFile)
-  #print('    --mane \\', file = bashFile)
-  #print('    --gene_phenotype \\', file = bashFile)
-  #print('    --regulatory \\', file = bashFile)
+  # Annotate with VEP unless it is to be ignored
+  if not resourceInfo['resources']['vep']['ignore']:
+    print('  | $VEP \\', file = bashFile)
+    print('    --assembly ', resourceInfo['reference'], '\\', sep = '', file = bashFile)
+    print('    --fasta $REF \\', file = bashFile)
+    print('    --cache \\', file = bashFile)
+    print('    --dir_cache ', resourceInfo['resources']['vep']['cache'], ' \\', sep = '', file = bashFile)
+    print('    --dir_plugins ', resourceInfo['resources']['vep']['plugins'], ' \\', sep = '', file = bashFile)
+    print('    --offline \\', file = bashFile)
+    print('    --vcf \\', file = bashFile)
+    print('    --force \\', file = bashFile)
+    print('    --check_existing \\', file = bashFile)
+    print('    --quiet \\', file = bashFile)
+    print('    --fork 40 \\', file = bashFile)
+    print('    --format vcf \\', file = bashFile)
+    print('    --force_overwrite \\', file = bashFile)
+  
+    # Add additional options defined in the resource json
+    if 'options' in resourceInfo['resources']['vep']:
+      for vepOption in resourceInfo['resources']['vep']['options']: print('    ', vepOption, ' \\', sep = '', file = bashFile)
 
-  # Include all plugins
-  if 'active_plugins' in resourceInfo['resources']['vep']:
-    for plugin in resourceInfo['resources']['vep']['active_plugins']:
-      if 'files' in resourceInfo['resources']['vep']['active_plugins'][plugin]: print('    --plugin ', plugin, ',', resourceInfo['resources']['vep']['active_plugins'][plugin]['files'], ' \\', sep = '', file = bashFile)
-      else: print('    --plugin ', plugin, ' \\', sep = '', file = bashFile)
-  print('    --fields "', annotationString, '" \\', sep = '', file = bashFile)
-  #print('    --fields "', resourceInfo['resources']['vep']['fields'], '" \\', sep = '', file = bashFile)
-  #print('    --fields "SYMBOL,Feature,IMPACT,Consequence,HGVSc,HGVSp,MaxEntScan_diff,MaxEntScan_alt,GeneSplicer,five_prime_UTR_variant_annotation,SIFT,PolyPhen,PUBMED,LoFtool" \\', file = bashFile)
-  print('    --no_stats \\', file = bashFile)
-  print('    --output_file STDOUT \\', file = bashFile)
-  print('    2>> $STDERR \\', file = bashFile)
-  print('  | $BCFTOOLS view -O z -o $ANNOTATEDVCF - \\', file = bashFile)
+    # Include all plugins
+    if 'active_plugins' in resourceInfo['resources']['vep']:
+      for plugin in resourceInfo['resources']['vep']['active_plugins']:
+        if 'files' in resourceInfo['resources']['vep']['active_plugins'][plugin]: print('    --plugin ', plugin, ',', resourceInfo['resources']['vep']['active_plugins'][plugin]['files'], ' \\', sep = '', file = bashFile)
+        else: print('    --plugin ', plugin, ' \\', sep = '', file = bashFile)
+    print('    --fields "', annotationString, '" \\', sep = '', file = bashFile)
+    #print('    --fields "', resourceInfo['resources']['vep']['fields'], '" \\', sep = '', file = bashFile)
+    #print('    --fields "SYMBOL,Feature,IMPACT,Consequence,HGVSc,HGVSp,MaxEntScan_diff,MaxEntScan_alt,GeneSplicer,five_prime_UTR_variant_annotation,SIFT,PolyPhen,PUBMED,LoFtool" \\', file = bashFile)
+    print('    --no_stats \\', file = bashFile)
+    print('    --output_file STDOUT \\', file = bashFile)
+    print('    2>> $STDERR \\', file = bashFile)
+
+  # Output the final vcf file. If the original file had the '1' format (not 'chr1') for chromosomes,
+  # ensure the final vcd file is in this format
+  if not chrFormat: print('  | $BCFTOOLS annotate -O z -o $ANNOTATEDVCF --rename-chrs $CHR_NOCHR_MAP - \\', file = bashFile)
+  else: print('  | $BCFTOOLS view -O z -o $ANNOTATEDVCF - \\', file = bashFile)
   print('  >> $STDOUT 2>> $STDERR', file = bashFile)
   print('echo "complete"', file = bashFile)
   print(file = bashFile)

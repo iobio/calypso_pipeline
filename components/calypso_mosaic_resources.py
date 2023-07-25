@@ -31,9 +31,9 @@ def readMosaicJson(mosaicFilename, reference):
   except: fail('The Mosaic json (' + str(mosaicFilename) + ') does not include a date of creation')
 
   # Check that the resource json reference matches the selected reference
-  try: mosaicReference = mosaicData['reference']
+  try: mosaicInfo['reference'] = mosaicData['reference']
   except: fail('The Mosaic json does not include a reference genome')
-  if reference != mosaicReference: fail('The selected reference (' + str(reference) + ') does not match the Mosaic json reference (' + str(mosaicReference) + ')')
+  if reference != mosaicInfo['reference']: fail('The selected reference (' + str(reference) + ') does not match the Mosaic json reference (' + str(mosaicInfo['reference']) + ')')
 
   # Store information on annotationns to remove from the project, and defaults to set
   if 'remove' in mosaicData: mosaicInfo['remove'] = mosaicData['remove'] if 'remove' in mosaicData else []
@@ -97,6 +97,12 @@ def readMosaicJson(mosaicFilename, reference):
 
       # Check if the "positions" value is set. This defines the position in a compound annotation that the desired annotation can be found
       mosaicInfo['resources'][resource]['annotations'][annotation]['positions'] = resources[resource]['annotations'][annotation]['positions'] if 'positions' in resources[resource]['annotations'][annotation] else False
+
+      # Check if the "operation" value is set. This indicates that the annotation is constructed from other annotations using a specific operation
+      mosaicInfo['resources'][resource]['annotations'][annotation]['operation'] = resources[resource]['annotations'][annotation]['operation'] if 'operation' in resources[resource]['annotations'][annotation] else False
+
+      # Check if the "fields" value is set. This is used to determine which fields are used to generate the value for a specific operation
+      mosaicInfo['resources'][resource]['annotations'][annotation]['fields'] = resources[resource]['annotations'][annotation]['fields'] if 'fields' in resources[resource]['annotations'][annotation] else False
 
   # Return the mosaic information
   return mosaicInfo

@@ -26,7 +26,6 @@ import calypso_samples as sam
 import calypso_slivar_trio as slivarTrio
 import calypso_toml as toml
 import calypso_upload as upload
-import calypso_variant_filters as vfilt
 import calypso_vcf_files as vcfs
 import tools_bcftools as bcftools
 
@@ -61,6 +60,7 @@ def main():
   import api_variant_annotations as api_va
   import api_variant_filters as api_vf
   import add_variant_filters as pu_avf
+  import variant_filters as vFilters
 
   # Parse the Mosaic config file to get the token and url for the api calls
   mosaicRequired = {'MOSAIC_TOKEN': {'value': args.token, 'desc': 'An access token', 'long': '--token', 'short': '-t'},
@@ -77,7 +77,7 @@ def main():
   # Read the resources json file to identify all the resources that will be used in the annotation pipeline
   if args.resource_json: resourceInfo = res.checkResources(reference, args.data_directory, args.tools_directory, args.resource_json)
   else: resourceInfo = res.checkResources(reference, args.data_directory, args.tools_directory, args.data_directory + 'resources_' + str(reference) + '.json')
-  resourceInfo = res.readResources(reference, rootPath, resourceInfo)
+  resourceInfo = res.readResources(reference, rootPath, resourceInfo, args.no_vep)
 
   # Define the tools to be used by Calypso
   resourceInfo = res.calypsoTools(resourceInfo)
@@ -107,9 +107,7 @@ def main():
 ##########
 ##########
   if vcf.startswith('s3'): vcf = vcf.split('/')[-1]
-  #vcf = '/scratch/ucgd/lustre-work/marth/u0991467/analysis/udn/udn_instance/UDN076156/brca1.vcf.gz'
-  #print('TEST', vcf)
-  chrFormat     = vcfs.determineChromosomeFormat(resourceInfo['tools']['bcftools'], vcf)
+  chrFormat = vcfs.determineChromosomeFormat(resourceInfo['tools']['bcftools'], vcf)
 
 ######################
 ######################
@@ -205,6 +203,11 @@ def main():
       info     = mosaicInfo['resources']['hpo']
       fileInfo = str(resourceInfo['path']) + str(resourceInfo['resources']['hpo']['file'])
       if args.hpo: tsvFiles = anno.createHpoTsv(info, os.path.dirname(__file__) + '/components', args.config, args.hpo, args.project_id, fileInfo, args.utils_directory, args.tools_directory, bashFile, annotateFiles)
+
+    # SpliceAI annotations are handled in their own script
+    elif resource == 'SpliceAI': tsvFiles = anno.createSpliceAITsv(bashFile, os.path.dirname(__file__) + '/scripts', args.config, args.mosaic_json, reference, annotateFiles)
+
+    # Remaining resources
     else: tsvFiles = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', reference, args.config, args.mosaic_json, args.tools_directory, bashFile, annotateFiles)
     for tsv in tsvFiles: upload.uploadAnnotations(args.utils_directory, tsv, mosaicInfo['resources'][resource]['project_id'], args.config, uploadFile)
   upload.closeUploadAnnotationsFile(uploadFilename, uploadFile)
@@ -226,10 +229,8 @@ def main():
   # exist with the same name; fill out variant filter details not in the json (e.g. the uids of private annotations created by
   # Calypso); create the filters; and finally update the project settings to put the filters in the correct category and sort order.
   # Note that the filters to be applied depend on the family structure. E.g. de novo filters won't be added to projects without parents
-  vfilt.readRequiredFilters(mosaicConfig, api_ps, api_vf, mosaicInfo, args.project_id, args.data_directory, args.variant_filters, samples, projectAnnotations, familyType)
-
-  # Update Calypso attributes, e.g. the version that was run, the history of runs etc.
-  mos.updateCalypsoAttributes(mosaicConfig, resourceInfo['version'], projectAttributes, publicAttributes, version, args.project_id, api_pa)
+  #vfilt.readRequiredFilters(mosaicConfig, api_ps, api_vf, mosaicInfo, args.project_id, args.data_directory, args.variant_filters, samples, projectAnnotations, familyType)
+  vFilters.setVariantFilters(mosaicConfig, api_ps, api_va, api_vf, args.project_id, args.variant_filters, mosaicSamples)
 
   # Generate scripts to upload filtered variants to Mosaic
   upload.uploadVariants(workingDir, args.utils_directory, args.config, args.project_id, filteredVcf, clinvarVcf, rareVcf)
@@ -237,6 +238,9 @@ def main():
   # Output a summary file listing the actions undertaken by Calypso with all version histories
   res.calypsoSummary(workingDir, version, resourceInfo, reference)
   print('Calypso pipeline version ', version, ' completed successfully', sep = '')
+
+  # Update Calypso attributes, e.g. the version that was run, the history of runs etc.
+  mos.updateCalypsoAttributes(mosaicConfig, resourceInfo['version'], projectAttributes, publicAttributes, version, args.project_id, api_pa)
 
 # Input options
 def parseCommandLine():
@@ -256,6 +260,7 @@ def parseCommandLine():
   # Optional pipeline arguments
   parser.add_argument('--reference', '-r', required = False, metavar = 'string', help = 'The reference genome to use. Allowed values: ' + ', '.join(allowedReferences))
   parser.add_argument('--resource_json', '-j', required = False, metavar = 'string', help = 'The json file describing the annotation resources')
+  parser.add_argument('--no_vep', '-n', required = False, action = "store_false", help = "If set, do not run VEP annotation")
 #  parser.add_argument('--no_comp_het', '-n', required = False, action = "store_true", help = "If set, comp het determination will be skipped")
 
   # Optional argument to handle HPO terms
