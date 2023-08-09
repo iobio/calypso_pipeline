@@ -415,17 +415,15 @@ def traditionalTrio(samples, sample, mother, father):
 # Logic for determining structure of quads
 def quadStructures(samples):
 
-#  print('test')
-#  # Loop over the samples
-#  for sample in samples:
-#    print(sample, samples[sample])
-#  exit(0)
-#  proband = ['UDN151536']
-#  samples['UDN151536']['relationship'] = 'Proband'
-#  samples['UDN562736']['relationship'] = 'Daughter'
-#  samples['UDN997875']['relationship'] = 'Sister'
-#  samples['UDN588544']['relationship'] = 'Father'
-#  familyType = 'quad'
+  # Loop over the samples
+  #for sample in samples:
+  #  print(sample, samples[sample])
+  #proband = ['UDN475671']
+  #samples['UDN475671']['relationship'] = 'Proband'
+  #samples['UDN096572']['relationship'] = 'Mother'
+  #samples['UDN176470']['relationship'] = 'Father'
+  #samples['UDN668797']['relationship'] = 'Sister'
+  #familyType = 'quad'
 
   # Return the updated samples along with the name of the proband and the family structure
   return samples, proband, familyType
@@ -441,24 +439,27 @@ def getSampleOrder(resourceInfo, mosaicSamples):
     vcf           = mosaicSamples[sample]['vcf_file']
     vcfSampleName = mosaicSamples[sample]['vcf_sample_name']
 
+    # Only process samples associated with vcf files
+    if vcf:
+
 ####################
 ####################
 #################### HACK FOR UDN S3 files
 #################### DELETE
 ####################
 ####################
-    if vcf.startswith('s3://udn-joint-analysis/wgs/joint-by-family/'): vcf = vcf.replace('s3://udn-joint-analysis/wgs/joint-by-family/', './')
+      if vcf.startswith('s3://udn-joint-analysis/wgs/joint-by-family/'): vcf = vcf.replace('s3://udn-joint-analysis/wgs/joint-by-family/', './')
 
-    # Get the final head line
-    data = os.popen(bcf.getHeader(resourceInfo['tools']['bcftools'], vcf)).readlines()[-1].rstrip().split('\t')
+      # Get the final header line
+      data = os.popen(bcf.getHeader(resourceInfo['tools']['bcftools'], vcf)).readlines()[-1].rstrip().split('\t')
 
-    # Read through the samples and define the sample order
-    for index, vcfSample in enumerate(data[9:]):
-      if vcfSample == vcfSampleName: mosaicSamples[sample]['vcf_position'] = index
+      # Read through the samples and define the sample order
+      for index, vcfSample in enumerate(data[9:]):
+        if vcfSample == vcfSampleName: mosaicSamples[sample]['vcf_position'] = index
 
   # Check that every sample in samples has vcf_position set
   for sample in mosaicSamples:
-    if 'vcf_position' not in mosaicSamples[sample]: fail('Sample ' + str(sample) + ' is listed in the ped file, but does not appear in the vcf header')
+    if vcf and 'vcf_position' not in mosaicSamples[sample]: fail('Sample ' + str(sample) + ' is listed in the ped file, but does not appear in the vcf header')
 
   # Return the updated mosaicSamples
   return mosaicSamples

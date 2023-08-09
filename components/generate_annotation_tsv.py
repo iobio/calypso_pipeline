@@ -124,8 +124,8 @@ def processClassA(vcf, tags, outputFile):
           except: fail('Invalid value for annotation: ' + record.rstrip())
   
           # Make sure the value falls between 1E-37 and 1E+37
-          if float(fields[i]) <= 1e-37: fields[i] = "1e-37"
-          elif float(fields[i]) >= 1e37: fields[i] = "1e37"
+          if float(fields[i]) <= 1e-37: fields[i] = '0'
+          elif float(fields[i]) >= 1e37: fields[i] = '1e37'
   
       # Build the output record from the updated fields
       print('\t'.join(fields), file = outputFile)

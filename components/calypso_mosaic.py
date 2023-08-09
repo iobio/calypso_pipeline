@@ -76,7 +76,7 @@ def createPrivateAnnotations(mosaicConfig, resources, projectAnnotations, sample
         # If the annotation has "isSample" set, there needs to be an annotation for every sample in the project. Append the
         # the samples relationship to the proband to the annotation name
         if resources[resource]['annotations'][annotation]['isSample']:
-          for sample in samples: annotations[(str(annotation) + ' ' + str(samples[sample]['relationship']))] = valueType
+          for sample in samples: annotations[(str(annotation) + ' ' + str(samples[sample]['relation']))] = valueType
         else: annotations[annotation] = valueType
 
       # Remove this annotation from the resources dictionary. It will be replaced below with the new annotations with the
