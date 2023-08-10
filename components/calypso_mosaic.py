@@ -78,7 +78,11 @@ def createPrivateAnnotations(mosaicConfig, resources, projectAnnotations, sample
         # the samples relationship to the proband to the annotation name. 
         if resources[resource]['annotations'][annotation]['isSample']:
           for sample in samples:
-            if samples[sample]['vcf_sample_name']: annotations[(str(annotation) + ' ' + str(samples[sample]['relation']))] = valueType
+
+            # Include the sample name in the annotation, otherwise non-unique names could result. For example, if the proband
+            # has 2 brothers, the generated annotation name for the 2 brothers will be identical
+            if samples[sample]['vcf_sample_name']:
+              annotations[str(annotation) + ' ' + str(samples[sample]['relation']) + ' ' + str(sample)] = valueType
         else: annotations[annotation] = valueType
 
       # Remove this annotation from the resources dictionary. It will be replaced below with the new annotations with the
