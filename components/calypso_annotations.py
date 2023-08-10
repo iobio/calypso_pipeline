@@ -44,7 +44,7 @@ def createAnnotationTsv(mosaicInfo, resource, scriptDir, reference, configFile, 
   return outputFiles
 
 # Create the tsv files for SpliceAI annotations
-def createSpliceAITsv(bashFile, scriptDir, configFile, mosaicResourseJson, reference, files):
+def createSpliceAITsv(bashFile, scriptDir, toolsDir, configFile, mosaicResourseJson, reference, files):
   outputFiles = []
 
   print(file = bashFile)
@@ -62,6 +62,7 @@ def createSpliceAITsv(bashFile, scriptDir, configFile, mosaicResourseJson, refer
     print('    -c "', configFile, '" \\', sep = '', file = bashFile)
     print('    -m "', mosaicResourseJson, '" \\', sep = '', file = bashFile)
     print('    -r "', reference, '" \\', sep = '', file = bashFile)
+    print('    -s "', toolsDir, '" \\', sep = '', file = bashFile)
     print('    -i ', annotateFile, ' \\', sep = '', file = bashFile)
     print('    -o ', outputFile, sep = '', file = bashFile)
   print('  echo "complete"', file = bashFile)
