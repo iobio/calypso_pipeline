@@ -26,6 +26,10 @@ def main():
     bcftoolsExe = args.tools_directory + 'bcftools/bcftools'
   else: bcftoolsExe = 'bcftools'
 
+  # Check that the exectuable exists
+  isExecutable = bcftools.isExecutable(bcftoolsExe)
+  if not isExecutable: fail('bcftools executable (' + str(bcftoolsExe) + ') is not executable. Use --tools_directory (-s) to define the directory where the bcftools executable can be found')
+
   # Read the mosaicJson file to get information on how to process different annotations
   mosaicInfo = mosr.readMosaicJson(args.mosaic_json, args.reference)
 

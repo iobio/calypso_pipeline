@@ -1,9 +1,14 @@
 #!/usr/bin/python
 
-from __future__ import print_function
 from datetime import date
 from os.path import exists
 from sys import path
+
+import os
+
+# Determine if the defined executable can be used
+def isExecutable(bcftoolsExe):
+  return os.access(bcftoolsExe, os.X_OK)
 
 # Get the bcftools version
 def version(bcftools):

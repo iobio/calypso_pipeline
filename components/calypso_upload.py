@@ -22,19 +22,9 @@ def uploadVariants(workingDir, utils, configFile, projectId, vcfFiles):
     print('python ', utils, 'scripts/upload_variants.py \\', sep = '', file = uploadFile)
     print('  -c ', configFile + ' \\', sep = '', file = uploadFile)
     print('  -p ', str(projectId) + ' \\', sep = '', file = uploadFile)
-    print('  -m "allele" \\', sep = '', file = uploadFile)
+    print('  -m "no-validation" \\', sep = '', file = uploadFile)
     print('  -i ', vcf, sep = '', file = uploadFile)
     print(file = uploadFile)
-
-#  # Write the command to file to upload a variant set of the clinVar variants
-#  print('# Upload ClinVar variants to Mosaic', file = uploadFile)
-#  print('python ', utils, 'scripts/upload_variants.py \\', sep = '', file = uploadFile)
-#  print('  -c ', configFile + ' \\', sep = '', file = uploadFile)
-#  print('  -p ', str(projectId) + ' \\', sep = '', file = uploadFile)
-#  print('  -m "allele" \\', sep = '', file = uploadFile)
-#  print('  -n "ClinVar" \\', sep = '', file = uploadFile)
-#  print('  -i ', clinvarVcf, sep = '', file = uploadFile)
-#  print(file = uploadFile)
 
   # Close the file
   uploadFile.close()

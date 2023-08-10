@@ -115,7 +115,7 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, ped, tomlF
   print(file = bashFile)
 
   # Return the name of the filtered vcf file
-  return filteredVcf, clinvarVcf
+  return filteredVcf
 
 # Generate a text file containing all the samples
 def samplesFile(bashFile):

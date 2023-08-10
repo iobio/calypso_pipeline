@@ -24,7 +24,8 @@ def createAnnotationTsv(mosaicInfo, resource, scriptDir, reference, configFile, 
   for i, annotateFile in enumerate(files):
 
     # Define the name of the output tsv file
-    outputFile = str(resource) + '_' + str(i + 1) + '.tsv'
+    if len(files) == 1: outputFile = str(resource) + '.tsv'
+    else: outputFile = str(resource) + '_' + str(i + 1) + '.tsv'
     outputFiles.append(outputFile)
 
     print('  python ', scriptDir, '/generate_annotation_tsv.py \\', sep = '', file = bashFile)

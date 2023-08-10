@@ -73,10 +73,12 @@ def createPrivateAnnotations(mosaicConfig, resources, projectAnnotations, sample
       for annotation in resources[resource]['annotations']:
         valueType = resources[resource]['annotations'][annotation]['type']
 
-        # If the annotation has "isSample" set, there needs to be an annotation for every sample in the project. Append the
-        # the samples relationship to the proband to the annotation name
+        # If the annotation has "isSample" set, there needs to be an annotation for every sample in the vcf file for the 
+        # project (some projects include samples that were not sequenced and so these will not have annotations). Append the
+        # the samples relationship to the proband to the annotation name. 
         if resources[resource]['annotations'][annotation]['isSample']:
-          for sample in samples: annotations[(str(annotation) + ' ' + str(samples[sample]['relation']))] = valueType
+          for sample in samples:
+            if samples[sample]['vcf_sample_name']: annotations[(str(annotation) + ' ' + str(samples[sample]['relation']))] = valueType
         else: annotations[annotation] = valueType
 
       # Remove this annotation from the resources dictionary. It will be replaced below with the new annotations with the
@@ -101,7 +103,7 @@ def createPrivateAnnotations(mosaicConfig, resources, projectAnnotations, sample
         resources[resource]['annotations'][annotation] = {'uid': data['uid'], 'type': valueType, 'id': data['id']}
 
         # Add the created private annotation to the projectAnnotations dictionary
-        #projectAnnotations[data['uid']] = {'id': data['id'], 'name': annotation, 'type': valueType}
+        projectAnnotations[data['uid']] = {'id': data['id'], 'name': annotation, 'type': valueType}
 
   # Return the created private annotations
   return privateAnnotations, projectAnnotations
