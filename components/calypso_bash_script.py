@@ -244,10 +244,10 @@ def filterVariants(bashFile, samples, proband, resourceInfo):
 
   # The filter should return all variants that are not in, or have popmax AF < 0.01 in gnomAD (v2.1.1 and v3.2.1)...
   print('  --info \'( ( (!("gg2_1_1_AF_popmax" in INFO) || ("gg2_1_1_AF_popmax" in INFO && INFO.gg2_1_1_AF_popmax < 0.01)) && ', file = bashFile)
-  print('             (  !("gg3_1_2_AF_popmax" in INFO) || ("gg3_1_2_AF_popmax" in INFO && INFO.gg3_1_2_AF_popmax < 0.01)) ) ||', file = bashFile)
+  print('            (  !("gg3_1_2_AF_popmax" in INFO) || ("gg3_1_2_AF_popmax" in INFO && INFO.gg3_1_2_AF_popmax < 0.01)) ) ||', file = bashFile)
 
   # ...or that the variant is flag as some form of pathogenic in ClinVar...
-  print('  ("CLNSIG" in INFO && INFO.CLNSIG.search(/athogenic/)!=-1)) ||', file = bashFile)
+  print('  ("CLNSIG" in INFO && INFO.CLNSIG.search(/athogenic/)!=-1) ||', file = bashFile)
 
   # ...or that the REVEL or MutScores are over 0.9...
   print('  ("REVEL" in INFO && INFO.REVEL > 0.9) ||', file = bashFile)
