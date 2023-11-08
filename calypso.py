@@ -259,7 +259,7 @@ def parseCommandLine():
   parser.add_argument('--ped', '-e', required = False, metavar = 'string', help = 'The pedigree file for the family. Not required for singletons')
   parser.add_argument('--project_id', '-p', required = True, metavar = 'string', help = 'The project id that variants will be uploaded to')
   parser.add_argument('--config', '-c', required = True, metavar = 'string', help = 'The config file for Mosaic')
-  parser.add_argument('--variant_filters', '-f', required = True, metavar = 'string', help = 'The json file describing the variant filters to apply to each project')
+  parser.add_argument('--variant_filters', '-f', required = False, metavar = 'string', help = 'The json file describing the variant filters to apply to each project')
 
   # Optional pipeline arguments
   parser.add_argument('--reference', '-r', required = False, metavar = 'string', help = 'The reference genome to use. Allowed values: ' + ', '.join(allowedReferences))
@@ -304,6 +304,12 @@ def checkArguments(args, rootPath):
   # Check that the tools directory exists and add to the path so scripts from here can be used
   if args.tools_directory[-1] != '/': args.tools_directory += '/'
   if not os.path.exists(args.tools_directory): fail('ERROR: The tools directory does not exist (' + str(args.tools_directory) + ')')
+
+  # Check that a variant filters file has been supplied. The validity of the file will be checked when it is parsed.
+  # For now, it is sufficient that a file exists. If no file is supplied, use the one that should exist in the
+  # Calypso data directory
+  if not args.variant_filters: args.variant_filters = args.data_directory + 'variant_filters.json'
+  if not os.path.exists(args.variant_filters): fail('ERROR: The json file describing the preset variant filters does not exist (' + str(args.variant_filters) + ')')
 
 # Create a directory where all Calypso associated files will be stored
 def setWorkingDir(version):
