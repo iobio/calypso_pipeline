@@ -6,6 +6,7 @@ import json
 import math
 import glob
 import importlib
+import stat
 import sys
 
 from datetime import date
@@ -43,9 +44,9 @@ def main():
 
   # Check the supplied parameters are as expected, then expand the path to enable scripts and api commands
   # to be accessed for Calypso
-  checkArguments(args)
-  sys.path = cpath.buildPath(sys.path, args.utils_directory)
   rootPath = os.path.dirname(__file__)
+  checkArguments(args, rootPath)
+  sys.path = cpath.buildPath(sys.path, args.utils_directory)
 
   # Import additional tools
   import mosaic_config
@@ -102,6 +103,9 @@ def main():
   # Determine the name of this vcf file, then determine if this file has chromosomes listed as e.g. '1' or 'chr1'
   mosaicSamples = vcfs.getVcfFiles(mosaicConfig, api_sf, args.project_id, mosaicSamples)
   vcf           = mosaicSamples[list(mosaicSamples.keys())[0]]['vcf_file']
+
+  # Check that we have read access to the vcf file
+  if not os.access(vcf, os.R_OK): fail('\nFAILED: Calypso does not have access to the vcf file which is required to complate the pipeline')
 ##########
 ##########
 ########## DELETE WHEN HANDLED S3 FILES
@@ -248,9 +252,9 @@ def parseCommandLine():
   parser = argparse.ArgumentParser(description='Process the command line')
 
   # Required arguments
-  parser.add_argument('--data_directory', '-d', required = True, metavar = 'string', help = 'The path to the directory where the resources live')
+  parser.add_argument('--data_directory', '-d', required = False, metavar = 'string', help = 'The path to the directory where the resources live')
   parser.add_argument('--tools_directory', '-s', required = False, metavar = 'string', help = 'The path to the directory where the tools to use live')
-  parser.add_argument('--utils_directory', '-l', required = True, metavar = 'string', help = 'The path to the public-utils directory')
+  parser.add_argument('--utils_directory', '-l', required = False, metavar = 'string', help = 'The path to the public-utils directory')
   parser.add_argument('--input_vcf', '-i', required = False, metavar = 'string', help = 'The input vcf file to annotate')
   parser.add_argument('--ped', '-e', required = False, metavar = 'string', help = 'The pedigree file for the family. Not required for singletons')
   parser.add_argument('--project_id', '-p', required = True, metavar = 'string', help = 'The project id that variants will be uploaded to')
@@ -279,14 +283,27 @@ def parseCommandLine():
   return parser.parse_args()
 
 # Check the supplied arguments
-def checkArguments(args):
+def checkArguments(args, rootPath):
 
-  # Ensure the data path ends with a "/", then add the reference directory
-  if args.data_directory[-1] != "/": args.data_directory += "/"
+  # If Calypso is being run from the standard directory, the location of the data directory is
+  # predictable. If the directory has not been specified on the command line, check for the
+  # existence of this known directory
+  if not args.data_directory: args.data_directory = '/'.join(rootPath.split('/')[0:-1]) + '/data/'
+  if not args.utils_directory: args.utils_directory = '/'.join(rootPath.split('/')[0:-1]) + '/public-utils/'
+  if not args.tools_directory: args.tools_directory = '/'.join(rootPath.split('/')[0:-1]) + '/tools/'
+
+  # Ensure the data path ends with a "/", then add the reference directory and check that the
+  # directory exists
+  if args.data_directory[-1] != '/': args.data_directory += '/'
+  if not os.path.isdir(args.data_directory): fail('ERROR: The data directory does not exist (' + str(args.data_directory) + ')')
 
   # Check that the public-utils directory exists and add to the path so scripts from here can be used
-  if args.utils_directory[-1] != "/": args.utils_directory += "/"
-  if not os.path.exists(args.utils_directory): fail('public-utils directory could not be found')
+  if args.utils_directory[-1] != '/': args.utils_directory += '/'
+  if not os.path.exists(args.utils_directory): fail('ERROR: The public-utils directory does not exist (' + str(args.utils_directory) + ')')
+
+  # Check that the tools directory exists and add to the path so scripts from here can be used
+  if args.tools_directory[-1] != '/': args.tools_directory += '/'
+  if not os.path.exists(args.tools_directory): fail('ERROR: The tools directory does not exist (' + str(args.tools_directory) + ')')
 
 # Create a directory where all Calypso associated files will be stored
 def setWorkingDir(version):
