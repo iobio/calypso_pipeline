@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import os
 import json
+import subprocess
 import tools_bcftools as bcf
 
 # Get the vcf files for all the mosaic samples

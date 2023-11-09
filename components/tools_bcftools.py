@@ -15,6 +15,32 @@ def version(bcftools):
   command = bcftools + ' -v'
   return command
 
+#####
+##### bcftools view commands
+#####
+
+# Use bcftools view to generate a vcf header as a vcf file
+def createHeaderVcf(bcftools, inVcf, outVcf):
+  command = bcftools + ' view -h -O v -o ' + str(outVcf) + ' ' + str(inVcf)
+  return command
+
+# Use bcftools view to return a vcf header
+def getHeader(bcftools, vcf):
+  command = bcftools + ' view -h ' + str(vcf)
+  return command
+
+# Compress a vcf file
+def compress(bcftools, inVcf, outVcf, outType):
+  return bcftools + ' view -O ' + str(outType) + ' -o ' + str(outVcf) + ' ' + str(inVcf)
+
+# Compress a vcf file and create the index
+def compressAndIndex(bcftools, inVcf, outVcf, outType):
+  return bcftools + ' view -O ' + str(outType) + ' -o ' + str(outVcf) + ' --write-index ' + str(inVcf)
+
+#####
+##### bcftools query commands
+#####
+
 # Use bcftools query to return records in vcf format, but with only the selected INFO fields
 def queryVcf(bcftools, vcf, tags):
   command = bcftools + ' query -f \'%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\t%QUAL\\t%FILTER'
@@ -29,18 +55,15 @@ def query(bcftools, vcf, tags):
   command += '\\n\' ' + str(vcf)
   return command
 
-# Use bcftools query to return the coords, alleles and "worst" consequence CSQ fields
-def splitvepQuery(bcftools, vcf, tags):
-  command = bcftools + ' +split-vep -s worst -c CSQ -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT'
-  for tag in tags: command += '\\t%INFO/' + str(tag)
-  command += '\\n\' ' + str(vcf)
-  return command
-
 # Use bcftools query to return the coords, alleles and selected format (genotype) annotation fields
 def queryFormat(bcftools, vcf, tag):
   command = bcftools + ' query -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT[\\t%' + str(tag) + ']'
   command += '\\n\' ' + str(vcf)
   return command
+
+#####
+##### bcftools isec commands
+#####
 
 # Generate intersections and complements between two vcf files
 def isec(bcftools, oldVcf, newVcf, cvDir):
@@ -62,29 +85,78 @@ def isecIntNoHeader(bcftools, vcfA, vcfB):
   command = bcftools + ' isec -n =2 -w 1 -H ' + str(vcfA) + ' ' + str(vcfB)
   return command
 
-# Use bcftools view to generate a vcf header as a vcf file
-def createHeaderVcf(bcftools, inVcf, outVcf):
-  command = bcftools + ' view -h -O v -o ' + str(outVcf) + ' ' + str(inVcf)
-  return command
-
-# Use bcftools view to return a vcf header
-def getHeader(bcftools, vcf):
-  command = bcftools + ' view -h ' + str(vcf) + ' 2> /dev/null'
-  return command
-
-# Compress a vcf file
-def compress(bcftools, vcf, outType):
-  return bcftools + ' view -O ' + str(outType) + ' -o ' + str(vcf) + '.gz ' + str(vcf)
+#####
+##### bcftools index commands
+#####
 
 # Index a file
 def index(bcftools, vcf):
   return bcftools + ' index -t ' + str(vcf)
+
+#####
+##### bcftools merge commands
+#####
 
 # Merge a list of vcf files
 def merge(bcftools, inVcfs, outType, outVcf):
   command = bcftools + ' merge -O ' + str(outType) + ' -o ' + str(outVcf)
   for inFile in inFiles: command += ' ' + str(inFile)
   return command
+
+#####
+##### bcftools annotate commands
+#####
+
+# Extract annotations from a vcf file
+def extractAnnotations(bcftools, tags, renameFile, inVcf, outVcf):
+  command = bcftools + ' annotate -x '
+
+  # Add the annotations to keep
+  for i, tag in enumerate(tags):
+    if i == 0: command += '^INFO/' + str(tag)
+    else: command += ',^INFO/' + str(tag)
+
+  # If a rename file is included, add this to the command
+  if renameFile: command += ' --rename-annots ' + str(renameFile)
+
+  # If an output file is included, output this as a vcf.gz file, otherwise assume this command will be
+  # piped to another command
+  if outVcf: command += ' -O z -o ' + str(outVcf) + ' --write-index'
+
+  # Finally add the input vcf file
+  command += ' ' + str(inVcf)
+
+  return command
+
+# Annotate a vcf with annotations from a different vcf
+def annotateWithVcf(bcftools, tags, annotateVcf, inVcf, outVcf):
+  command = bcftools + ' annotate -a ' + str(annotateVcf) + ' -c '
+
+  # Add the annotations to keep
+  for i, tag in enumerate(tags):
+    if i == 0: command += 'INFO/' + str(tag)
+    else: command += ',INFO/' + str(tag)
+
+  # If an output file is included, output this as a vcf.gz file, otherwise assume this command will be
+  # piped to another command
+  if outVcf: command += ' -O z -o ' + str(outVcf) + ' --write-index'
+
+  # Finally add the input vcf file
+  command += ' ' + str(inVcf)
+
+  return command
+
+#####
+##### bcftools split-vep commands
+#####
+
+# Use bcftools query to return the coords, alleles and "worst" consequence CSQ fields
+def splitvepQuery(bcftools, vcf, tags):
+  command = bcftools + ' +split-vep -s worst -c CSQ -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT'
+  for tag in tags: command += '\\t%INFO/' + str(tag)
+  command += '\\n\' ' + str(vcf)
+  return command
+
 
 # If the script fails, provide an error message and exit
 def fail(message):

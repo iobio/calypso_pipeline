@@ -289,20 +289,6 @@ def filterVariants(bashFile, samples, proband, resourceInfo):
   print('$BCFTOOLS index -t $FILTEREDVCF', file = bashFile)
   print(file = bashFile)
 
-# Extract all variants that have "athogenic" in the ClinVar significance. This will extract all Pathogenic,
-# Likely_pathogenic, and Conflicting... variants
-def clinVarVariants(bashFile):
-  print('# Extract all variants with some pathogenic significance', file = bashFile)
-  print('echo -n "Generating clinVar variants file..."', file = bashFile)
-  print('$BCFTOOLS view -O z \\', file = bashFile)
-  print('  -o $CLINVARVCF \\', file = bashFile)
-  print('  -i \'INFO/CLNSIG~"athogenic"\' \\', file = bashFile)
-  print('  $ANNOTATEDVCF \\', file = bashFile)
-  print('  >> $STDOUT 2>> $STDERR', file = bashFile)
-  print('echo "complete"', file = bashFile)
-  print('$BCFTOOLS index -t $CLINVARVCF', file = bashFile)
-  print(file = bashFile)
-
 # Use Slivar to extract variants based on the Slivar rare disease wiki
 def rareDiseaseVariants(bashFile):
   print('# Generate rare disease variants based on Slivar wiki', file = bashFile)

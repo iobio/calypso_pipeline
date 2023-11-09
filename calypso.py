@@ -28,6 +28,7 @@ import calypso_slivar_trio as slivarTrio
 import calypso_toml as toml
 import calypso_upload as upload
 import calypso_vcf_files as vcfs
+import exomiser
 import tools_bcftools as bcftools
 
 def main():
@@ -149,8 +150,8 @@ def main():
 
   # If the HPO terms are not specified on the command line, get them from the project. If they are specified on the command
   # line, use these
+  hpoTerms = []
   if not args.hpo:
-    hpoTerms = []
     sampleHpoTerms = api_shpo.getSampleHpoList(mosaicConfig, args.project_id, mosaicSamples[proband]['id'])
     for hpo in sampleHpoTerms:
       if hpo not in hpoTerms: hpoTerms.append(hpo)
@@ -178,7 +179,6 @@ def main():
   filteredVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, args.ped, tomlFilename) #, familyType, pipelineModifiers)
   bashScript.annotateVcf(resourceInfo, bashFile, chrFormat, mosaicSamples)
   bashScript.filterVariants(bashFile, mosaicSamples, proband, resourceInfo)
-  #bashScript.clinVarVariants(bashFile)
 
 ###############
 ###############
@@ -191,6 +191,9 @@ def main():
 #  if familyType == 'trio': slivarTrio.annotateTrio(resourceInfo, bashFile)
 #  else: print('**** WARNING: Filtering for family type ' + str(familyType) + ' has not yet been implemented')
   #bashScript.deleteFiles(args, pipelineModifiers, bashFile)
+
+  # Run Exomiser on the original vcf file and process the exomiser outputs as private annotations
+  exomiser.generateYml(workingDir, proband, reference, vcf, args.ped, hpoTerms)
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
   print('# Generate tsv files to upload annotations to Mosaic', file = bashFile)
