@@ -4,6 +4,28 @@ from os.path import exists
 
 import os
 
+########
+########
+######## This should be updated to get versions from json resource file
+########
+########
+# Generate the application properties file
+def applicationProperties(workingDir, toolsDir):
+
+  # Create the application.properties file
+  propFileName = str(workingDir) + 'application.properties'
+  propFile     = open(propFileName, 'w')
+
+  # Write the data versions to the file
+  print('exomiser.data-directory=', toolsDir, 'exomiser-cli-13.3.0/data', sep = '', file = propFile)
+  print('remm.version=0.3.1.post1', file = propFile)
+  print('cadd.version=1.4', file = propFile)
+  print('exomiser.hg38.data-version=2302', file = propFile)
+  print('exomiser.phenotype.data-version=2302', file = propFile)
+
+  # Close the application properties file
+  propFile.close()
+
 # Generate the yml file for running exomiser
 def generateYml(workingDir, proband, reference, vcf, ped, hpo):
 
@@ -16,7 +38,8 @@ def generateYml(workingDir, proband, reference, vcf, ped, hpo):
   hpoString = '\', \''.join(hpo)
 
   # Open a new yaml file
-  yaml = open(str(workingDir) + 'exomiser_' + str(proband) + '.yml', 'w')
+  yamlName = 'exomiser_' + str(proband) + '.yml'
+  yaml     = open(str(workingDir) + yamlName, 'w')
 
   # Write the information about this project to the yaml
   print('# Exomiser analysis file for proband: ', proband, sep = '', file = yaml)
@@ -116,6 +139,49 @@ def generateYml(workingDir, proband, reference, vcf, ped, hpo):
 
   # Close the yaml file
   yaml.close()
+
+  # Return the path and name of the yaml file
+  return yamlName
+
+# Generate a script file to run exomiser
+def generateScript(workingDir, toolsDir, yaml):
+
+  # Create script file for running exomiser
+  scriptName = str(workingDir) + 'calypso_exomiser.sh'
+  script       = open(scriptName, 'w')
+  print('set -eou pipefail', file = script)
+  print(file = script)
+
+  # Create variables for paths
+  print('TOOLSPATH=', toolsDir, sep = '', file = script)
+  print('WORKINGPATH=', workingDir, sep = '', file = script)
+  print('STDOUT=', workingDir, 'exomiser.stdout', sep = '', file = script)
+  print('STDERR=', workingDir, 'exomiser.stderr', sep = '', file = script)
+  print(file = script)
+
+#####
+##### UTAH SPECIFIC REQUIREMENT
+#####
+  print('# Module requirement for Utah environment', file = script)
+  print('module load jdk/11', file = script)
+  print(file = script)
+
+#########
+#########
+######### Update with version from resources json
+#########
+#########
+  # Include the executable for running exomiser
+  print('java -jar $TOOLSPATH/exomiser-cli-13.3.0/exomiser-cli-13.3.0.jar \\', sep = '', file = script)
+  print('  --analysis $WORKINGPATH/', yaml, ' \\', sep = '', file = script)
+  print(' > $STDOUT \\', file = script)
+  print(' 2> $STDERR', file = script)
+
+  # Close the exomiser script file
+  script.close()
+
+  # Make the annotation script executable
+  makeExecutable = os.popen('chmod +x ' + scriptName).read()
 
 # If the script fails, provide an error message and exit
 def fail(message):
