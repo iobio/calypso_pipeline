@@ -128,14 +128,13 @@ def generateYml(workingDir, proband, reference, vcf, ped, hpo):
   print('  ]', file = yaml)
   print(file = yaml)
 
-
   # Define the output options
-  print('  outputOptions:', file = yaml)
-  print('    outputContributingVariantsOnly: false', file = yaml)
-  print('    numGenes: 0', file = yaml)
-  print('    outputDirectory: ', str(workingDir) + 'exomiser_results', file = yaml)
-  print('    outputFileName: ', str(proband), file = yaml)
-  print('    outputFormats: [HTML, JSON, TSV_GENE, TSV_VARIANT, VCF]', file = yaml)
+  print('outputOptions:', file = yaml)
+  print('  outputContributingVariantsOnly: false', file = yaml)
+  print('  numGenes: 0', file = yaml)
+  print('  outputDirectory: ', str(workingDir) + 'exomiser_results', file = yaml)
+  print('  outputFileName: ', str(proband), file = yaml)
+  print('  outputFormats: [HTML, JSON, TSV_GENE, TSV_VARIANT, VCF]', file = yaml)
 
   # Close the yaml file
   yaml.close()
