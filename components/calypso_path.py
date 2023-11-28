@@ -1,7 +1,3 @@
-#!/usr/bin/python
-
-from __future__ import print_function
-
 import os
 
 # Build the path to allow importing additional modules
