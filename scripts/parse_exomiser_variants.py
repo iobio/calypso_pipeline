@@ -12,6 +12,7 @@ path.append(os.path.dirname(__file__) + '/../components')
 import calypso_path as cpath
 
 def main():
+  global annIds
   global mosaicConfig
 
   # Parse the command line
@@ -46,22 +47,13 @@ def main():
   # Exomiser gene variant score
   # Exomiser variant score
   # Exomiser mode of inheritance
-  annIds = {}
-  if 'Exomiser Rank' in annotationIds: fail('Already there')
-  data = api_va.createPrivateAnnotationCategoryIdUid(mosaicConfig, 'Exomiser Rank', 'float', args.project_id, 'Exomiser')
-  annIds['rank'] = {'id': data['id'], 'uid': data['uid']}
-  data = api_va.createPrivateAnnotationCategoryIdUid(mosaicConfig, 'Exomiser P-Value', 'float', args.project_id, 'Exomiser')
-  annIds['pvalue'] = {'id': data['id'], 'uid': data['uid']}
-  data = api_va.createPrivateAnnotationCategoryIdUid(mosaicConfig, 'Exomiser Gene Combined Score', 'float', args.project_id, 'Exomiser')
-  annIds['comb'] = {'id': data['id'], 'uid': data['uid']}
-  data = api_va.createPrivateAnnotationCategoryIdUid(mosaicConfig, 'Exomiser Gene Phenotype Score', 'float', args.project_id, 'Exomiser')
-  annIds['pheno'] = {'id': data['id'], 'uid': data['uid']}
-  data = api_va.createPrivateAnnotationCategoryIdUid(mosaicConfig, 'Exomiser Gene Variant Score', 'float', args.project_id, 'Exomiser')
-  annIds['geneVar'] = {'id': data['id'], 'uid': data['uid']}
-  data = api_va.createPrivateAnnotationCategoryIdUid(mosaicConfig, 'Exomiser Variant Score', 'float', args.project_id, 'Exomiser')
-  annIds['variant'] = {'id': data['id'], 'uid': data['uid']}
-  data = api_va.createPrivateAnnotationCategoryIdUid(mosaicConfig, 'Exomiser MOI', 'string', args.project_id, 'Exomiser')
-  annIds['moi'] = {'id': data['id'], 'uid': data['uid']}
+  createAnnotation(annotationIds, 'Exomiser Rank', 'rank')
+  createAnnotation(annotationIds, 'Exomiser P-Value', 'pvalue')
+  createAnnotation(annotationIds, 'Exomiser Gene Combined Score', 'comb')
+  createAnnotation(annotationIds, 'Exomiser Gene Phenotype Score', 'pheno')
+  createAnnotation(annotationIds, 'Exomiser Gene Variant Score', 'geneVar')
+  createAnnotation(annotationIds, 'Exomiser Variant Score', 'variant')
+  createAnnotation(annotationIds, 'Exomiser MOI', 'moi')
 
 ###############
 ###############
@@ -84,6 +76,7 @@ def main():
   # Store the modes of inheritance that have been seen. These will be used to defined variant filters
   categories = {}
   categories['Top Candidates'] = []
+  categories['All Candidates']   = []
 
   # Store the variants information
   variants    = {}
@@ -137,7 +130,9 @@ def main():
     # category
     if variantInfo[i]['moi'] not in categories: categories[variantInfo[i]['moi']] = []
     if float(variantInfo[i]['pvalue']) < float(args.pvalue): categories['Top Candidates'].append(i)
-    else: categories[variantInfo[i]['moi']].append(i)
+    else:
+      categories['All Candidates'].append(i)
+      categories[variantInfo[i]['moi']].append(i)
 
   # Loop over all variants and write them to file
   for chrom in variants:
@@ -146,21 +141,18 @@ def main():
          print(chrom, start, end, variants[chrom][start][end]['ref'], variants[chrom][start][end]['alt'], variants[chrom][start][end]['rank'], variants[chrom][start][end]['pvalue'], variants[chrom][start][end]['comb'], variants[chrom][start][end]['pheno'], variants[chrom][start][end]['geneVar'], variants[chrom][start][end]['variant'], variants[chrom][start][end]['moi'], sep = '\t', file = outputFile)
 
   # Create an Exomiser category of variant filters and create filters for the top candidates and the different
-  # modes of inheritance. First, get all the existing filters
-  data = api_vf.getVariantFilters(mosaicConfig, args.project_id)
-  filterCategories = []
+  # modes of inheritance. First, get all the existing filters and store those in the Exomiser category
+  existingFilters = {}
+  data            = api_vf.getVariantFilters(mosaicConfig, args.project_id)
   for variantFilter in data:
-    for field in variantFilter:
-      if field == 'category' and variantFilter[field] not in filterCategories: filterCategories.append(variantFilter[field])
+    if variantFilter['category'] == 'Exomiser': existingFilters[variantFilter['name']] = variantFilter['id']
 
-  # If an Exomiser category exists, delete all the filters in it
-  if 'Exomiser' in filterCategories: fail('Haven\'t handled existing Exomiser filter category')
-
-  # Loop over the variant categories (top candidates and modes of inheritance) and create the filters in the 'Exomiser' category
+  # Loop over the variant categories (top candidates and modes of inheritance) and create the filters in the 'Exomiser' category if
+  # they don't already exist, otherwise update them
   for name in categories:
-    if str(name) == 'Top Candidates': annotationFilters = defineAnnotationFilters(name, annIds, args.pvalue, name)
-    else: annotationFilters = defineAnnotationFilters(name, annIds, args.pvalue, name)
-    filterId = api_vf.createVariantFilterWithDisplay(mosaicConfig, args.project_id, name, 'Exomiser', displayColumnUids, annIds['rank']['uid'], 'ascending', annotationFilters)
+    annotationFilters = defineAnnotationFilters(name, annIds, args.pvalue, name)
+    if name in existingFilters: api_vf.updateVariantFilterColSort(mosaicConfig, args.project_id, name, existingFilters[name], displayColumnUids, annIds['rank']['uid'], 'ascending', annotationFilters)
+    else: filterId = api_vf.createVariantFilterWithDisplay(mosaicConfig, args.project_id, name, 'Exomiser', displayColumnUids, annIds['rank']['uid'], 'ascending', annotationFilters)
 
   # Close the input and output files
   variantsFile.close()
@@ -191,6 +183,25 @@ def parseCommandLine():
 
   return parser.parse_args()
 
+# Check if the exomiser annotations exist and if not, create them
+def createAnnotation(annotationIds, name, tag):
+  global annIds
+  global mosaicConfig
+
+  # If the annotation already exists, 
+  if name in annotationIds:
+    annId  = annotationIds[name]['id']
+    annUid = annotationIds[name]['uid']
+
+  # Otherwise, create the annotation
+  else:
+    data   = api_va.createPrivateAnnotationCategoryIdUid(mosaicConfig, 'Exomiser Rank', 'float', args.project_id, 'Exomiser')
+    annId  = data['id']
+    annUid = data['uid']
+
+  # Update the annIds array with the annotation id and uid
+  annIds[tag] = {'id': annId, 'uid': annUid}
+
 # Define the annotation filters
 def defineAnnotationFilters(filterName, annotationIds, pValue, name):
 
@@ -201,6 +212,18 @@ def defineAnnotationFilters(filterName, annotationIds, pValue, name):
         {        
           "uid": annotationIds['pvalue']['uid'],
           "max": pValue,
+          "include_nulls": False
+        }
+      ]
+    }
+
+  # The remaining filters are all based on the mode of inheritance
+  elif str(filterName) == 'All Candidates':
+    jsonFilters = {
+      "annotation_filters": [
+        {        
+          "uid": annotationIds['rank']['uid'],
+          "min": 1,
           "include_nulls": False
         }
       ]
@@ -235,6 +258,9 @@ def fail(message):
 
 # Version
 version = 0.01
+
+# Store the ids and uids of the exomiser annotations
+annIds = {}
 
 # Store information related to Mosaic
 mosaicConfig = {}
