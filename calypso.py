@@ -217,9 +217,6 @@ def main():
       fileInfo = str(resourceInfo['path']) + str(resourceInfo['resources']['hpo']['file'])
       if args.hpo: tsvFiles = anno.createHpoTsv(info, os.path.dirname(__file__) + '/components', args.config, args.hpo, args.project_id, fileInfo, args.utils_directory, args.tools_directory, bashFile, annotateFiles)
 
-    # SpliceAI annotations are handled in their own script
-    elif resource == 'SpliceAI': tsvFiles = anno.createSpliceAITsv(bashFile, os.path.dirname(__file__) + '/scripts', args.tools_directory, args.config, args.mosaic_json, reference, annotateFiles)
-
     # Remaining resources
     else: tsvFiles = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', reference, args.config, args.mosaic_json, args.tools_directory, bashFile, annotateFiles)
     for tsv in tsvFiles: upload.uploadAnnotations(args.utils_directory, tsv, mosaicInfo['resources'][resource]['project_id'], args.config, uploadFile)

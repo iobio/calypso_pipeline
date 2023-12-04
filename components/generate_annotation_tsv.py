@@ -46,7 +46,6 @@ def main():
     elif processClass == 'C': processClassC(mosaicInfo, args.resource, args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == 'OMIM': processClassOMIM(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == 'compound': processClassCompound(args.resource, mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
-    elif processClass == 'spliceai': processClassSpliceAI(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.split(','), outputFile)
     elif processClass == 'clinvar': processClassClinvar(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
   
     # Close the output tsv file
@@ -93,6 +92,7 @@ def processClassA(vcf, tags, outputFile):
   global bcftoolsExe
 
   # Loop over all records in the vcf file
+  print('TEST', tags)
   for record in os.popen(bcftools.query(bcftoolsExe, vcf, tags)).readlines():
 
     # Split the record on tabs
@@ -247,59 +247,6 @@ def processClassOMIM(vcf, tags, outputFile):
   
       # Build the output record from the updated fields
       print('\t'.join(fields), file = outputFile)
-
-# Process SpliceAI annotations
-def processClassSpliceAI(resourceInfo, vcf, tags, outputFile):
-  global bcftoolsExe
-
-  # Loop over all records in the vcf file
-  for record in os.popen(bcftools.query(bcftoolsExe, vcf, [resourceInfo['info_field']])).readlines():
-
-    # Split the record on tabs
-    fields = record.rstrip().split('\t')
-  
-    # Check that the variant has a value. If not, skip this record. The only records that will be output are those with values
-    if fields[5] != '.':
-  
-      # Update the chromosome and position
-      fields[0], fields[2] = updateCoords(fields[0], fields[2])
-      annotations = fields.pop()
-
-      # If there are multiple sets of SpliceAI values, output the one with the largest score
-      spliceAI = annotations.split(',') if ',' in annotations else [annotations]
-      maxScore = -1.
-
-      # Loop over the available sets of scores
-      finalSet = []
-      for annotation in spliceAI:
-        annotations = annotation.split('|')
-        temp        = []
-        isMax       = False
-        for tag in tags:
-          value = annotations[resourceInfo['annotations'][tag]['position'] - 1]
-  
-          # If this is the SpliceAI Max Score, take the max value from the supplied positions
-          if tag == 'SpliceAI Max Score':
-            values = []
-            for i in resourceInfo['annotations'][tag]['positions']: values.append(annotations[i - 1])
-            value = max(values)
-            try: typeTest = float(value)
-            except: fail('Invalid value for annotation: ' + record.rstrip())
-            temp.append(value)
-
-            # If the max SpliceAI is greater than what has been seen to date, this is the set of scores to be output
-            if float(value) > float(maxScore): isMax = True
-          else: 
-            value = annotations[resourceInfo['annotations'][tag]['position'] - 1]
-            try: typeTest = float(value)
-            except: fail('Invalid value for annotation: ' + record.rstrip())
-            temp.append(value)
- 
-        # If this set of scores had the largest max score to date, store this set
-        if isMax: finalSet = temp
-    
-      # Build the output record from the updated fields
-      print('\t'.join(fields + finalSet), file = outputFile)
 
 # Process ClinVar annotations
 def processClassClinvar(resourceInfo, vcf, tags, outputFile):
@@ -555,7 +502,7 @@ version = "0.0.1"
 bcftoolsExe = False
 
 # Define the allowed annotation classes
-allowedClasses = ['A', 'B', 'C', 'clinvar', 'compound', 'OMIM', 'spliceai']
+allowedClasses = ['A', 'B', 'C', 'clinvar', 'compound', 'OMIM']
 
 if __name__ == "__main__":
   main()
