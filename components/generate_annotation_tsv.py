@@ -92,7 +92,6 @@ def processClassA(vcf, tags, outputFile):
   global bcftoolsExe
 
   # Loop over all records in the vcf file
-  print('TEST', tags)
   for record in os.popen(bcftools.query(bcftoolsExe, vcf, tags)).readlines():
 
     # Split the record on tabs
