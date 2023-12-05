@@ -78,12 +78,12 @@ def generateLuaFile(workingDir):
   # Create script file for running exomiser
   scriptName = str(workingDir) + 'calypso_vcfanno_lua.lua'
   script     = open(scriptName, 'w')
-  print('function hemi(nonpar, xy)', file = scriptName)
-  print('  if (nonpar == true)', file = scriptName)
-  print('  then', file = scriptName)
-  print('    return string.format("%d", xy)', file = scriptName)
-  print('  end', file = scriptName)
-  print('end', file = scriptName)
+  print('function hemi(nonpar, xy)', file = script)
+  print('  if (nonpar == true)', file = script)
+  print('  then', file = script)
+  print('    return string.format("%d", xy)', file = script)
+  print('  end', file = script)
+  print('end', file = script)
 
   # Close the exomiser script file
   script.close()
