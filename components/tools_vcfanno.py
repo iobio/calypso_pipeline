@@ -76,7 +76,8 @@ def tomlInfo(resourceInfo, resource, infoType):
 def generateLuaFile(workingDir):
 
   # Create script file for running exomiser
-  scriptName = str(workingDir) + 'calypso_vcfanno_lua.lua'
+  scriptBase = 'calypso_vcfanno_lua.lua'
+  scriptName = str(workingDir) + str(scriptBase)
   script     = open(scriptName, 'w')
   print('function hemi(nonpar, xy)', file = script)
   print('  if (nonpar == true)', file = script)
@@ -89,7 +90,7 @@ def generateLuaFile(workingDir):
   script.close()
 
   # Return the name of the lua file
-  return scriptName
+  return scriptBase
 
 # If the script fails, provide an error message and exit
 def fail(message):
