@@ -1,6 +1,4 @@
-#!/usr/bin/python
-
-from __future__ import print_function
+from os.path import exists
 
 import os
 
@@ -73,6 +71,25 @@ def tomlInfo(resourceInfo, resource, infoType):
   text += ']'
 
   return text, noValues
+
+# Generate a lua file with required functions
+def generateLuaFile(workingDir):
+
+  # Create script file for running exomiser
+  scriptName = str(workingDir) + 'calypso_vcfanno_lua.lua'
+  script     = open(scriptName, 'w')
+  print('function hemi(nonpar, xy)', file = scriptName)
+  print('  if (nonpar == true)', file = scriptName)
+  print('  then', file = scriptName)
+  print('    return string.format("%d", xy)', file = scriptName)
+  print('  end', file = scriptName)
+  print('end', file = scriptName)
+
+  # Close the exomiser script file
+  script.close()
+
+  # Return the name of the lua file
+  return scriptName
 
 # If the script fails, provide an error message and exit
 def fail(message):

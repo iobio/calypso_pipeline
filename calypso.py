@@ -26,11 +26,11 @@ import calypso_reanalysis as rean
 import calypso_resources as res
 import calypso_samples as sam
 import calypso_slivar_trio as slivarTrio
-import calypso_toml as toml
 import calypso_upload as upload
 import calypso_vcf_files as vcfs
 import tools_bcftools as bcftools
 import tools_exomiser as exomiser
+import tools_vcfanno as vcfanno
 
 def main():
   global mosaicConfig
@@ -175,12 +175,14 @@ def main():
   mosr.checkPublicAnnotations(mosaicConfig, mosaicInfo['resources'], publicAnnotations, args.project_id, api_va)
 
   # Build the toml file for vcfanno. This defines all of the annotations that vcfanno needs to use
-  # with the path to the required files
-  tomlFilename = toml.buildToml(workingDir, resourceInfo)
+  # with the path to the required files. The build the lua file that vcfanno uses to grab lua functions
+  # for postannotation
+  tomlFilename = vcfanno.buildToml(workingDir, resourceInfo)
+  luaFilename  = vcfanno.generateLuaFile(workingDir)
 
   # Generate the bash script to run the annotation pipeline
   bashFilename, bashFile  = bashScript.openBashScript(workingDir)
-  filteredVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, args.ped, tomlFilename) #, familyType, pipelineModifiers)
+  filteredVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, args.ped, luaFilename, tomlFilename) #, familyType, pipelineModifiers)
   bashScript.annotateVcf(resourceInfo, bashFile, chrFormat, mosaicSamples)
   bashScript.filterVariants(bashFile, mosaicSamples, proband, resourceInfo)
 

@@ -25,7 +25,7 @@ def openBashScript(workingDir):
   return bashFilename, bashFile
 
 # Write all the resource file information to the bash file for the script to use
-def bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, ped, tomlFilename): #, familyType, pipelineModifiers):
+def bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, ped, luaFilename, tomlFilename): #, familyType, pipelineModifiers):
 
   # Initial information
   #print('#! /bin/bash', file = bashFile)
@@ -93,6 +93,7 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, ped, tomlF
   try: print('GFF=$DATAPATH/', resourceInfo['resources']['gff']['file'], sep = '', file = bashFile)
   except: fail('The resources json does not define a gff file')
   print('TOML=$FILEPATH/', tomlFilename, sep = '', file = bashFile)
+  print('LUA=$FILEPATH/', luaFilename, sep = '', file = bashFile)
 
   # The Slivar pipeline uses data from gnomAD v2 and v3 for filtering
   #try: print('SLIVAR_GNOMAD_V2=$DATAPATH/', resourceInfo['resources']['slivar_gnomad_v2']['file'], sep = '', file = bashFile)
@@ -168,7 +169,7 @@ def annotateVcf(resourceInfo, bashFile, chrFormat, samples):
 
   # Annotate the vcf file using both bcftools csq and vcfanno
   print('  | $BCFTOOLS csq -f $REF --ncsq 40 -l -g $GFF 2>> $STDERR \\', file = bashFile)
-  print('  | $VCFANNO -p 16 $TOML /dev/stdin 2>> $STDERR \\', file = bashFile)
+  print('  | $VCFANNO -lua $LUA -p 16 $TOML /dev/stdin 2>> $STDERR \\', file = bashFile)
 
   # Annotate with VEP unless it is to be ignored
   if not resourceInfo['resources']['vep']['ignore']:
