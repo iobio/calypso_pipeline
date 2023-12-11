@@ -1,6 +1,3 @@
-#!/usr/bin/python
-
-from __future__ import print_function
 from datetime import date
 from os.path import exists
 from sys import path

@@ -1,6 +1,3 @@
-#!/usr/bin/python
-
-from __future__ import print_function
 from datetime import date
 from os.path import exists
 from sys import path
@@ -8,6 +5,8 @@ from sys import path
 import argparse
 import os
 import sys
+#import calypso_path as cpath
+import calypso_resources as res
 
 # Add the path of the common functions and import them
 path.append(os.path.dirname(__file__) + '/components')
@@ -30,29 +29,44 @@ def main():
   # Read the mosaicJson file to get information on how to process different annotations
   mosaicInfo = mosr.readMosaicJson(args.mosaic_json, args.reference)
 
+  # Open an output tsv file to write annotations to
+  outputFile = open(args.output_tsv, 'w')
+
+  # Loop over the annotations that are to be uploaded to Mosaic for this resource and get the annotation name, uid and
+  # type
+  annotations = {}
+  uids        = []
+  for annotation in mosaicInfo['resources'][args.resource]['annotations']:
+    uid     = mosaicInfo['resources'][args.resource]['annotations'][annotation]['uid']
+    tagType = mosaicInfo['resources'][args.resource]['annotations'][annotation]['type']
+    annotations[annotation] = {'uid': uid, 'type': tagType}
+
+  # Write the header line to the tsv file
+  print('CHROM\tSTART\tEND\tREF\tALT\t', '\t'.join(str(x['uid']) for x in annotations.values()), sep = '', file = outputFile)
+
   # Check that the provided annotation class is valid
   processClass = mosaicInfo['resources'][args.resource]['class']
-  if processClass in allowedClasses:
 
-    # Open an output tsv file to write annotations to
-    outputFile = open(args.output_tsv, 'w')
-  
-    # Write the header line to the tsv file
-    print('CHROM\tSTART\tEND\tREF\tALT\t', '\t'.join(args.uids.replace(' ', '').split(',')), sep = '', file = outputFile)
-  
+  # Parse the vcf file, check the annotations and generate a tsv file for upload to Mosaic
+  if not processClass: processStandard(args.input_vcf, annotations, outputFile)
+
+  # For special annotations
+  elif processClass in allowedClasses:
+
     # Loop over the vcf and process according to the annotation class
-    if processClass == 'A': processClassA(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
-    elif processClass == 'B': processClassB(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
-    elif processClass == 'C': processClassC(mosaicInfo, args.resource, args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
+    #if processClass == 'A': processClassA(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
+    #elif processClass == 'B': processClassB(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
+    if processClass == 'C': processClassC(mosaicInfo, args.resource, args.input_vcf, outputFile)
+    #if processClass == 'C': processClassC(mosaicInfo, args.resource, args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == 'OMIM': processClassOMIM(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
-    elif processClass == 'compound': processClassCompound(args.resource, mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
-    elif processClass == 'clinvar': processClassClinvar(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
-  
-    # Close the output tsv file
-    outputFile.close()
+    #if processClass == 'compound': processClassCompound(args.resource, mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
+    #elif processClass == 'clinvar': processClassClinvar(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
 
   # Write a warning if the annotation class is not recognised and do not process the vcf file
   else: print('Unable to process annotations for resource: ' + args.resource, sep = '', file = sys.stderr)
+  
+  # Close the output tsv file
+  outputFile.close()
 
 # Input options
 def parseCommandLine():
@@ -65,9 +79,11 @@ def parseCommandLine():
   parser.add_argument('--output_tsv', '-o', required = True, metavar = 'string', help = 'The output tsv file')
   parser.add_argument('--resource', '-e', required = True, metavar = 'string', help = 'The name of the resource (used for the output tsv name')
   parser.add_argument('--reference', '-r', required = True, metavar = 'string', help = 'The genome reference file used')
-  parser.add_argument('--tags', '-g', required = True, metavar = 'string', help = 'A comma separated list of VCF INFO tags to be extracted')
-  parser.add_argument('--uids', '-d', required = True, metavar = 'string', help = 'A comma separated list of uids for the resource annotations')
-  parser.add_argument('--tools_directory', '-s', required = False, metavar = 'string', help = 'The path to the directory where the tools live')
+  #parser.add_argument('--tags', '-g', required = True, metavar = 'string', help = 'A comma separated list of VCF INFO tags to be extracted')
+  #parser.add_argument('--uids', '-d', required = True, metavar = 'string', help = 'A comma separated list of uids for the resource annotations')
+  #parser.add_argument('--utils_directory', '-l', required = True, metavar = 'string', help = 'The path to the public-utils directory')
+  parser.add_argument('--tools_directory', '-s', required = True, metavar = 'string', help = 'The path to the directory where the tools live')
+  #parser.add_argument('--resource_json', '-j', required = True, metavar = 'string', help = 'The json file describing the annotation resources')
   parser.add_argument('--mosaic_json', '-m', required = True, metavar = 'string', help = 'The json file describing the Mosaic parameters')
 
   # Optional mosaic arguments
@@ -80,55 +96,59 @@ def parseCommandLine():
 
   return parser.parse_args()
 
-# Process class A annotations. This is for annotations that are floats and if multiple values occur, only the maximum value should be
-# uploaded to Mosaic. This includes the following annoatations:
-#   - CCR
-#   - EVE
-#   - gnomAD
-#   - MutScore
-#   - pLI
-#   - REVEL
-def processClassA(vcf, tags, outputFile):
+# The majority of annotations can be processed in a standard way. The type is checked and numerical
+# annotations are checked to ensure they fall within the required bounds
+def processStandard(vcf, annotations, outputFile):
   global bcftoolsExe
 
   # Loop over all records in the vcf file
-  for record in os.popen(bcftools.query(bcftoolsExe, vcf, tags)).readlines():
+  for record in os.popen(bcftools.query(bcftoolsExe, vcf, annotations.keys())).readlines():
 
     # Split the record on tabs
     fields = record.rstrip().split('\t')
-  
-    # Check that the annotation has a value. If not, skip this record. The only records that will be output are those with values
-    hasValue = False
-    for i in range(5, len(fields)):
-      if fields[i] != '.':
-        hasValue = True
-        break
-    if hasValue:
-  
-      # Update the chromosome and position
-      fields[0], fields[2] = updateCoords(fields[0], fields[2])
-  
-      # If there are multiple values, only output the largest
-      for i in range(5, len(fields)):
-        if ',' in fields[i]:
-          outputValue = 0.
-          for value in fields[i].split(','):
-            if float(value) > float(outputValue): outputValue = value
-          fields[i] = str(outputValue)
-  
-        # If the value is '.', set it to a blank. Otherwise, check that the value is a float
-        if fields[i] == '.': fields[i] = '' 
-        else: 
-          try: typeTest = float(fields[i])
-          except: fail('Invalid value for annotation: ' + record.rstrip())
-  
-          # Make sure the value falls between 1E-37 and 1E+37
-          if float(fields[i]) <= 1e-37: fields[i] = '0'
-          elif float(fields[i]) >= 1e37: fields[i] = '1e37'
-  
-      # Build the output record from the updated fields
-      print('\t'.join(fields), file = outputFile)
 
+    # If all values are '.', this line can be ignored
+    uniqueValues = set(fields[5:])
+    if len(uniqueValues) == 1 and list(uniqueValues)[0] == '.': continue
+
+    # Update the chromosome and position
+    fields[0], fields[2] = updateCoords(fields[0], fields[2])
+  
+    # Loop over the annotations in the order they appear in the bcftools query command
+    i = 5
+    for annotation in annotations:
+
+      # If the annotation is numeric
+      if str(annotations[annotation]['type']) == 'integer' or str(annotations[annotation]['type']) == 'float':
+
+        # If the are multiple values (e.g. there is a ',') in the value, ensure that all values are within
+        # the limits (1E-37 < x < 1E37), but output all values
+        values      = fields[i].split(',') if ',' in fields[i] else [fields[i]]
+        finalValues = []
+        for value in values:
+          if value == '.': finalValues.append('')
+          else:
+            try: typeTest = float(value)
+            except: fail('Invalid value for annotation: ' + record.rstrip())
+            if abs(float(value)) <= 1e-37: finalValues.append('0')
+            elif abs(float(value)) >= 1e37: finalValues.append('1e37')
+            else: finalValues.append(value)
+
+        # Join the values back together with commas
+        fields[i] = ','.join(finalValues)
+
+      # Else if the annotation is a string, the annotation should be output as is
+      elif str(annotations[annotation]['type']) == 'string': pass
+
+      # If the type is unknown, fail
+      else: fail('Annotation type (' + str(annotations[annotation]['type']) + ') for annotation ' + str(annotation) + ', is unknown')
+
+      # Iterate to the next annotation field
+      i += 1
+
+    # Build the output record from the updated fields
+    print('\t'.join(fields), file = outputFile)
+  
 # Process class B annotations. This is for annotations that are strings that do not undergo any modifications
 #   - dbSNP
 def processClassB(vcf, tags, outputFile):
@@ -156,7 +176,7 @@ def processClassB(vcf, tags, outputFile):
 
 # Process class C annotations. This is for annotations that are found in the genotype (FORMAT) strings in the vcf
 #   - GQ
-def processClassC(mosaicInfo, resource, vcf, tags, outputFile):
+def processClassC(mosaicInfo, resource, vcf, outputFile):
   global bcftoolsExe
 
   # Loop over all records in the vcf file
@@ -184,11 +204,11 @@ def processClassC(mosaicInfo, resource, vcf, tags, outputFile):
 def processClassCompound(resource, resourceInfo, vcf, tags, outputFile):
   global bcftoolsExe
 
-  # Check that the delimeter is provided to determine how to split up the compound annotation. If it is not set, then provide a
+  # Check that the delimiter is provided to determine how to split up the compound annotation. If it is not set, then provide a
   # warning and do not preceed with this annotation
-  try: delimeter = resourceInfo['delimeter']
+  try: delimiter = resourceInfo['delimiter']
   except:
-    print('The delimeter field is not provided for resource ', resource, ' and so its annotation cannot be processed.', sep = '')
+    print('The delimiter field is not provided for resource ', resource, ' and so its annotation cannot be processed.', sep = '')
     return
 
   # Loop over all records in the vcf file
@@ -202,7 +222,7 @@ def processClassCompound(resource, resourceInfo, vcf, tags, outputFile):
   
       # Update the chromosome and position
       fields[0], fields[2] = updateCoords(fields[0], fields[2])
-      annotations = fields.pop().split(delimeter)
+      annotations = fields.pop().split(delimiter)
       hasValue = False
       for tag in tags:
 

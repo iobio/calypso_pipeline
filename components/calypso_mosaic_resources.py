@@ -55,16 +55,16 @@ def readMosaicJson(mosaicFilename, reference):
     try: mosaicInfo['resources'][resource]['annotation_type'] = resources[resource]['annotation_type']
     except: fail('The Mosaic json file does not include the "annotation_type" field for resource: ' + str(resource))
 
-    # The resource "class" dictates how the annotated vcf will be processed
-    try: mosaicInfo['resources'][resource]['class'] = resources[resource]['class']
-    except: fail('The Mosaic json does not contain the "class" field for resource: ' + str(resource))
+    # The resource "class" dictates how the annotated vcf will be processed. If this is not present, it will be
+    # processed in a standard way.
+    mosaicInfo['resources'][resource]['class'] = resources[resource]['class'] if 'class' in resources[resource] else False
 
     # Some annotations need to be extracted from an INFO field that is not the name provided in the annotation. For example, the HGVS
     # codes need to be extracted from the CSQ field. The "info_field" provides information on where the info should be extracted from
     mosaicInfo['resources'][resource]['info_field'] = resources[resource]['info_field'] if 'info_field' in resources[resource] else False
 
-    # Check if the "delimeter" value is set. This defines how to break up compound annotations
-    mosaicInfo['resources'][resource]['delimeter'] = resources[resource]['delimeter'] if 'delimeter' in resources[resource] else False
+    # Check if the "delimiter" value is set. This defines how to break up compound annotations
+    mosaicInfo['resources'][resource]['delimiter'] = resources[resource]['delimiter'] if 'delimiter' in resources[resource] else False
 
     # Collect the information required only for public annotations
     if mosaicInfo['resources'][resource]['annotation_type'] == 'public':

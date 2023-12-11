@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 import os
 import argparse
 import json
@@ -218,6 +216,16 @@ def main():
       info     = mosaicInfo['resources']['hpo']
       fileInfo = str(resourceInfo['path']) + str(resourceInfo['resources']['hpo']['file'])
       if args.hpo: tsvFiles = anno.createHpoTsv(info, os.path.dirname(__file__) + '/components', args.config, args.hpo, args.project_id, fileInfo, args.utils_directory, args.tools_directory, bashFile, annotateFiles)
+
+    # The HGVS annotations require additional processing to identify the codes corresponding to the MANE transcript
+    # and strip the transcript information from the annotation
+    elif resource == 'HGVS': tsvFiles = anno.createResourceTsv(bashFile, os.path.dirname(__file__) + '/components', args.config, args.project_id, reference, args.mosaic_json, args.utils_directory, args.tools_directory, annotateFiles, 'HGVS', 'generate_hgvs_tsv.py')
+
+    # The GQ annotations require parsing the genotype field
+    elif resource == 'OMIM': tsvFiles = anno.createResourceTsv(bashFile, os.path.dirname(__file__) + '/components', args.config, args.project_id, reference, args.mosaic_json, args.utils_directory, args.tools_directory, annotateFiles, 'OMIM', 'generate_omim_tsv.py')
+
+    # The GQ annotations require parsing the genotype field
+    elif resource == 'GQ': tsvFiles = anno.createResourceTsv(bashFile, os.path.dirname(__file__) + '/components', args.config, args.project_id, reference, args.mosaic_json, args.utils_directory, args.tools_directory, annotateFiles, 'GQ', 'generate_GQ_tsv.py')
 
     # Remaining resources
     else: tsvFiles = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', reference, args.config, args.mosaic_json, args.tools_directory, bashFile, annotateFiles)
