@@ -47,13 +47,13 @@ def main():
   # Exomiser gene variant score
   # Exomiser variant score
   # Exomiser mode of inheritance
-  createAnnotation(annotationIds, 'Exomiser Rank', 'rank')
-  createAnnotation(annotationIds, 'Exomiser P-Value', 'pvalue')
-  createAnnotation(annotationIds, 'Exomiser Gene Combined Score', 'comb')
-  createAnnotation(annotationIds, 'Exomiser Gene Phenotype Score', 'pheno')
-  createAnnotation(annotationIds, 'Exomiser Gene Variant Score', 'geneVar')
-  createAnnotation(annotationIds, 'Exomiser Variant Score', 'variant')
-  createAnnotation(annotationIds, 'Exomiser MOI', 'moi')
+  createAnnotation(api_va, args.project_id, annotationIds, 'Exomiser Rank', 'rank', 'float')
+  createAnnotation(api_va, args.project_id, annotationIds, 'Exomiser P-Value', 'pvalue', 'float')
+  createAnnotation(api_va, args.project_id, annotationIds, 'Exomiser Gene Combined Score', 'comb', 'float')
+  createAnnotation(api_va, args.project_id, annotationIds, 'Exomiser Gene Phenotype Score', 'pheno', 'float')
+  createAnnotation(api_va, args.project_id, annotationIds, 'Exomiser Gene Variant Score', 'geneVar', 'float')
+  createAnnotation(api_va, args.project_id, annotationIds, 'Exomiser Variant Score', 'variant', 'float')
+  createAnnotation(api_va, args.project_id, annotationIds, 'Exomiser MOI', 'moi', 'string')
 
 ###############
 ###############
@@ -184,7 +184,7 @@ def parseCommandLine():
   return parser.parse_args()
 
 # Check if the exomiser annotations exist and if not, create them
-def createAnnotation(annotationIds, name, tag):
+def createAnnotation(api_va, projectId, annotationIds, name, tag, annType):
   global annIds
   global mosaicConfig
 
@@ -195,7 +195,7 @@ def createAnnotation(annotationIds, name, tag):
 
   # Otherwise, create the annotation
   else:
-    data   = api_va.createPrivateAnnotationCategoryIdUid(mosaicConfig, 'Exomiser Rank', 'float', args.project_id, 'Exomiser')
+    data   = api_va.createPrivateAnnotationCategoryIdUid(mosaicConfig, name, annType, projectId, 'Exomiser')
     annId  = data['id']
     annUid = data['uid']
 
@@ -209,7 +209,7 @@ def defineAnnotationFilters(filterName, annotationIds, pValue, name):
   if str(filterName) == 'Top Candidates':
     jsonFilters = {
       "annotation_filters": [
-        {        
+        {
           "uid": annotationIds['pvalue']['uid'],
           "max": pValue,
           "include_nulls": False
@@ -221,7 +221,7 @@ def defineAnnotationFilters(filterName, annotationIds, pValue, name):
   elif str(filterName) == 'All Candidates':
     jsonFilters = {
       "annotation_filters": [
-        {        
+        {
           "uid": annotationIds['rank']['uid'],
           "min": 1,
           "include_nulls": False
