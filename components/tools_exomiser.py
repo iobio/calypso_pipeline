@@ -157,7 +157,7 @@ def generateScript(workingDir, toolsDir, yaml):
 
   # Create script file for running exomiser
   scriptName = str(workingDir) + 'calypso_exomiser.sh'
-  script       = open(scriptName, 'w')
+  script     = open(scriptName, 'w')
   print('set -eou pipefail', file = script)
   print(file = script)
 
@@ -185,6 +185,47 @@ def generateScript(workingDir, toolsDir, yaml):
   print('  --analysis $WORKINGPATH/', yaml, ' \\', sep = '', file = script)
   print(' > $STDOUT \\', file = script)
   print(' 2> $STDERR', file = script)
+
+  # Return the script
+  return scriptName, script
+
+# Parse the output variants.tsv file for upload to Mosaic
+def parseOutput(script, scriptDir, config, utilsDir, probandName, projectId):
+
+  # Define the name of the output tsv
+  outputName = 'exomiser.tsv'
+
+  # The pvalue for defining the top candidates is hard-coded to 0.01
+  pvalue = 0.01
+
+  print(file = script)
+  print('# Parse the resulting output file', file = script)
+  print('UTILSPATH=', str(utilsDir), sep = '', file = script)
+  print(file = script)
+  print('echo -n "Creating tsv file for exomiser variants..."', file = script)
+  print('python ', str(scriptDir), '/parse_exomiser_variants.py \\', sep = '', file = script)
+  print('  -c ', str(config), ' \\', sep = '', file = script)
+  print('  -l ', str(utilsDir), ' \\', sep = '', file = script)
+  print('  -i $WORKINGPATH/exomiser_results/', str(probandName), '.variants.tsv \\', sep = '', file = script)
+  print('  -e ', str(pvalue), ' \\', sep = '', file = script)
+  print('  -o  ', str(outputName), ' \\', sep = '', file = script)
+  print('  -p ', str(projectId), sep = '', file = script)
+  print('echo "complete"', file = script)
+
+  # If the parsing completed successfully, upload the annotations to mosaic
+  print(file = script)
+  print('if [[ $? == 0 ]];', file = script)
+  print('then', file = script)
+  print('  echo -n "Uploading exomiser annotations..."', file = script)
+  print('  python $UTILSPATH/scripts/upload_annotations.py \\', file = script)
+  print('    -c ', str(config), ' \\', sep = '', file = script)
+  print('    -i ', str(outputName), ' \\', sep = '', file = script)
+  print('    -p ', str(projectId), sep = '', file = script)
+  print('  echo "complete"', file = script)
+  print('fi', file = script)
+
+# Close the exomiser script and make it executable
+def closeFile(scriptName, script):
 
   # Close the exomiser script file
   script.close()

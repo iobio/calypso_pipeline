@@ -199,7 +199,9 @@ def main():
   # Run Exomiser on the original vcf file and process the exomiser outputs as private annotations
   exomiser.applicationProperties(workingDir, args.tools_directory)
   yaml = exomiser.generateYml(workingDir, proband, reference, vcf, args.ped, hpoTerms)
-  exomiser.generateScript(workingDir, args.tools_directory, yaml)
+  exScriptName, exScript = exomiser.generateScript(workingDir, args.tools_directory, yaml)
+  exomiser.parseOutput(exScript, os.path.dirname(__file__) + '/scripts', args.config, args.utils_directory, proband, args.project_id)
+  exomiser.closeFile(exScriptName, exScript)
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
   print('# Generate tsv files to upload annotations to Mosaic', file = bashFile)
