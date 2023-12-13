@@ -223,7 +223,7 @@ def defineAnnotationFilters(filterName, annotationIds, pValue, name):
       "annotation_filters": [
         {
           "uid": annotationIds['rank']['uid'],
-          "min": 1,
+          "min": "1",
           "include_nulls": False
         }
       ]
@@ -235,7 +235,7 @@ def defineAnnotationFilters(filterName, annotationIds, pValue, name):
       "annotation_filters": [
         {        
           "uid": annotationIds['rank']['uid'],
-          "min": 1,
+          "min": "1",
           "include_nulls": False
         },
         {        
