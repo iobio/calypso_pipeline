@@ -227,7 +227,7 @@ def main():
     elif resource == 'OMIM': tsvFiles = anno.createResourceTsv(bashFile, os.path.dirname(__file__) + '/components', args.config, args.project_id, reference, args.mosaic_json, args.utils_directory, args.tools_directory, annotateFiles, 'OMIM', 'generate_omim_tsv.py')
 
     # The GQ annotations require parsing the genotype field
-    elif resource == 'GQ': tsvFiles = anno.createResourceTsv(bashFile, os.path.dirname(__file__) + '/components', args.config, args.project_id, reference, args.mosaic_json, args.utils_directory, args.tools_directory, annotateFiles, 'GQ', 'generate_GQ_tsv.py')
+    elif resource == 'GQ': tsvFiles = anno.createResourceTsv(bashFile, os.path.dirname(__file__) + '/components', args.config, args.project_id, reference, args.mosaic_json, args.utils_directory, args.tools_directory, annotateFiles, 'GQ', 'generate_gq_tsv.py')
 
     # Remaining resources
     else: tsvFiles = anno.createAnnotationTsv(mosaicInfo, resource, os.path.dirname(__file__) + '/components', reference, args.config, args.mosaic_json, args.tools_directory, bashFile, annotateFiles)
