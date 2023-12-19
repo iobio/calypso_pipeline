@@ -52,9 +52,8 @@ def main():
   for annotation in annotations:
     if annotation['privacy_level'] == 'private' and annotation['name'].startswith('GQ'):
 
-      # The annotation will have a name of the form 'GQ Relation sample_id'. Strip this down to the sample_id
-      # for comparison with the vcf header
-      name = annotation['name'].split(' ')[2]
+      # The annotation will have a name of the form 'GQ Relation sample_id'. Extract the sample_id from this
+      name = annotation['name'].split(' ')[-1]
       gqAnnos[name] = {'uid': annotation['uid']}
 
   # Get the vcf header to determine the order of the samples in the vcf file
@@ -63,7 +62,7 @@ def main():
   sampleOrder = line.rstrip().split('\t')[9:]
   uids        = []
   for sample in sampleOrder:
-    if sample not in gqAnnos: fail('Sample ' + str(sample) + 'does not have a GQ annotation in project ' + str(args.project_id))
+    if sample not in gqAnnos: fail('Sample ' + str(sample) + ' does not have a GQ annotation in project ' + str(args.project_id))
     uids.append(gqAnnos[sample]['uid'])
 
   # Write the header line to the tsv file
