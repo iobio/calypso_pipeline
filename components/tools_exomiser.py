@@ -185,52 +185,84 @@ def generateScript(workingDir, toolsDir, yaml):
   print('  --analysis $WORKINGPATH/', yaml, ' \\', sep = '', file = script)
   print(' > $STDOUT \\', file = script)
   print(' 2> $STDERR', file = script)
+  print(file = script)
+  print('# Write to screen if an error was encountered', file = script)
+  print('if [[ $? != 0 ]];', file = script)
+  print('then', file = script)
+  print('  echo "Exomiser script failed. Please check the stderr file"', file = script)
+  print('fi', file = script)
+  print(file = script)
 
   # Return the script
   return scriptName, script
 
-# Parse the output variants.tsv file for upload to Mosaic
-def parseOutput(script, scriptDir, config, utilsDir, probandName, projectId):
+# Create an upload variants script to upload the exomiser variants
+def uploadVariants(workingDir, utils, configFile, projectId, probandName):
+
+  # Open a script file
+  uploadFilename = workingDir + 'calypso_exomiser_upload_variants.sh'
+  try: uploadFile = open(uploadFilename, 'w')
+  except: fail('Could not open ' + str(uploadFilename) + ' to write to')
+
+  # Write the command to file to upload the filtered variants
+  print('WORKINGPATH=', workingDir, sep = '', file = uploadFile)
+  print(file = uploadFile)
+  print('# Upload exomiser variants to Mosaic', file = uploadFile)
+  print('python ', utils, 'scripts/upload_variants.py \\', sep = '', file = uploadFile)
+  print('  -c ', configFile + ' \\', sep = '', file = uploadFile)
+  print('  -p ', str(projectId) + ' \\', sep = '', file = uploadFile)
+  print('  -m "no-validation" \\', sep = '', file = uploadFile)
+  print('  -i $WORKINGPATH/exomiser_results/', str(probandName), '.vcf.gz', sep = '', file = uploadFile)
+  print(file = uploadFile)
+
+  # Close the file
+  uploadFile.close()
+
+  # Make the annotation script executable
+  makeExecutable = os.popen('chmod +x ' + str(uploadFilename)).read()
+
+# Create a script to update and upload the exomiser annotations
+def exomiserAnnotations(workingDir, scriptDir, config, utilsDir, probandName, projectId):
+
+  # Open a script file
+  scriptName = workingDir + 'calypso_exomiser_annotations.sh'
+  try: script = open(scriptName, 'w')
+  except: fail('Could not open ' + str(scriptName) + ' to write to')
 
   # Define the name of the output tsv
-  outputName = 'exomiser.tsv'
+  tsv = 'exomiser.tsv'
+  vcf = 'exomiser.vcf.gz'
 
   # The pvalue for defining the top candidates is hard-coded to 0.01
   pvalue = 0.01
 
   print(file = script)
-  print('# Parse the resulting output file', file = script)
+  print('WORKINGPATH=', workingDir, sep = '', file = script)
   print('UTILSPATH=', str(utilsDir), sep = '', file = script)
   print(file = script)
+  print('# Parse the resulting output file', file = script)
   print('echo -n "Creating tsv file for exomiser variants..."', file = script)
   print('python ', str(scriptDir), '/parse_exomiser_variants.py \\', sep = '', file = script)
   print('  -c ', str(config), ' \\', sep = '', file = script)
   print('  -l ', str(utilsDir), ' \\', sep = '', file = script)
   print('  -i $WORKINGPATH/exomiser_results/', str(probandName), '.variants.tsv \\', sep = '', file = script)
   print('  -e ', str(pvalue), ' \\', sep = '', file = script)
-  print('  -o  ', str(outputName), ' \\', sep = '', file = script)
+  print('  -o  ', str(tsv), ' \\', sep = '', file = script)
   print('  -p ', str(projectId), sep = '', file = script)
   print('echo "complete"', file = script)
 
   # If the parsing completed successfully, upload the annotations to mosaic
   print(file = script)
-  print('if [[ $? == 0 ]];', file = script)
-  print('then', file = script)
-  print('  echo -n "Uploading exomiser annotations..."', file = script)
-  print('  python $UTILSPATH/scripts/upload_annotations.py \\', file = script)
-  print('    -c ', str(config), ' \\', sep = '', file = script)
-  print('    -i ', str(outputName), ' \\', sep = '', file = script)
-  print('    -p ', str(projectId), sep = '', file = script)
-  print('  echo "complete"', file = script)
-  print('fi', file = script)
+  print('# Upload the updated annotations tsv file to Mosaic', file = script)
+  print('echo -n "Uploading exomiser annotations..."', file = script)
+  print('python $UTILSPATH/scripts/upload_annotations.py \\', file = script)
+  print('  -c ', str(config), ' \\', sep = '', file = script)
+  print('  -i ', str(tsv), ' \\', sep = '', file = script)
+  print('  -p ', str(projectId), sep = '', file = script)
+  print('echo "complete"', file = script)
 
-# Close the exomiser script and make it executable
-def closeFile(scriptName, script):
-
-  # Close the exomiser script file
+  # Close the exomiser script and make it executable
   script.close()
-
-  # Make the annotation script executable
   makeExecutable = os.popen('chmod +x ' + scriptName).read()
 
 # If the script fails, provide an error message and exit

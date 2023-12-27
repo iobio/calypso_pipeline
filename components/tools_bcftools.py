@@ -100,7 +100,8 @@ def index(bcftools, vcf):
 # Merge a list of vcf files
 def merge(bcftools, inVcfs, outType, outVcf):
   command = bcftools + ' merge -O ' + str(outType) + ' -o ' + str(outVcf)
-  for inFile in inFiles: command += ' ' + str(inFile)
+  command += ' --write-index'
+  for inVcf in inVcfs: command += ' ' + str(inVcf)
   return command
 
 #####
@@ -108,7 +109,7 @@ def merge(bcftools, inVcfs, outType, outVcf):
 #####
 
 # Extract annotations from a vcf file
-def extractAnnotations(bcftools, tags, renameFile, inVcf, outVcf):
+def extractAnnotations(bcftools, tags, addedAnnotations, header, renameFile, inVcf, outVcf):
   command = bcftools + ' annotate -x '
 
   # Add the annotations to keep
@@ -116,8 +117,17 @@ def extractAnnotations(bcftools, tags, renameFile, inVcf, outVcf):
     if i == 0: command += '^INFO/' + str(tag)
     else: command += ',^INFO/' + str(tag)
 
+  # If a header line is provided, add it
+  if header: command += ' --header-lines ' + str(header)
+
   # If a rename file is included, add this to the command
   if renameFile: command += ' --rename-annots ' + str(renameFile)
+
+  # If a list of annotations to add is included, add them
+  if addedAnnotations:
+    command += ' -m '
+    for annotation in addedAnnotations: command += str(annotation) + ','
+    command = command.rstrip(',')
 
   # If an output file is included, output this as a vcf.gz file, otherwise assume this command will be
   # piped to another command

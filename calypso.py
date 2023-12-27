@@ -73,7 +73,7 @@ def main():
   # Get the project reference
   reference = api_ps.getProjectReference(mosaicConfig, args.project_id) if not args.reference else args.reference
   if reference not in allowedReferences: fail('The specified reference (' + str(reference) + ') is not recognised. Allowed values are: ' + str(', '.join(allowedReferences)))
-  print('  Using the reference:                  ', reference, sep = '')
+  print('  Using the reference: ', reference, sep = '')
 
   # Read the resources json file to identify all the resources that will be used in the annotation pipeline
   if args.resource_json: resourceInfo = res.checkResources(reference, args.data_directory, args.tools_directory, args.resource_json)
@@ -103,9 +103,16 @@ def main():
 #########
 
   # Get the vcf file for each sample. Currently, Calypso only works for projects with a single multi-sample vcf.
-  # Determine the name of this vcf file, then determine if this file has chromosomes listed as e.g. '1' or 'chr1'
-  mosaicSamples = vcfs.getVcfFiles(mosaicConfig, api_sf, args.project_id, mosaicSamples)
-  vcf           = mosaicSamples[list(mosaicSamples.keys())[0]]['vcf_file']
+  # Determine the name of this vcf file, then determine if this file has chromosomes listed as e.g. '1' or 'chr1'.
+  # If a vcf was supplied on the command line, use this. This is for occasions where the vcf file has not been
+  # linked to samples in Mosaic
+  if args.input_vcf: mosaicSamples, vcf = vcfs.parseVcf(resourceInfo['tools']['bcftools'], os.path.abspath(args.input_vcf), mosaicSamples)
+  else:
+    mosaicSamples = vcfs.getVcfFiles(mosaicConfig, api_sf, args.project_id, mosaicSamples)
+    vcf           = mosaicSamples[list(mosaicSamples.keys())[0]]['vcf_file']
+
+  # Check that the reference genome associated with the vcf file matches the project reference
+  vcfs.checkReference(resourceInfo['tools']['bcftools'], reference, vcf)
 
   # Check that we have read access to the vcf file
   if not os.access(vcf, os.R_OK): fail('\nFAILED: Calypso does not have access to the vcf file which is required to complate the pipeline')
@@ -158,9 +165,11 @@ def main():
     for hpo in sampleHpoTerms:
       if hpo not in hpoTerms: hpoTerms.append(hpo)
     args.hpo = ','.join(hpoTerms)
-  print('  Using the HPO terms: ', args.hpo, sep = '')
+  if args.hpo: print('  Using the HPO terms: ', args.hpo, sep = '')
+  else: print('  Using the HPO terms: No terrms available')
 
   # Get all the project attributes in the target Mosaic project
+  print('  Generating Calypso script file...', end = '')
   projectAttributes = mos.getProjectAttributes(mosaicConfig, args.project_id, api_pa)
   publicAttributes  = mos.getPublicProjectAttributes(mosaicConfig, api_pa)
 
@@ -183,6 +192,7 @@ def main():
   filteredVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, args.ped, luaFilename, tomlFilename) #, familyType, pipelineModifiers)
   bashScript.annotateVcf(resourceInfo, bashFile, chrFormat, mosaicSamples)
   bashScript.filterVariants(bashFile, mosaicSamples, proband, resourceInfo)
+  print('complete')
 
 ###############
 ###############
@@ -197,11 +207,17 @@ def main():
   #bashScript.deleteFiles(args, pipelineModifiers, bashFile)
 
   # Run Exomiser on the original vcf file and process the exomiser outputs as private annotations
+  print('  Generating exomiser scripts...', end = '')
   exomiser.applicationProperties(workingDir, args.tools_directory)
   yaml = exomiser.generateYml(workingDir, proband, reference, vcf, args.ped, hpoTerms)
   exScriptName, exScript = exomiser.generateScript(workingDir, args.tools_directory, yaml)
-  exomiser.parseOutput(exScript, os.path.dirname(__file__) + '/scripts', args.config, args.utils_directory, proband, args.project_id)
-  exomiser.closeFile(exScriptName, exScript)
+
+  # Upload the exomiser variants. These may not have passed the Calypso filters, so must be uploaded prior
+  # to uploading the annotations
+  exomiser.uploadVariants(workingDir, args.utils_directory, args.config, args.project_id, proband)
+  exomiser.exomiserAnnotations(workingDir, os.path.dirname(__file__) + 'scripts', args.config, args.utils_directory, proband, args.project_id)
+  #exomiser.parseOutput(exScript, os.path.dirname(__file__) + '/scripts', args.config, args.utils_directory, proband, args.project_id)
+  print('complete')
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
   print('# Generate tsv files to upload annotations to Mosaic', file = bashFile)
@@ -262,7 +278,7 @@ def main():
   print('Calypso pipeline version ', version, ' completed successfully', sep = '')
 
   # Update Calypso attributes, e.g. the version that was run, the history of runs etc.
-  mos.updateCalypsoAttributes(mosaicConfig, resourceInfo['version'], projectAttributes, publicAttributes, version, args.project_id, api_pa)
+  #mos.updateCalypsoAttributes(mosaicConfig, resourceInfo['version'], projectAttributes, publicAttributes, version, args.project_id, api_pa)
 
 # Input options
 def parseCommandLine():

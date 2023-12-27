@@ -110,6 +110,10 @@ def main():
                    'variant': fields[9],
                    'moi': fields[4]}
 
+    # If the ref or alt allele are 'N', change them to '*'
+    if ref == 'N': ref = '*'
+    if alt == 'N': alt = '*'
+
     # Multiple variants can have the same rank, and the same variant can have multiple ranks (e.g. based on different modes
     # of inheritance). Store the variant information so that these can be consolidated before being exported
     if chrom not in variants: variants[chrom] = {}
