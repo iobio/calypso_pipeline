@@ -194,7 +194,7 @@ def annotateVcf(resourceInfo, bashFile, chrFormat, samples):
   # Annotate with VEP unless it is to be ignored
   if not resourceInfo['resources']['vep']['ignore']:
     print('  | $VEP \\', file = bashFile)
-    print('    --assembly ', resourceInfo['reference'], '\\', sep = '', file = bashFile)
+    print('    --assembly ', resourceInfo['reference'], ' \\', sep = '', file = bashFile)
     print('    --fasta $REF \\', file = bashFile)
     print('    --cache \\', file = bashFile)
     print('    --dir_cache ', resourceInfo['resources']['vep']['cache'], ' \\', sep = '', file = bashFile)
@@ -228,9 +228,11 @@ def annotateVcf(resourceInfo, bashFile, chrFormat, samples):
   # ensure the final vcd file is in this format
   if resourceInfo['reference'] == 'GRCh37':
     if chrFormat: print('  | $BCFTOOLS annotate -O z -o $ANNOTATEDVCF --rename-chrs $NOCHR_CHR_MAP - \\', file = bashFile)
+    else: print('  | $BCFTOOLS view -O z -o $ANNOTATEDVCF - \\', file = bashFile)
   elif resourceInfo['reference'] == 'GRCh38':
     if not chrFormat: print('  | $BCFTOOLS annotate -O z -o $ANNOTATEDVCF --rename-chrs $CHR_NOCHR_MAP - \\', file = bashFile)
-  else: print('  | $BCFTOOLS view -O z -o $ANNOTATEDVCF - \\', file = bashFile)
+    else: print('  | $BCFTOOLS view -O z -o $ANNOTATEDVCF - \\', file = bashFile)
+  else: fail('Unknown reference: ' + str(resourceInfo['reference']))
   print('  >> $STDOUT 2>> $STDERR', file = bashFile)
   print('echo "complete"', file = bashFile)
   print(file = bashFile)

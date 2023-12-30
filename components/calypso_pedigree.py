@@ -1,5 +1,23 @@
 import os
 
+# Determine if the project contains a proband, mother and father to allow detection of de novo
+# and comp het variants
+def isTrio(samples):
+  hasMother = False
+  hasFather = False
+  for sample in samples:
+    print(sample, samples[sample])
+    if str(samples[sample]['relation']) == 'Mother':
+      if hasMother: fail('The project has more than one sample defined as a mother')
+      hasMother = True
+    elif str(samples[sample]['relation']) == 'Father':
+      if hasFather: fail('The project has more than one sample defined as a father')
+      hasFather = True
+
+  # Return true if the proband has a mother and a father with data
+  if hasMother and hasFather: return True
+  else: return False
+
 # Generate a ped file
 def generatePedFile(api_ped, mosaicConfig, args, workingDir, proband, sampleId):
 

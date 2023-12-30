@@ -1,5 +1,7 @@
 import os
 
+# Run the annotated vcf through slivar to 
+
 # Use Slivar to filter the annotated vcf file based on a trio family structure
 def annotateTrio(resourceInfo, bashFile):
 
@@ -145,7 +147,7 @@ def annotateTrio(resourceInfo, bashFile):
   print('echo "complete"', file = bashFile)
   print(file = bashFile)
 
-  # Now filter the slivar filtered vcf file for paired compound gets
+  # Now filter the slivar filtered vcf file for paired compound hets
   print('# Searching for paired compound hets in the slivar filtered vcf', file = bashFile)
   print('echo -n "Searching for compound heterozygotes..."', file = bashFile)
   print('$SLIVAR compound-hets \\', file = bashFile)

@@ -101,6 +101,9 @@ def main():
 ######### determine and set the family?
 #########
 #########
+  # Determine if this project contains a proband, mother and father. If so, slivar can be user to extract de novo
+  # variants and comp hets
+  isTrio = cped.isTrio(mosaicSamples)
 
   # Get the vcf file for each sample. Currently, Calypso only works for projects with a single multi-sample vcf.
   # Determine the name of this vcf file, then determine if this file has chromosomes listed as e.g. '1' or 'chr1'.
