@@ -195,6 +195,9 @@ def main():
   filteredVcf = bashScript.bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, args.ped, luaFilename, tomlFilename) #, familyType, pipelineModifiers)
   bashScript.annotateVcf(resourceInfo, bashFile, chrFormat, mosaicSamples)
   bashScript.filterVariants(bashFile, mosaicSamples, proband, resourceInfo)
+
+  # If this is a trio, use Slivar to extract compound heterozygotes
+  if isTrio: bashScript.compHets(bashFile, rootPath, args.config, args.tools_directory, args.utils_directory, args.project_id)
   print('complete')
 
 ###############

@@ -6,7 +6,6 @@ def isTrio(samples):
   hasMother = False
   hasFather = False
   for sample in samples:
-    print(sample, samples[sample])
     if str(samples[sample]['relation']) == 'Mother':
       if hasMother: fail('The project has more than one sample defined as a mother')
       hasMother = True

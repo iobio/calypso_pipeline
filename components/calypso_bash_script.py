@@ -57,28 +57,16 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, ped, luaFi
   # Generate the names of the intermediate and final vcf files
   vcfBase     = os.path.abspath(vcf).split('/')[-1].rstrip('vcf.gz')
   filteredVcf = str(vcfBase) + '_calypso_filtered.vcf.gz'
-  #slivar1Vcf  = str(vcfBase) + '_calypso_slivar1.vcf.gz'
-  #slivar2Vcf  = str(vcfBase) + '_calypso_slivar2.vcf.gz'
-  #slivarFilt  = str(vcfBase) + '_calypso_slivar_filtered.vcf.gz'
-  #comphetVcf  = str(vcfBase) + '_calypso_comphet.vcf.gz'
+  slivarVcf   = str(vcfBase) + '_calypso_slivar.vcf.gz'
+  comphetVcf  = str(vcfBase) + '_calypso_comphet.vcf'
   clinvarVcf  = str(vcfBase) + '_calypso_clinVar.vcf.gz'
-  #rareVcf     = str(vcfBase) + '_calypso_rare_disease.vcf.gz'
   print('FILEPATH=', workingDir, sep = '', file = bashFile)
-  #print('CLEANVCF=' + str(vcfBase) + '_clean.vcf.gz', sep = '', file = bashFile)
   print('ANNOTATEDVCF=$FILEPATH/' + str(vcfBase) + '_annotated.vcf.gz', sep = '', file = bashFile)
-  #print('PROBANDVCF=$FILEPATH/' + str(vcfBase) + '_proband.vcf.gz', sep = '', file = bashFile)
-  #print('PREANNOVCF=$FILEPATH/' + str(vcfBase) + '_preanno.vcf.gz', sep = '', file = bashFile)
 
   # If compound hets are not generated, there is no COMPHETS output
-  #if pipelineModifiers['useInheritance']: print('COMPHETS=$FILEPATH/' + str(vcfBase) + '_comphets.vcf.gz', sep = '', file = bashFile)
-  #print('FINALVCF=$FILEPATH/' + str(vcfBase) + '_calypso.vcf.gz', sep = '', file = bashFile)
   print('FILTEREDVCF=$FILEPATH/' + str(filteredVcf), sep = '', file = bashFile)
-  #print('SLIVAR1VCF=$FILEPATH/' + str(slivar1Vcf), sep = '', file = bashFile)
-  #print('SLIVAR2VCF=$FILEPATH/' + str(slivar2Vcf), sep = '', file = bashFile)
-  #print('SLIVARFILTEREDVCF=$FILEPATH/' + str(slivarFilt), sep = '', file = bashFile)
-  #print('COMPHETSVCF=$FILEPATH/' + str(comphetVcf), sep = '', file = bashFile)
-  #print('CLINVARVCF=$FILEPATH/' + str(clinvarVcf), sep = '', file = bashFile)
-  #print('RAREDISEASEVCF=$FILEPATH/' + str(rareVcf), sep = '', file = bashFile)
+  print('SLIVARVCF=$FILEPATH/' + str(slivarVcf), sep = '', file = bashFile)
+  print('COMPHETSVCF=$FILEPATH/' + str(comphetVcf), sep = '', file = bashFile)
   print('STDOUT=calypso_annotation_pipeline.stdout', file = bashFile)
   print('STDERR=calypso_annotation_pipeline.stderr', file = bashFile)
 
@@ -95,14 +83,6 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, ped, luaFi
   print('TOML=$FILEPATH/', tomlFilename, sep = '', file = bashFile)
   print('LUA=$FILEPATH/', luaFilename, sep = '', file = bashFile)
 
-  # The Slivar pipeline uses data from gnomAD v2 and v3 for filtering
-  #try: print('SLIVAR_GNOMAD_V2=$DATAPATH/', resourceInfo['resources']['slivar_gnomad_v2']['file'], sep = '', file = bashFile)
-  #except: fail('The resources json does not define a gnomAD v2 zip file')
-  #try: print('SLIVAR_GNOMAD_V3=$DATAPATH/', resourceInfo['resources']['slivar_gnomad_v3']['file'], sep = '', file = bashFile)
-  #except: fail('The resources json does not define a gnomAD v3 zip file')
-  #try: print('SLIVAR_GNOMAD_V2=', resourceInfo['resources']['slivar_gnomAD']['file'], sep = '', file = bashFile)
-  #except: fail('The resources json does not define a gnomAD zip file')
-
   # If the chr map is required, include the path to it. The chromosome format is different depending on whether this is a GRCh37
   # or GRCh38 reference. GRCh37 needs to use the '1' format, but GRCh38 uses 'chr1'. chrFormat is False if in the '1' format
   if resourceInfo['reference'] == 'GRCh37':
@@ -115,9 +95,8 @@ def bashResources(resourceInfo, workingDir, bashFile, vcf, chrFormat, ped, luaFi
       print('NOCHR_CHR_MAP=$DATAPATH/nochr_chr_map.txt', sep = '', file = bashFile)
 
   # The slivar js file is based on the family structure. Check that a file exists for the current family
-#  jsFile = 'slivar_' + familyType + '_js'
-#  try: print('JS=', resourceInfo['resources'][jsFile]['file'], sep = '', file = bashFile)
-#  except: fail('The resources json does not define the Slivar functions js file for a family of type ' + str(familyType) + '. Expected "' + str(jsFile) + '" in the resources json')
+  jsFile = 'slivar-functions.js'
+  print('JS=$DATAPATH/slivar/', jsFile, sep = '', file = bashFile)
   print(file = bashFile)
 
   # Return the name of the filtered vcf file
@@ -315,37 +294,47 @@ def filterVariants(bashFile, samples, proband, resourceInfo):
   print('$BCFTOOLS index -t $FILTEREDVCF', file = bashFile)
   print(file = bashFile)
 
-# Use Slivar to extract variants based on the Slivar rare disease wiki
-def rareDiseaseVariants(bashFile):
-  print('# Generate rare disease variants based on Slivar wiki', file = bashFile)
-  print('echo -n "Generating rare disease variants..."', file = bashFile)
-  print('$BCFTOOLS csq -s - --ncsq 40 -g $GFF -l -f $REF $FILTEREDVCF -O u \\', file = bashFile)
-  print('  2>> $STDERR \\', file = bashFile)
-  print('  | $SLIVAR expr --vcf - \\', file = bashFile)
+# Use Slivar to extract compound heterozygous variants based on the Slivar rare disease wiki
+def compHets(bashFile, rootPath, configFile, toolsDir, utilsDir, projectId):
+  print('# Extract compound hets', file = bashFile)
+  print('echo -n "Determining compound het variants..."', file = bashFile)
+  print('$SLIVAR expr --vcf $FILTEREDVCF \\', file = bashFile)
   print('  --ped $PED \\', file = bashFile)
-  print('  -o $RAREDISEASEVCF \\', file = bashFile)
   print('  --pass-only \\', file = bashFile)
-  print('  -g $SLIVAR_GNOMAD \\', file = bashFile)
-  print('  --info \'INFO.impactful && INFO.gnomad_popmax_af < 0.01 && variant.FILTER == "PASS" && variant.ALT[0] != "*"\' \\', file = bashFile)
   print('  --js $JS \\', file = bashFile)
-  print('  --family-expr \'denovo:fam.every(segregating_denovo) && INFO.gnomad_popmax_af < 0.001\' \\', file = bashFile)
+  print('  --info \'INFO.impactful && variant.FILTER == "PASS" && variant.ALT[0] != "*"\' \\', file = bashFile)
+  print('  --family-expr \'denovo:fam.every(segregating_denovo)\' \\', file = bashFile)
   print('  --family-expr \'recessive:fam.every(segregating_recessive)\' \\', file = bashFile)
-  print('  --family-expr \'x_denovo:(variant.CHROM == "X" || variant.CHROM == "chrX") && fam.every(segregating_denovo_x) && INFO.gnomad_popmax_af < 0.001\' \\', file = bashFile)
+  print('  --family-expr \'x_denovo:(variant.CHROM == "X" || variant.CHROM == "chrX") && fam.every(segregating_denovo_x)\' \\', file = bashFile)
   print('  --family-expr \'x_recessive:(variant.CHROM == "X" || variant.CHROM == "chrX") && fam.every(segregating_recessive_x)\' \\', file = bashFile)
-  print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && INFO.gnomad_nhomalt < 10\' \\', file = bashFile)
+  print('  --trio \'comphet_side:comphet_side(kid, mom, dad)\' \\', file = bashFile)
+  print('  -o $SLIVARVCF \\', file = bashFile)
   print('  >> $STDOUT 2>> $STDERR', file = bashFile)
+  print('$BCFTOOLS index -t $SLIVARVCF', file = bashFile)
+  print(file = bashFile)
+  print('$SLIVAR compound-hets -v $SLIVARVCF \\', file = bashFile)
+  print('  --sample-field comphet_side \\', file = bashFile)
+  print('  --sample-field denovo \\', file = bashFile)
+  print('  -p 23A0004525.ped > $COMPHETSVCF', file = bashFile)
   print('echo "complete"', file = bashFile)
-  print('$BCFTOOLS index -t $RAREDISEASEVCF', file = bashFile)
+
+  # The comp hets vcf contains all comp het variants. Get the gene names for these variants
+  print(file = bashFile)
+  print('# Extract all the gene names from the comp hets file', file = bashFile)
+  print('echo -n "Extract all the gene names from the comp hets file..."', file = bashFile)
+  print('python3 ', str(rootPath), '/scripts/comp_het_genes.py \\', sep = '', file = bashFile)
+  print('  -c ', configFile, ' \\', sep = '', file = bashFile)
+  print('  -s ', toolsDir, ' \\', sep= '', file = bashFile)
+  print('  -l ', utilsDir, ' \\', sep= '', file = bashFile)
+  print('  -p ', projectId, ' \\', sep = '', file = bashFile)
+  print('  -i $COMPHETSVCF', sep = '', file = bashFile)
+  print('echo "complete"', file = bashFile)
   print(file = bashFile)
 
 # Delete files no longer required
 def deleteFiles(args, pipelineModifiers, bashFile):
   print('# Delete files no longer required', file = bashFile)
   print('echo -n "Deleting files..."', file = bashFile)
-  #print('rm -f $CLEANVCF', file = bashFile)
-  #print('rm -f $CLEANVCF.tbi', file = bashFile)
-  #print('rm -f $ANNOTATEDVCF', file = bashFile)
-  #print('rm -f $ANNOTATEDVCF.tbi', file = bashFile)
   if pipelineModifiers['useInheritance']:
     print('rm -f $COMPHETSVCF', file = bashFile)
     print('rm -f $COMPHETSVCF.tbi', file = bashFile)

@@ -39,7 +39,7 @@ def getVcfFiles(mosaicConfig, api_sf, projectId, mosaicSamples):
 
     # If there are no vcf files for this sample output a warning, but continue, unless this is the proband
     if len(vcfFiles) == 0:
-      if mosaicSamples[sample]['relation'] == 'Proband': fail('calypso_vcf_files: The proband (' + sample + ') is not associated with any vcf files. The proband must appear in a vcf file')
+      if mosaicSamples[sample]['relation'] == 'Proband': fail('calypso_vcf_files: The proband (' + sample + ') is not associated with any vcf files. The proband must appear in a vcf file (a vcf file can be specified on the command line using the --input_vcf (-i) argument)')
       else:
         print('  WARNING: Sample ' + sample + ', listed as having the relationship ' + mosaicSamples[sample]['relation'] + ' is not associated with a vcf and so will contribute no variants')
         mosaicSamples[sample]['vcf_file']        = False
