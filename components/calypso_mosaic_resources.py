@@ -1,6 +1,3 @@
-#!/usr/bin/python
-
-from __future__ import print_function
 import json
 import os
 
@@ -106,6 +103,15 @@ def readMosaicJson(mosaicFilename, reference):
 
   # Return the mosaic information
   return mosaicInfo
+
+# Check that all Mosaic resources are defined in the resources json
+def checkResources(mosaicInfo, resourceInfo):
+  failedResources = []
+  for resource in mosaicInfo['resources']:
+    if resource not in resourceInfo['resources'].keys(): failedResources.append(resource)
+
+  # Fail and write out the list of resources that should be removed
+  if failedResources: print('\n\nWARNING: The Mosaic resource json contains the following resource not defined in the resource json:\n  ', '\n  '.join(failedResources), sep = '')
 
 # Loop over all of the public annotations defined in the Mosaic resources json file and check that they exist
 # in Mosaic and can be imported

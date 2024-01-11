@@ -146,19 +146,16 @@ def main():
       # If there was a single mane, use this, otherwise pick from the options if there are
       # multiple. If there are no manes, move to non-mane transcripts that have both a c. and p.
       if len(maneChoices) == 1:
-        if positions[0] in optionalCodes[maneChoices[0]]: fields.append(optionalCodes[maneChoices[0]][positions[0]][1])
+        if positions[0] in optionalCodes[maneChoices[0]]: fields = updateFields(fields, optionalCodes[maneChoices[0]][positions[0]][1])
         else: fields.append('')
-        if positions[1] in optionalCodes[maneChoices[0]]: fields.append(optionalCodes[maneChoices[0]][positions[1]][1])
+        if positions[1] in optionalCodes[maneChoices[0]]: fields = updateFields(fields, optionalCodes[maneChoices[0]][positions[1]][1])
         else: fields.append('')
       elif len(maneChoices) > 1:
         i = list(optionalCodes.keys())[0]
-        if positions[0] in optionalCodes[i]: fields.append(optionalCodes[i][positions[0]][1])
+        if positions[0] in optionalCodes[i]: fields = updateFields(fields, optionalCodes[i][positions[0]][1])
         else: fields.append('')
-        if positions[1] in optionalCodes[i]: fields.append(optionalCodes[i][positions[1]][1])
+        if positions[1] in optionalCodes[i]: fields = updateFields(fields, optionalCodes[i][positions[1]][1])
         else: fields.append('')
-        #for position in positions:
-        #  if position in optionalCodes[i]: fields.append(optionalCodes[i][position][1])
-        #  else: fields.append('')
       else:
         nonManeChoices = []
         for i in options:
@@ -166,29 +163,29 @@ def main():
 
         # Look through the options as before
         if len(nonManeChoices) == 1:
-          if positions[0] in optionalCodes[nonManeChoices[0]]: fields.append(optionalCodes[nonManeChoices[0]][positions[0]][1])
+          if positions[0] in optionalCodes[nonManeChoices[0]]: fields = updateFields(fields, optionalCodes[nonManeChoices[0]][positions[0]][1])
           else: fields.append('')
-          if positions[1] in optionalCodes[nonManeChoices[0]]: fields.append(optionalCodes[nonManeChoices[0]][positions[1]][1])
+          if positions[1] in optionalCodes[nonManeChoices[0]]: fields = updateFields(fields, optionalCodes[nonManeChoices[0]][positions[1]][1])
           else: fields.append('')
         elif len(nonManeChoices) > 1:
           i = list(optionalCodes.keys())[0]
-          if positions[0] in optionalCodes[i]: fields.append(optionalCodes[i][positions[0]][1])
+          if positions[0] in optionalCodes[i]: fields = updateFields(fields, optionalCodes[i][positions[0]][1])
           else: fields.append('')
-          if positions[1] in optionalCodes[i]: fields.append(optionalCodes[i][positions[1]][1])
+          if positions[1] in optionalCodes[i]: fields = updateFields(fields, optionalCodes[i][positions[1]][1])
           else: fields.append('')
         else:
 
           # If there is a single non mane, use it, otherwise just take the first value
           if len(optionalCodes) >= 1:
             i = list(optionalCodes.keys())[0]
-            if positions[0] in optionalCodes[i]: fields.append(optionalCodes[i][positions[0]][1])
+            if positions[0] in optionalCodes[i]: fields = updateFields(fields, optionalCodes[i][positions[0]][1])
             else: fields.append('')
-            if positions[1] in optionalCodes[i]: fields.append(optionalCodes[i][positions[1]][1])
+            if positions[1] in optionalCodes[i]: fields = updateFields(fields, optionalCodes[i][positions[1]][1])
             else: fields.append('')
   
     # Append the list of all available c. and p. values and write to file
-    fields.append(', '.join(allCDot))
-    fields.append(', '.join(allPDot))
+    fields.append(','.join(allCDot))
+    fields.append(','.join(allPDot))
     print('\t'.join(fields), file = outputFile)
 
   # Close the output tsv file
@@ -230,6 +227,16 @@ def updateCoords(chrom, pos):
 
   # Return the updated values
   return chrom, pos
+
+# Add the value to the fields list ensuring that it is a valid value
+def updateFields(fields, value):
+
+  # Ensuret he value is under the 255 character limit
+  if len(value) > 254: value = 'HGVS code too long'
+
+  # Append the value and return
+  fields.append(value)
+  return fields
 
 # If the script fails, provide an error message and exit
 def fail(message):

@@ -18,24 +18,19 @@ def main():
   # Parse the command line
   args = parseCommandLine()
 
+  # Import the api client
+  path.append(args.api_client)
+  from mosaic import Mosaic, Project, Store
+  store   = Store(config_file = args.config)
+  mosaic  = Mosaic(config_file = args.config)
+
+  # Create a project object for the defined project
+  project = mosaic.get_project(args.project_id)
+
   # Check the supplied parameters are as expected, then expand the path to enable scripts and api commands
   # to be accessed for Calypso
   rootPath = os.path.dirname(__file__)
   if not args.tools_directory.endswith('/'): args.tools_directory = str(args.tools_directory) + '/'
-  sys.path = cpath.buildPath(sys.path, args.utils_directory)
-
-  # Import additional tools
-  import mosaic_config
-  import api_samples as api_s
-  import api_sample_attributes as api_sa
-  import api_sample_hpo_terms as api_sh
-
-  # Parse the Mosaic config file to get the token and url for the api calls
-  mosaicRequired = {'MOSAIC_TOKEN': {'value': args.token, 'desc': 'An access token', 'long': '--token', 'short': '-t'},
-                    'MOSAIC_URL': {'value': args.url, 'desc': 'The api url', 'long': '--url', 'short': '-u'},
-                    'MOSAIC_ATTRIBUTES_PROJECT_ID': {'value': args.attributes_project, 'desc': 'The public attributes project id', 'long': '--attributes_project', 'short': '-a'}}
-  mosaicConfig   = mosaic_config.mosaicConfigFile(args.config)
-  mosaicConfig   = mosaic_config.commandLineArguments(mosaicConfig, mosaicRequired)
 
   # Define the executable bcftools command
   bcftoolsExe = args.tools_directory + 'bcftools/bcftools'
@@ -44,27 +39,46 @@ def main():
   slivarExe = args.tools_directory + 'slivar'
 
   # Get the Mosaic sample id for the provided sample
-  sampleAttributes = api_sa.getSampleAttributesWValues(mosaicConfig, args.project_id)
   isProband = False
   probandId = False
-  for attribute in sampleAttributes:
-    if attribute['name'] == 'Relation':
-      for sampleInfo in attribute['values']:
-        if sampleInfo['value'] == 'Proband':
-          if isProband: fail('Multiple probands in project with id ' + str(args.project_id))
-          isProband = True
-          probandId = sampleInfo['sample_id']
-          break
-  if not isProband: fail('No proband found for project with id ' + str(args.project_id))
-  sampleIds   = api_s.getSamplesDictIdName(mosaicConfig, args.project_id)
-  probandName = False
-  for sampleId in sampleIds:
-    if sampleId == probandId: probandName = sampleIds[sampleId]
-    break
+  samples   = project.get_samples()
+  for sample in samples:
+    sampleId = sample['id']
+    data     = project.get_attributes_for_sample(sampleId)
+    for attribute in data:
+      if attribute['name'] == 'Relation':
 
-  # Get required case information from Mosaic
-  hpoTerms = api_sh.getSampleHpo(mosaicConfig, args.project_id, sampleId)
-  print(hpoTerms)
+        # Loop over the values and see if this is the proband
+        for sampleValues in attribute['values']:
+          if sampleValues['value'] == 'Proband':
+            if isProband: fail('Multiple probands in project with id ' + str(args.project_id))
+            isProband   = True
+            probandId   = sampleValues['sample_id']
+            probandName = sample['name']
+            break
+
+  # If no proband is found, fail
+  if not isProband: fail('No proband found for project with id ' + str(args.project_id))
+
+  # Get the HPO terms for the proband
+  hpoTerms = {}
+  for hpoTermInfo in project.get_sample_hpo_terms(probandId):
+    hpoTerms[hpoTermInfo['hpo_id']] = hpoTermInfo['label']
+
+  # Get a list of genes associated with the HPO terms using the HPO phenotype_to_gene info
+  hpoFile = '/scratch/ucgd/lustre-work/marth/marth-projects/calypso/reannotation/data/GRCh38/hpo/phenotype_to_genes.txt'
+  hpoGenes = open(hpoFile, 'r')
+  genes    = []
+  for line in hpoGenes.readlines():
+    fields = line.rstrip().split('\t')
+    term   = fields[0]
+    gene   = fields[3]
+    if term in hpoTerms:
+      if gene not in genes: genes.append(gene)
+  hpoGenes.close()
+  print(genes)
+  print(len(hpoTerm))
+  print(len(genes))
 
 # Input options
 def parseCommandLine():
@@ -73,16 +87,13 @@ def parseCommandLine():
   parser = argparse.ArgumentParser(description='Process the command line')
 
   # Mosaic arguments
-  parser.add_argument('--config', '-c', required = False, metavar = "string", help = "The config file for Mosaic")
-  parser.add_argument('--token', '-t', required = False, metavar = "string", help = "The Mosaic authorization token")
-  parser.add_argument('--url', '-u', required = False, metavar = "string", help = "The base url for Mosaic")
-  parser.add_argument('--attributes_project', '-a', required = False, metavar = "integer", help = "The Mosaic project id that contains public attributes")
+  parser.add_argument('--config', '-c', required = True, metavar = 'string', help = 'The config file for Mosaic')
+  parser.add_argument('--api_client', '-a', required = True, metavar = 'string', help = 'The directory where the Python api wrapper lives')
 
   # The project id
   parser.add_argument('--project_id', '-p', required = True, metavar = "string", help = "The project id that variants will be uploaded to")
 
   # Directories where required tools live
-  parser.add_argument('--utils_directory', '-l', required = True, metavar = 'string', help = 'The path to the public-utils directory')
   parser.add_argument('--tools_directory', '-s', required = True, metavar = 'string', help = 'The path to the tools directory')
 
   # A json file describing the variants to report is required

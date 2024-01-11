@@ -86,8 +86,8 @@ def checkReference(bcftools, reference, vcf):
   if 'length' not in chr1Line or not chr1Line: print('  Could not verify the reference genome for the vcf file')
   else:
     length = (line.rstrip().split('=')[3]).rstrip('>')
-    if reference == 'GRCh38' and str(length) == '248956422': isCorrect = True
-    elif reference == 'GRCh37' and str(length) == '249250621': isCorrect = True
+    if reference == 'GRCh38' and str(length).startswith('248956422'): isCorrect = True
+    elif reference == 'GRCh37' and str(length).startswith('249250621'): isCorrect = True
 
   if isCorrect: print('  The vcf file matches the reference genome of the project (', str(reference), ')', sep = '')
   else:

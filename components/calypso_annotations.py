@@ -16,7 +16,7 @@ def createResourceTsv(bashFile, scriptDir, configFile, projectId, reference, mos
     print(file = bashFile)
     print('  # Resource: ', str(resource), sep = '', file = bashFile)
     print('  echo -n "Creating tsv file for resource ', str(resource), '..."', sep = '', file = bashFile)
-    print('  python ', scriptDir, '/', str(script), ' \\', sep = '', file = bashFile)
+    print('  python3 ', scriptDir, '/', str(script), ' \\', sep = '', file = bashFile)
     print('    -c "', configFile, '" \\', sep = '', file = bashFile)
     print('    -p "', projectId, '" \\', sep = '', file = bashFile)
     print('    -r "', reference, '" \\', sep = '', file = bashFile)
@@ -54,7 +54,7 @@ def createAnnotationTsv(mosaicInfo, resource, scriptDir, reference, configFile, 
     else: outputFile = str(resource) + '_' + str(i + 1) + '.tsv'
     outputFiles.append(outputFile)
 
-    print('  python ', scriptDir, '/generate_annotation_tsv.py \\', sep = '', file = bashFile)
+    print('  python3 ', scriptDir, '/generate_annotation_tsv.py \\', sep = '', file = bashFile)
     print('    -c "', configFile, '" \\', sep = '', file = bashFile)
     print('    -e "', resource, '" \\', sep = '', file = bashFile)
     print('    -r "', reference, '" \\', sep = '', file = bashFile)
@@ -88,7 +88,7 @@ def createHpoTsv(hpoInfo, scriptDir, configFile, hpoString, projectId, genePheno
     outputFile = 'hpo_' + str(i + 1) + '.tsv'
     outputFiles.append(outputFile)
 
-    print('  python ', scriptDir, '/hpo.py \\', sep = '', file = bashFile)
+    print('  python3 ', scriptDir, '/hpo.py \\', sep = '', file = bashFile)
     print('    -c "', configFile, '" \\', sep = '', file = bashFile)
     print('    -r "', hpoString, '" \\', sep = '', file = bashFile)
     print('    -p ', projectId, ' \\', sep = '', file = bashFile)

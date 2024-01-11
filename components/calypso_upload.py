@@ -1,6 +1,3 @@
-#!/usr/bin/python
-
-from __future__ import print_function
 from datetime import date
 
 import json
@@ -19,7 +16,7 @@ def uploadVariants(workingDir, utils, configFile, projectId, vcfFiles):
 
     # Write the command to file to upload the filtered variants
     print('# Upload variants to Mosaic', file = uploadFile)
-    print('python ', utils, 'scripts/upload_variants.py \\', sep = '', file = uploadFile)
+    print('python3 ', utils, 'scripts/upload_variants.py \\', sep = '', file = uploadFile)
     print('  -c ', configFile + ' \\', sep = '', file = uploadFile)
     print('  -p ', str(projectId) + ' \\', sep = '', file = uploadFile)
     print('  -m "no-validation" \\', sep = '', file = uploadFile)
@@ -47,7 +44,7 @@ def uploadAnnotations(utils, tsvFile, projectId, configFile, uploadFile):
   print(file = uploadFile)
   print('# Upload ', tsvFile, ' annotations', sep = '', file = uploadFile)
   print('echo -n "Uploading annotations from file ', str(tsvFile), '..."', sep = '', file = uploadFile)
-  print('python ', utils, 'scripts/upload_annotations.py \\', sep = '', file = uploadFile)
+  print('python3 ', utils, 'scripts/upload_annotations.py \\', sep = '', file = uploadFile)
   print('  -i ', tsvFile, ' \\', sep = '', file = uploadFile)
   print('  -p ', projectId, ' \\', sep = '', file = uploadFile)
   print('  -c ', configFile, sep = '', file = uploadFile)

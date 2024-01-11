@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 from os.path import exists
 
 import os
@@ -208,7 +206,7 @@ def uploadVariants(workingDir, utils, configFile, projectId, probandName):
   print('WORKINGPATH=', workingDir, sep = '', file = uploadFile)
   print(file = uploadFile)
   print('# Upload exomiser variants to Mosaic', file = uploadFile)
-  print('python ', utils, 'scripts/upload_variants.py \\', sep = '', file = uploadFile)
+  print('python3 ', utils, 'scripts/upload_variants.py \\', sep = '', file = uploadFile)
   print('  -c ', configFile + ' \\', sep = '', file = uploadFile)
   print('  -p ', str(projectId) + ' \\', sep = '', file = uploadFile)
   print('  -m "no-validation" \\', sep = '', file = uploadFile)
@@ -242,7 +240,7 @@ def exomiserAnnotations(workingDir, scriptDir, config, utilsDir, probandName, pr
   print(file = script)
   print('# Parse the resulting output file', file = script)
   print('echo -n "Creating tsv file for exomiser variants..."', file = script)
-  print('python ', str(scriptDir), '/parse_exomiser_variants.py \\', sep = '', file = script)
+  print('python3 ', str(scriptDir), '/parse_exomiser_variants.py \\', sep = '', file = script)
   print('  -c ', str(config), ' \\', sep = '', file = script)
   print('  -l ', str(utilsDir), ' \\', sep = '', file = script)
   print('  -i $WORKINGPATH/exomiser_results/', str(probandName), '.variants.tsv \\', sep = '', file = script)
@@ -255,7 +253,7 @@ def exomiserAnnotations(workingDir, scriptDir, config, utilsDir, probandName, pr
   print(file = script)
   print('# Upload the updated annotations tsv file to Mosaic', file = script)
   print('echo -n "Uploading exomiser annotations..."', file = script)
-  print('python $UTILSPATH/scripts/upload_annotations.py \\', file = script)
+  print('python3 $UTILSPATH/scripts/upload_annotations.py \\', file = script)
   print('  -c ', str(config), ' \\', sep = '', file = script)
   print('  -i ', str(tsv), ' \\', sep = '', file = script)
   print('  -p ', str(projectId), sep = '', file = script)

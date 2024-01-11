@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 from datetime import date
 from os.path import exists
 from sys import path

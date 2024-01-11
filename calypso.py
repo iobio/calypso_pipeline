@@ -48,6 +48,15 @@ def main():
   checkArguments(args, rootPath)
   sys.path = cpath.buildPath(sys.path, args.utils_directory)
 
+  # Import the api client
+  path.append(args.api_client)
+  from mosaic import Mosaic, Project, Store
+  apiStore   = Store(config_file = args.client_config)
+  apiMosaic  = Mosaic(config_file = args.client_config)
+
+  # Open an api client project object for the defined project
+  project = apiMosaic.get_project(args.project_id)
+
   # Import additional tools
   import mosaic_config
   import api_pedigree as api_ped
@@ -70,10 +79,15 @@ def main():
   mosaicConfig   = mosaic_config.mosaicConfigFile(args.config)
   mosaicConfig   = mosaic_config.commandLineArguments(mosaicConfig, mosaicRequired)
 
-  # Get the project reference
-  reference = api_ps.getProjectReference(mosaicConfig, args.project_id) if not args.reference else args.reference
+  # Get the project settings and define the reference genome
+  projectSettings = project.get_project_settings()
+  reference       = projectSettings['reference']
+  #reference = api_ps.getProjectReference(mosaicConfig, args.project_id) if not args.reference else args.reference
   if reference not in allowedReferences: fail('The specified reference (' + str(reference) + ') is not recognised. Allowed values are: ' + str(', '.join(allowedReferences)))
   print('  Using the reference: ', reference, sep = '')
+
+  # Check the variant filters json file exists
+  checkVariantFilters(args, reference)
 
   # Read the resources json file to identify all the resources that will be used in the annotation pipeline
   if args.resource_json: resourceInfo = res.checkResources(reference, args.data_directory, args.tools_directory, args.resource_json)
@@ -179,8 +193,13 @@ def main():
   # Read the Mosaic json and validate its contents
   if not args.mosaic_json: args.mosaic_json = args.data_directory + 'resources_mosaic_' + reference + '.json'
   mosaicInfo         = mosr.readMosaicJson(args.mosaic_json, reference)
-  projectAnnotations = mos.getProjectAnnotations(mosaicConfig, args.project_id, api_va)
-  publicAnnotations  = mos.getPublicAnnotations(mosaicConfig, args.project_id, api_va)
+
+  # Check that the Mosaic resource file does not include resources that are not defined in the resources json
+  mosr.checkResources(mosaicInfo, resourceInfo)
+
+  # Get project annotation information
+  projectAnnotations = mos.getProjectAnnotations(project, mosaicConfig, args.project_id, api_va)
+  publicAnnotations  = mos.getPublicAnnotations(project, mosaicConfig, args.project_id, api_va)
   privateAnnotations, projectAnnotations = mos.createPrivateAnnotations(mosaicConfig, mosaicInfo['resources'], projectAnnotations, mosaicSamples, args.project_id, api_va)
   mosr.checkPublicAnnotations(mosaicConfig, mosaicInfo['resources'], publicAnnotations, args.project_id, api_va)
 
@@ -291,14 +310,16 @@ def parseCommandLine():
   global version
   parser = argparse.ArgumentParser(description='Process the command line')
 
+  # Define the location of the api_client and the ini config file
+  parser.add_argument('--client_config', '-z', required = True, metavar = 'string', help = 'The ini config file for Mosaic')
+  parser.add_argument('--api_client', '-y', required = True, metavar = 'string', help = 'The api_client directory')
+
   # Required arguments
   parser.add_argument('--data_directory', '-d', required = False, metavar = 'string', help = 'The path to the directory where the resources live')
   parser.add_argument('--tools_directory', '-s', required = False, metavar = 'string', help = 'The path to the directory where the tools to use live')
-  parser.add_argument('--utils_directory', '-l', required = False, metavar = 'string', help = 'The path to the public-utils directory')
   parser.add_argument('--input_vcf', '-i', required = False, metavar = 'string', help = 'The input vcf file to annotate')
   parser.add_argument('--ped', '-e', required = False, metavar = 'string', help = 'The pedigree file for the family. Not required for singletons')
   parser.add_argument('--project_id', '-p', required = True, metavar = 'string', help = 'The project id that variants will be uploaded to')
-  parser.add_argument('--config', '-c', required = True, metavar = 'string', help = 'The config file for Mosaic')
   parser.add_argument('--variant_filters', '-f', required = False, metavar = 'string', help = 'The json file describing the variant filters to apply to each project')
 
   # Optional pipeline arguments
@@ -312,13 +333,19 @@ def parseCommandLine():
 
 
   # Optional mosaic arguments
-  parser.add_argument('--token', '-t', required = False, metavar = "string", help = "The Mosaic authorization token")
-  parser.add_argument('--url', '-u', required = False, metavar = "string", help = "The base url for Mosaic")
-  parser.add_argument('--attributes_project', '-a', required = False, metavar = "integer", help = "The Mosaic project id that contains public attributes")
   parser.add_argument('--mosaic_json', '-m', required = False, metavar = 'string', help = 'The json file describing the Mosaic parameters')
 
   # Version
   parser.add_argument('--version', '-v', action="version", version='Calypso annotation pipeline version: ' + str(version))
+
+  #########
+  ######### REMOVE WHEN FULLY MOVED OVER TO THE API_CLIENT
+  #########
+  parser.add_argument('--config', '-c', required = True, metavar = 'string', help = 'The config file for Mosaic')
+  parser.add_argument('--utils_directory', '-l', required = False, metavar = 'string', help = 'The path to the public-utils directory')
+  parser.add_argument('--token', '-t', required = False, metavar = "string", help = "The Mosaic authorization token")
+  parser.add_argument('--url', '-u', required = False, metavar = "string", help = "The base url for Mosaic")
+  parser.add_argument('--attributes_project', '-a', required = False, metavar = "integer", help = "The Mosaic project id that contains public attributes")
 
   return parser.parse_args()
 
@@ -345,10 +372,15 @@ def checkArguments(args, rootPath):
   if args.tools_directory[-1] != '/': args.tools_directory += '/'
   if not os.path.exists(args.tools_directory): fail('ERROR: The tools directory does not exist (' + str(args.tools_directory) + ')')
 
-  # Check that a variant filters file has been supplied. The validity of the file will be checked when it is parsed.
-  # For now, it is sufficient that a file exists. If no file is supplied, use the one that should exist in the
-  # Calypso data directory
-  if not args.variant_filters: args.variant_filters = args.data_directory + 'variant_filters.json'
+  # Check that the api_client directory exists
+  if args.api_client[-1] != '/': args.api_client += '/'
+  if not os.path.exists(args.api_client): fail('ERROR: The api client directory does not exist (' + str(args.api_client) + ')')
+
+# Check that a variant filters file has been supplied. The validity of the file will be checked when it is parsed.
+# For now, it is sufficient that a file exists. If no file is supplied, use the one that should exist in the
+# Calypso data directory
+def checkVariantFilters(args, reference):
+  if not args.variant_filters: args.variant_filters = args.data_directory + 'variant_filters_' + str(reference) + '.json'
   if not os.path.exists(args.variant_filters): fail('ERROR: The json file describing the preset variant filters does not exist (' + str(args.variant_filters) + ')')
 
 # Create a directory where all Calypso associated files will be stored

@@ -1,6 +1,3 @@
-#!/usr/bin/python
-
-from __future__ import print_function
 from datetime import date
 import json
 import math
@@ -42,10 +39,10 @@ def getPreviousResourceVersion(projectAttributes):
   return version
 
 # Get all available public annotations
-def getPublicAnnotations(mosaicConfig, projectId, api_va):
+def getPublicAnnotations(project, mosaicConfig, projectId, api_va):
   publicAnnotations = {}
-  data = api_va.getVariantAnnotationsImportNameIdUid(mosaicConfig, projectId)
-  for annotation in data: publicAnnotations[annotation['uid']] = {'name': annotation['name'], 'id': annotation['id'], 'type': annotation['type']}
+  for annotation in project.get_variant_annotations_to_import():
+    publicAnnotations[annotation['uid']] = {'name': annotation['name'], 'id': annotation['id'], 'type': annotation['value_type']}
 
   # Return the dictionary of available public annotations
   return publicAnnotations
@@ -113,7 +110,7 @@ def createPrivateAnnotations(mosaicConfig, resources, projectAnnotations, sample
   return privateAnnotations, projectAnnotations
 
 # Get all the project annotations already in a Mosaic project
-def getProjectAnnotations(mosaicConfig, projectId, api_va):
+def getProjectAnnotations(project, mosaicConfig, projectId, api_va):
   projectAnnotations = {}
 
   # Get the annotations
