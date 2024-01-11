@@ -125,14 +125,16 @@ def main():
     allPDot = []
     for i in optionalCodes:
       if positions[0] in optionalCodes[i]:
-        if optionalCodes[i][positions[0]][1] not in allCDot: allCDot.append(optionalCodes[i][positions[0]][1])
+        hgvs = optionalCodes[i][positions[0]][1]
+        if (len(hgvs) < 255) and (hgvs not in allCDot): allCDot.append(hgvs)
       if positions[1] in optionalCodes[i]:
-        if optionalCodes[i][positions[1]][1] not in allPDot: allPDot.append(optionalCodes[i][positions[1]][1])
+        hgvs = optionalCodes[i][positions[1]][1]
+        if (len(hgvs) < 255) and (hgvs not in allPDot): allPDot.append(hgvs)
 
     # If there was a single top choice, use this:
     if len(topChoices) == 1:
-      fields.append(optionalCodes[topChoices[0]][positions[0]][1])
-      fields.append(optionalCodes[topChoices[0]][positions[1]][1])
+      fields = updateFields(fields, optionalCodes[topChoices[0]][positions[0]][1])
+      fields = updateFields(fields, optionalCodes[topChoices[0]][positions[1]][1])
 
     # If there are multiple top choices
     elif len(topChoices) > 1: fail('FAIL MULTIPLE TOP CHOICES')
@@ -184,8 +186,28 @@ def main():
             else: fields.append('')
   
     # Append the list of all available c. and p. values and write to file
-    fields.append(','.join(allCDot))
-    fields.append(','.join(allPDot))
+    allCDotString = ''
+    allPDotString = ''
+    for i, hgvs in enumerate(allCDot):
+      if (len(hgvs) + len(allCDotString)) < 254:
+        if i == 0: allCDotString = str(hgvs)
+        else: allCDotString = str(allCDotString) + ',' + str(hgvs)
+      else:
+        if len(allCDotString) < 233:
+          if i == 0: allCDotString += 'Too long to display'
+          else: allCDotString += ',others not displayed'
+        else: allCDotString = allCDotString[0:229] + '...,' + 'others not displayed'
+    for i, hgvs in enumerate(allPDot):
+      if (len(hgvs) + len(allPDotString)) < 254:
+        if i == 0: allPDotString = str(hgvs)
+        else: allPDotString = str(allPDotString) + ',' + str(hgvs)
+      else:
+        if len(allPDotString) < 233:
+          if i == 0: allPDotString += 'Too long to display'
+          else: allPDotString += ',others not displayed'
+        else: allPDotString = allPDotString[0:229] + '...,' + 'others not displayed'
+    fields.append(str(allCDotString))
+    fields.append(str(allPDotString))
     print('\t'.join(fields), file = outputFile)
 
   # Close the output tsv file
