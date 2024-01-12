@@ -8,7 +8,7 @@ import os
 ########
 ########
 # Generate the application properties file
-def applicationProperties(workingDir, toolsDir):
+def applicationProperties(workingDir, toolsDir, reference):
 
   # Create the application.properties file
   propFileName = str(workingDir) + 'application.properties'
@@ -18,7 +18,8 @@ def applicationProperties(workingDir, toolsDir):
   print('exomiser.data-directory=', toolsDir, 'exomiser-cli-13.3.0/data', sep = '', file = propFile)
   print('remm.version=0.3.1.post1', file = propFile)
   print('cadd.version=1.4', file = propFile)
-  print('exomiser.hg38.data-version=2302', file = propFile)
+  if reference == 'GRCh37': print('exomiser.hg19.data-version=2302', file = propFile)
+  elif reference == 'GRCh38': print('exomiser.hg38.data-version=2302', file = propFile)
   print('exomiser.phenotype.data-version=2302', file = propFile)
 
   # Close the application properties file
@@ -190,6 +191,10 @@ def generateScript(workingDir, toolsDir, yaml):
   print('  echo "Exomiser script failed. Please check the stderr file"', file = script)
   print('fi', file = script)
   print(file = script)
+
+  # Close the script file and make executable
+  script.close()
+  makeExecutable = os.popen('chmod +x ' + str(scriptName)).read()
 
   # Return the script
   return scriptName, script

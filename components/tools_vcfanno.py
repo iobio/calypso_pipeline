@@ -84,7 +84,7 @@ def generateLuaFile(workingDir):
   print('  then', file = script)
   print('    if (nonpar == true)', file = script)
   print('    then', file = script)
-  print('      return string.format("%d", xy)', file = script)
+  print('      return string.format("%d", xy[1])', file = script)
   print('    end', file = script)
   print('  end', file = script)
   print('end', file = script)

@@ -60,7 +60,7 @@ def main():
     #if processClass == 'C': processClassC(mosaicInfo, args.resource, args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     elif processClass == 'OMIM': processClassOMIM(args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
     #if processClass == 'compound': processClassCompound(args.resource, mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
-    #elif processClass == 'clinvar': processClassClinvar(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
+    elif processClass == 'clinvar': processClassClinvar(mosaicInfo['resources'][args.resource], args.input_vcf, args.tags.replace(' ', '').split(','), outputFile)
 
   # Write a warning if the annotation class is not recognised and do not process the vcf file
   else: print('Unable to process annotations for resource: ' + args.resource, sep = '', file = sys.stderr)

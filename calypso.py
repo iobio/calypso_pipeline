@@ -233,7 +233,7 @@ def main():
 
   # Run Exomiser on the original vcf file and process the exomiser outputs as private annotations
   print('  Generating exomiser scripts...', end = '')
-  exomiser.applicationProperties(workingDir, args.tools_directory)
+  exomiser.applicationProperties(workingDir, args.tools_directory, reference)
   yaml = exomiser.generateYml(workingDir, proband, reference, vcf, args.ped, hpoTerms)
   exScriptName, exScript = exomiser.generateScript(workingDir, args.tools_directory, yaml)
 
@@ -253,7 +253,10 @@ def main():
 
   # Loop over all the resources to be uploaded to Mosaic
   for resource in mosaicInfo['resources']:
-    if resource == 'hpo':
+
+    # ClinVar annotations already exist in Mosaic and don't need to be uploaded
+    if resource == 'clinvar': pass
+    elif resource == 'hpo':
 
       # Only proceed with HPO terms if an HPO term string has been provided
       info     = mosaicInfo['resources']['hpo']
