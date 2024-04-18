@@ -51,8 +51,8 @@ def main():
   # Import the api client
   path.append(args.api_client)
   from mosaic import Mosaic, Project, Store
-  apiStore   = Store(config_file = args.client_config)
-  apiMosaic  = Mosaic(config_file = args.client_config)
+  apiStore  = Store(config_file = args.client_config)
+  apiMosaic = Mosaic(config_file = args.client_config)
 
   # Open an api client project object for the defined project
   project = apiMosaic.get_project(args.project_id)
@@ -85,9 +85,6 @@ def main():
   #reference = api_ps.getProjectReference(mosaicConfig, args.project_id) if not args.reference else args.reference
   if reference not in allowedReferences: fail('The specified reference (' + str(reference) + ') is not recognised. Allowed values are: ' + str(', '.join(allowedReferences)))
   print('  Using the reference: ', reference, sep = '')
-
-  # Check the variant filters json file exists
-  checkVariantFilters(args, reference)
 
   # Read the resources json file to identify all the resources that will be used in the annotation pipeline
   if args.resource_json: resourceInfo = res.checkResources(reference, args.data_directory, args.tools_directory, args.resource_json)
@@ -123,6 +120,11 @@ def main():
   # Determine the name of this vcf file, then determine if this file has chromosomes listed as e.g. '1' or 'chr1'.
   # If a vcf was supplied on the command line, use this. This is for occasions where the vcf file has not been
   # linked to samples in Mosaic
+####
+####
+#### CHECK vcfs.parseVcf. For UDN, the sample name is not the name in the vcf file so the matching is hard coded
+####
+####
   if args.input_vcf: mosaicSamples, vcf = vcfs.parseVcf(resourceInfo['tools']['bcftools'], os.path.abspath(args.input_vcf), mosaicSamples)
   else:
     mosaicSamples = vcfs.getVcfFiles(mosaicConfig, api_sf, args.project_id, mosaicSamples)
@@ -197,6 +199,9 @@ def main():
   # Check that the Mosaic resource file does not include resources that are not defined in the resources json
   mosr.checkResources(mosaicInfo, resourceInfo)
 
+  # Check the variant filters json file exists
+  checkVariantFilters(args, mosaicInfo, reference)
+
   # Get project annotation information
   projectAnnotations = mos.getProjectAnnotations(project, mosaicConfig, args.project_id, api_va)
   publicAnnotations  = mos.getPublicAnnotations(project, mosaicConfig, args.project_id, api_va)
@@ -240,7 +245,7 @@ def main():
   # Upload the exomiser variants. These may not have passed the Calypso filters, so must be uploaded prior
   # to uploading the annotations
   exomiser.uploadVariants(workingDir, args.utils_directory, args.config, args.project_id, proband)
-  exomiser.exomiserAnnotations(workingDir, os.path.dirname(__file__) + 'scripts', args.config, args.utils_directory, proband, args.project_id)
+  exomiser.exomiserAnnotations(workingDir, os.path.dirname(__file__) + '/scripts', args.config, args.utils_directory, proband, args.project_id)
   #exomiser.parseOutput(exScript, os.path.dirname(__file__) + '/scripts', args.config, args.utils_directory, proband, args.project_id)
   print('complete')
 
@@ -256,12 +261,14 @@ def main():
 
     # ClinVar annotations already exist in Mosaic and don't need to be uploaded
     if resource == 'clinvar': pass
-    elif resource == 'hpo':
+
+    # HPO terms are now present automatically in Mosaic so do not need to be included
+    elif resource == 'hpo': pass
 
       # Only proceed with HPO terms if an HPO term string has been provided
-      info     = mosaicInfo['resources']['hpo']
-      fileInfo = str(resourceInfo['path']) + str(resourceInfo['resources']['hpo']['file'])
-      if args.hpo: tsvFiles = anno.createHpoTsv(info, os.path.dirname(__file__) + '/components', args.config, args.hpo, args.project_id, fileInfo, args.utils_directory, args.tools_directory, bashFile, annotateFiles)
+      #info     = mosaicInfo['resources']['hpo']
+      #fileInfo = str(resourceInfo['path']) + str(resourceInfo['resources']['hpo']['file'])
+      #if args.hpo: tsvFiles = anno.createHpoTsv(info, os.path.dirname(__file__) + '/components', args.config, args.hpo, args.project_id, fileInfo, args.utils_directory, args.tools_directory, bashFile, annotateFiles)
 
     # The HGVS annotations require additional processing to identify the codes corresponding to the MANE transcript
     # and strip the transcript information from the annotation
@@ -334,7 +341,6 @@ def parseCommandLine():
   # Optional argument to handle HPO terms
   parser.add_argument('--hpo', '-o', required = False, metavar = "string", help = "A comma separate list of hpo ids for the proband")
 
-
   # Optional mosaic arguments
   parser.add_argument('--mosaic_json', '-m', required = False, metavar = 'string', help = 'The json file describing the Mosaic parameters')
 
@@ -382,8 +388,10 @@ def checkArguments(args, rootPath):
 # Check that a variant filters file has been supplied. The validity of the file will be checked when it is parsed.
 # For now, it is sufficient that a file exists. If no file is supplied, use the one that should exist in the
 # Calypso data directory
-def checkVariantFilters(args, reference):
-  if not args.variant_filters: args.variant_filters = args.data_directory + 'variant_filters_' + str(reference) + '.json'
+def checkVariantFilters(args, mosaicInfo, reference):
+  if not args.variant_filters:
+    if mosaicInfo['variantFilters']: args.variant_filters = str(args.data_directory) + str(mosaicInfo['variantFilters'])
+    else: fail('No json file describing the variant filter is specified. This can be specified in the mosaic resources file or on the command line')
   if not os.path.exists(args.variant_filters): fail('ERROR: The json file describing the preset variant filters does not exist (' + str(args.variant_filters) + ')')
 
 # Create a directory where all Calypso associated files will be stored

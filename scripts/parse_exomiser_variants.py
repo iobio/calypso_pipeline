@@ -61,6 +61,7 @@ def main():
 ###############
 ###############
   displayColumnUids = ['"' + annotationIds['Gene Symbol GRCh38']['uid'] + '"', '"' + annotationIds['Gene Consequence GRCh38']['uid'] + '"', '"' + annotationIds['Genotype']['uid'] + '"']
+  #displayColumnUids = ['"' + annotationIds['Gene Symbol GRCh37']['uid'] + '"', '"' + annotationIds['Gene Consequence GRCh37']['uid'] + '"', '"' + annotationIds['Genotype']['uid'] + '"']
   displayColumnUids.append('"' + annIds['rank']['uid'] + '"')
   displayColumnUids.append('"' + annIds['pvalue']['uid'] + '"')
   displayColumnUids.append('"' + annIds['comb']['uid'] + '"')
@@ -111,8 +112,8 @@ def main():
                    'moi': fields[4]}
 
     # If the ref or alt allele are 'N', change them to '*'
-    if ref == 'N': ref = '*'
-    if alt == 'N': alt = '*'
+    if variantInfo[i]['ref'] == 'N': variantInfo[i]['ref'] = '*'
+    if variantInfo[i]['alt'] == 'N': variantInfo[i]['alt'] = '*'
 
     # Multiple variants can have the same rank, and the same variant can have multiple ranks (e.g. based on different modes
     # of inheritance). Store the variant information so that these can be consolidated before being exported

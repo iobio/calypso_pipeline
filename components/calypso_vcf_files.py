@@ -20,6 +20,13 @@ def parseVcf(bcftools, vcf, mosaicSamples):
 
   # Loop over the samples in the vcf file and find the ones in the mosaicSamples list
   for sample in samples:
+
+#####
+#####
+##### UDN TWEAK TO BE FIXED. REMOVE the trailing "-XXXX" from the sample name in the comparison
+#####
+#####
+    if '-' in sample: sample = sample.split('-')[0]
     if sample in mosaicSamples:
       mosaicSamples[sample]['vcf_file']        = vcf
       mosaicSamples[sample]['vcf_sample_name'] = sample

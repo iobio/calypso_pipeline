@@ -458,8 +458,8 @@ def getSampleOrder(resourceInfo, mosaicSamples):
         if vcfSample == vcfSampleName: mosaicSamples[sample]['vcf_position'] = index
 
   # Check that every sample in samples has vcf_position set
-  for sample in mosaicSamples:
-    if vcf and 'vcf_position' not in mosaicSamples[sample]: fail('Sample ' + str(sample) + ' is listed in the ped file, but does not appear in the vcf header')
+  #for sample in mosaicSamples:
+  #  if vcf and 'vcf_position' not in mosaicSamples[sample]: fail('Sample ' + str(sample) + ' is listed in the ped file, but does not appear in the vcf header')
 
   # Return the updated mosaicSamples
   return mosaicSamples

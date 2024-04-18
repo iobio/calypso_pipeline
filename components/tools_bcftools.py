@@ -165,6 +165,11 @@ def splitvepQuery(bcftools, vcf, tags):
   command += '\\n\' ' + str(vcf)
   return command
 
+# Use bcftools query to return the coords, alleles and "worst" consequence CSQ fields
+def splitvepQueryGeneConsImp(bcftools, vcf):
+  command = bcftools + ' +split-vep -s worst -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%SYMBOL\\t%Consequence\\t%IMPACT\\n\' ' + str(vcf)
+  return command
+
 
 # If the script fails, provide an error message and exit
 def fail(message):

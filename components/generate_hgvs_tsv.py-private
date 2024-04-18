@@ -1,7 +1,6 @@
 from datetime import date
 from os.path import exists
 from sys import path
-from pprint import pprint
 
 import argparse
 import os
@@ -27,6 +26,15 @@ def main():
     bcftoolsExe = args.tools_directory + 'bcftools/bcftools'
   else: bcftoolsExe = 'bcftools'
   sys.path = cpath.buildPath(sys.path, args.utils_directory)
+  import mosaic_config
+  import api_variant_annotations as api_va
+
+  # Parse the Mosaic config file to get the token and url for the api calls
+  mosaicRequired = {'MOSAIC_TOKEN': {'value': args.token, 'desc': 'An access token', 'long': '--token', 'short': '-t'},
+                    'MOSAIC_URL': {'value': args.url, 'desc': 'The api url', 'long': '--url', 'short': '-u'},
+                    'MOSAIC_ATTRIBUTES_PROJECT_ID': {'value': args.attributes_project, 'desc': 'The public attribtes project id', 'long': '--attributes_project', 'short': '-a'}}
+  mosaicConfig   = mosaic_config.mosaicConfigFile(args.config)
+  mosaicConfig   = mosaic_config.commandLineArguments(mosaicConfig, mosaicRequired)
 
   # Read the mosaicJson file to get information on how to process different annotations
   mosaicInfo = mosr.readMosaicJson(args.mosaic_json, args.reference)
@@ -34,12 +42,18 @@ def main():
   # Open an output tsv file to write annotations to
   outputFile = open(args.output_tsv, 'w')
 
+  # Get the annotations from Mosaic in order to get the uids. HGVS annotations are private and so wont' be available
+  # in the resource file
+  annotations       = api_va.getAnnotationDictNameIdUid(mosaicConfig, args.project_id)
+  mosaicAnnotations = {}
+  for annotationName in annotations: mosaicAnnotations[annotationName] = annotations[annotationName]['uid']
+
   # Loop over the annotations that are to be uploaded to Mosaic for this resource and get the annotation name, uid and
   # type
   annotations = {}
   uids        = []
   for annotation in mosaicInfo['resources']['HGVS']['annotations']:
-    uid     = mosaicInfo['resources']['HGVS']['annotations'][annotation]['uid']
+    uid = mosaicAnnotations[annotation] if annotation in mosaicAnnotations else fail('Annotation ' + str(annotation) + ' is not present in the Mosaic project')
     tagType = mosaicInfo['resources']['HGVS']['annotations'][annotation]['type']
     annotations[annotation] = {'uid': uid, 'type': tagType}
 
@@ -202,8 +216,8 @@ def main():
           if i == 0: allPDotString += 'Too long to display'
           else: allPDotString += ',others not displayed'
         else: allPDotString = allPDotString[0:229] + '...,' + 'others not displayed'
-    #fields.append(str(allCDotString))
-    #fields.append(str(allPDotString))
+    fields.append(str(allCDotString))
+    fields.append(str(allPDotString))
     print('\t'.join(fields), file = outputFile)
 
   # Close the output tsv file
@@ -221,6 +235,7 @@ def parseCommandLine():
   parser.add_argument('--tools_directory', '-s', required = True, metavar = 'string', help = 'The path to the directory where the tools live')
   parser.add_argument('--utils_directory', '-l', required = True, metavar = 'string', help = 'The path to the public-utils directory')
   parser.add_argument('--mosaic_json', '-m', required = True, metavar = 'string', help = 'The json file describing the Mosaic parameters')
+  parser.add_argument('--project_id', '-p', required = True, metavar = 'string', help = 'The project id that variants will be uploaded to')
 
   # Mosaic arguments
   parser.add_argument('--config', '-c', required = True, metavar = "string", help = "The config file for Mosaic")
@@ -264,6 +279,9 @@ def fail(message):
 
 # Pipeline version
 version = "0.0.1"
+
+# Mosaic aip information
+mosaicConfig = {}
 
 # Define the bcftools executable
 bcftoolsExe = False

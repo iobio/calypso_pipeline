@@ -15,12 +15,12 @@ def applicationProperties(workingDir, toolsDir, reference):
   propFile     = open(propFileName, 'w')
 
   # Write the data versions to the file
-  print('exomiser.data-directory=', toolsDir, 'exomiser-cli-13.3.0/data', sep = '', file = propFile)
+  print('exomiser.data-directory=', toolsDir, 'exomiser-cli-14.0.0/data', sep = '', file = propFile)
   print('remm.version=0.3.1.post1', file = propFile)
   print('cadd.version=1.4', file = propFile)
-  if reference == 'GRCh37': print('exomiser.hg19.data-version=2302', file = propFile)
-  elif reference == 'GRCh38': print('exomiser.hg38.data-version=2302', file = propFile)
-  print('exomiser.phenotype.data-version=2302', file = propFile)
+  if reference == 'GRCh37': print('exomiser.hg19.data-version=2402', file = propFile)
+  elif reference == 'GRCh38': print('exomiser.hg38.data-version=2402', file = propFile)
+  print('exomiser.phenotype.data-version=2402', file = propFile)
 
   # Close the application properties file
   propFile.close()
@@ -171,7 +171,7 @@ def generateScript(workingDir, toolsDir, yaml):
 ##### UTAH SPECIFIC REQUIREMENT
 #####
   print('# Module requirement for Utah environment', file = script)
-  print('module load jdk/11', file = script)
+  print('module load openjdk/17.0.1', file = script)
   print(file = script)
 
 #########
@@ -180,7 +180,7 @@ def generateScript(workingDir, toolsDir, yaml):
 #########
 #########
   # Include the executable for running exomiser
-  print('java -jar $TOOLSPATH/exomiser-cli-13.3.0/exomiser-cli-13.3.0.jar \\', sep = '', file = script)
+  print('java -jar $TOOLSPATH/exomiser-cli-14.0.0/exomiser-cli-14.0.0.jar \\', sep = '', file = script)
   print('  --analysis $WORKINGPATH/', yaml, ' \\', sep = '', file = script)
   print(' > $STDOUT \\', file = script)
   print(' 2> $STDERR', file = script)

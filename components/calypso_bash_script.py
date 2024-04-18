@@ -203,6 +203,9 @@ def annotateVcf(resourceInfo, bashFile, chrFormat, samples):
     print('    --output_file STDOUT \\', file = bashFile)
     print('    2>> $STDERR \\', file = bashFile)
 
+  # Add VAF to the FORMAT and HWE to the info field
+  print('  | $BCFTOOLS +fill-tags - -- -t FORMAT/VAF,HWE \\', file = bashFile)
+
   # Output the final vcf file. If the original file had the '1' format (not 'chr1') for chromosomes,
   # ensure the final vcd file is in this format
   if resourceInfo['reference'] == 'GRCh37':
@@ -315,7 +318,7 @@ def compHets(bashFile, rootPath, configFile, toolsDir, utilsDir, projectId):
   print('$SLIVAR compound-hets -v $SLIVARVCF \\', file = bashFile)
   print('  --sample-field comphet_side \\', file = bashFile)
   print('  --sample-field denovo \\', file = bashFile)
-  print('  -p 23A0004525.ped > $COMPHETSVCF', file = bashFile)
+  print('  -p $PED > $COMPHETSVCF', file = bashFile)
   print('echo "complete"', file = bashFile)
 
   # The comp hets vcf contains all comp het variants. Get the gene names for these variants
