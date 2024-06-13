@@ -16,11 +16,14 @@ def uploadVariants(workingDir, utils, configFile, projectId, vcfFiles):
 
     # Write the command to file to upload the filtered variants
     print('# Upload variants to Mosaic', file = uploadFile)
-    print('python3 ', utils, 'scripts/upload_variants.py \\', sep = '', file = uploadFile)
-    print('  -c ', configFile + ' \\', sep = '', file = uploadFile)
+    print('API_CLIENT=/uufs/chpc.utah.edu/common/HIPAA/u0991467/programs/api_client', file = uploadFile)
+    print('CONFIG=/uufs/chpc.utah.edu/common/HIPAA/u0991467/programs/configs/config_utah.ini', file = uploadFile)
+    print('python3 $API_CLIENT/variants/upload_variants.py \\', sep = '', file = uploadFile)
+    print('  -a $API_CLIENT \\', sep = '', file = uploadFile)
+    print('  -c $CONFIG \\', sep = '', file = uploadFile)
     print('  -p ', str(projectId) + ' \\', sep = '', file = uploadFile)
     print('  -m "no-validation" \\', sep = '', file = uploadFile)
-    print('  -i ', vcf, sep = '', file = uploadFile)
+    print('  -v ', vcf, sep = '', file = uploadFile)
     print(file = uploadFile)
 
   # Close the file

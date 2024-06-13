@@ -251,21 +251,24 @@ def filterVariants(bashFile, samples, proband, resourceInfo):
   print('  | $SLIVAR expr --vcf - \\', file = bashFile)
 
   # The filter should return all variants that are not in, or have popmax AF < 0.01 in gnomAD (v2.1.1 and v3.2.1)...
-  print('  --info \'( ( (!("gg2_1_1_AF_popmax" in INFO) || ("gg2_1_1_AF_popmax" in INFO && INFO.gg2_1_1_AF_popmax < 0.01)) && ', file = bashFile)
-  print('            (  !("gg3_1_2_AF_popmax" in INFO) || ("gg3_1_2_AF_popmax" in INFO && INFO.gg3_1_2_AF_popmax < 0.01)) ) ||', file = bashFile)
+  print('  --info \'( ( (!("ge4_0_0_AF_grpmax" in INFO) || ("ge4_0_0_AF_grpmax" in INFO && INFO.ge4_0_0_AF_grpmax < 0.01)) && ', file = bashFile)
+  print('            (  !("gg4_0_0_AF_grpmax" in INFO) || ("gg4_0_0_AF_grpmax" in INFO && INFO.gg4_0_0_AF_grpmax < 0.01)) ) ||', file = bashFile)
 
-  # ...or that the variant is flag as some form of pathogenic in ClinVar...
-  print('  ("CLNSIG" in INFO && INFO.CLNSIG.search(/athogenic/)!=-1) ||', file = bashFile)
+  # ...or that the variant is present in ClinVar...
+  print('  ("CLNSIG" in INFO) ||', file = bashFile)
 
-  # ...or that the REVEL or MutScores are over 0.9...
-  print('  ("REVEL" in INFO && INFO.REVEL > 0.9) ||', file = bashFile)
-  print('  ("MutScore" in INFO && INFO.MutScore > 0.9) ||', file = bashFile)
+  # ...or that the CADD_Phred score is over 15...
+  print('  ("CADD_Phred" in INFO && INFO.CADD_Phred > 15) ||', file = bashFile)
 
-  # ...or that the variant has a spliceAI score > 0.22 for any of the acceptor / donor sites.
-  print('  ("SpliceAI_DS_AG" in INFO && INFO.SpliceAI_DS_AG > 0.22) ||', file = bashFile)
-  print('  ("SpliceAI_DS_AL" in INFO && INFO.SpliceAI_DS_AL > 0.22) ||', file = bashFile)
-  print('  ("SpliceAI_DS_DG" in INFO && INFO.SpliceAI_DS_DG > 0.22) ||', file = bashFile)
-  print('  ("SpliceAI_DS_DL" in INFO && INFO.SpliceAI_DS_DL > 0.22) ) &&', file = bashFile)
+  # ...or that the REVEL or MutScores are over 0.1...
+  print('  ("REVEL" in INFO && INFO.REVEL > 0.1) ||', file = bashFile)
+  print('  ("MutScore" in INFO && INFO.MutScore > 0.1) ||', file = bashFile)
+
+  # ...or that the variant has a spliceAI score > 0.1 for any of the acceptor / donor sites.
+  print('  ("SpliceAI_DS_AG" in INFO && INFO.SpliceAI_DS_AG > 0.1) ||', file = bashFile)
+  print('  ("SpliceAI_DS_AL" in INFO && INFO.SpliceAI_DS_AL > 0.1) ||', file = bashFile)
+  print('  ("SpliceAI_DS_DG" in INFO && INFO.SpliceAI_DS_DG > 0.1) ||', file = bashFile)
+  print('  ("SpliceAI_DS_DL" in INFO && INFO.SpliceAI_DS_DL > 0.1) ) &&', file = bashFile)
 
   # ...and that the variant does not have "*" as the alt allele
   print('  variant.FILTER == "PASS" && variant.ALT[0] != "*"\' \\', file = bashFile)

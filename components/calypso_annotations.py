@@ -18,7 +18,7 @@ def createResourceTsv(bashFile, scriptDir, configFile, projectId, reference, mos
     print('  echo -n "Creating tsv file for resource ', str(resource), '..."', sep = '', file = bashFile)
     print('  python3 ', scriptDir, '/', str(script), ' \\', sep = '', file = bashFile)
     print('    -c "', configFile, '" \\', sep = '', file = bashFile)
-    print('    -p "', projectId, '" \\', sep = '', file = bashFile)
+    if resource != 'HGVS': print('    -p "', projectId, '" \\', sep = '', file = bashFile)
     print('    -r "', reference, '" \\', sep = '', file = bashFile)
     print('    -m ', mosaicJson, ' \\', sep = '', file = bashFile)
     print('    -l "', utilsDir, '" \\', sep = '', file = bashFile)

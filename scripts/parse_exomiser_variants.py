@@ -41,6 +41,7 @@ def main():
   # across projects:
   #
   # Exomiser rank
+  # Exomiser contributing variant
   # Exomiser p-value
   # Exomiser gene combined score
   # Exomiser gene phenotype score
@@ -48,6 +49,7 @@ def main():
   # Exomiser variant score
   # Exomiser mode of inheritance
   createAnnotation(api_va, args.project_id, annotationIds, 'Exomiser Rank', 'rank', 'float')
+  createAnnotation(api_va, args.project_id, annotationIds, 'Exomiser Contributing Variant', 'cont', 'float')
   createAnnotation(api_va, args.project_id, annotationIds, 'Exomiser P-Value', 'pvalue', 'float')
   createAnnotation(api_va, args.project_id, annotationIds, 'Exomiser Gene Combined Score', 'comb', 'float')
   createAnnotation(api_va, args.project_id, annotationIds, 'Exomiser Gene Phenotype Score', 'pheno', 'float')
@@ -60,10 +62,11 @@ def main():
 ############### THIS WILL NEED UPDATING TO HANDLE DIFFERENT REFERENCES AND WHEN WE MOVE TO A NEW GENE SYMBOL
 ###############
 ###############
-  displayColumnUids = ['"' + annotationIds['Gene Symbol GRCh38']['uid'] + '"', '"' + annotationIds['Gene Consequence GRCh38']['uid'] + '"', '"' + annotationIds['Genotype']['uid'] + '"']
-  #displayColumnUids = ['"' + annotationIds['Gene Symbol GRCh37']['uid'] + '"', '"' + annotationIds['Gene Consequence GRCh37']['uid'] + '"', '"' + annotationIds['Genotype']['uid'] + '"']
+  #displayColumnUids = ['"' + annotationIds['Gene Name']['uid'] + '"', '"' + annotationIds['Gene Consequence GRCh38']['uid'] + '"', '"' + annotationIds['Genotype']['uid'] + '"']
+  displayColumnUids = ['"' + annotationIds['Gene Name']['uid'] + '"', '"' + annotationIds['Gene Consequence GRCh37']['uid'] + '"', '"' + annotationIds['Genotype']['uid'] + '"']
   displayColumnUids.append('"' + annIds['rank']['uid'] + '"')
   displayColumnUids.append('"' + annIds['pvalue']['uid'] + '"')
+  displayColumnUids.append('"' + annIds['cont']['uid'] + '"')
   displayColumnUids.append('"' + annIds['comb']['uid'] + '"')
   displayColumnUids.append('"' + annIds['pheno']['uid'] + '"')
   displayColumnUids.append('"' + annIds['geneVar']['uid'] + '"')
@@ -72,7 +75,7 @@ def main():
 
   # Open the output file
   outputFile = open(args.output, 'w')
-  print('CHROM', 'START', 'END', 'REF', 'ALT', annIds['rank']['uid'], annIds['pvalue']['uid'], annIds['comb']['uid'], annIds['pheno']['uid'], annIds['geneVar']['uid'], annIds['variant']['uid'], annIds['moi']['uid'], sep = '\t', file = outputFile)
+  print('CHROM', 'START', 'END', 'REF', 'ALT', annIds['rank']['uid'], annIds['pvalue']['uid'], annIds['comb']['uid'], annIds['pheno']['uid'], annIds['geneVar']['uid'], annIds['variant']['uid'], annIds['moi']['uid'], annIds['cont']['uid'], sep = '\t', file = outputFile)
 
   # Store the modes of inheritance that have been seen. These will be used to defined variant filters
   categories = {}
@@ -109,7 +112,8 @@ def main():
                    'pheno': fields[7],
                    'geneVar': fields[8],
                    'variant': fields[9],
-                   'moi': fields[4]}
+                   'moi': fields[4],
+                   'cont': fields[10]}
 
     # If the ref or alt allele are 'N', change them to '*'
     if variantInfo[i]['ref'] == 'N': variantInfo[i]['ref'] = '*'
@@ -120,7 +124,7 @@ def main():
     if chrom not in variants: variants[chrom] = {}
     if start not in variants[chrom]: variants[chrom][start] = {}
     if end not in variants[chrom][start]:
-      variants[chrom][start][end] = {'ref': variantInfo[i]['ref'], 'alt': variantInfo[i]['alt'], 'rank': rank, 'pvalue': variantInfo[i]['pvalue'], 'comb': variantInfo[i]['comb'], 'pheno': variantInfo[i]['pheno'], 'geneVar': variantInfo[i]['geneVar'], 'variant': variantInfo[i]['variant'], 'moi': variantInfo[i]['moi']}
+      variants[chrom][start][end] = {'ref': variantInfo[i]['ref'], 'alt': variantInfo[i]['alt'], 'rank': rank, 'pvalue': variantInfo[i]['pvalue'], 'comb': variantInfo[i]['comb'], 'pheno': variantInfo[i]['pheno'], 'geneVar': variantInfo[i]['geneVar'], 'variant': variantInfo[i]['variant'], 'moi': variantInfo[i]['moi'], 'cont': variantInfo[i]['cont']}
     else:
       variants[chrom][start][end]['rank']    = variants[chrom][start][end]['rank'] + ',' + rank
       variants[chrom][start][end]['pvalue']  = variants[chrom][start][end]['pvalue'] + ',' + variantInfo[i]['pvalue']
@@ -129,6 +133,7 @@ def main():
       variants[chrom][start][end]['geneVar'] = variants[chrom][start][end]['geneVar'] + ',' + variantInfo[i]['geneVar']
       variants[chrom][start][end]['variant'] = variants[chrom][start][end]['variant'] + ',' + variantInfo[i]['variant']
       variants[chrom][start][end]['moi']     = variants[chrom][start][end]['moi'] + ',' + variantInfo[i]['moi']
+      variants[chrom][start][end]['cont']    = variants[chrom][start][end]['cont'] + ',' + variantInfo[i]['cont']
 
     # If this is a new mode of inheritance, create a new category and store the variant id with it, unless
     # the p-value is less than the cut-off, in which case, the variant should go in the top candidates
@@ -143,7 +148,7 @@ def main():
   for chrom in variants:
     for start in variants[chrom]:
       for end in variants[chrom][start]:
-         print(chrom, start, end, variants[chrom][start][end]['ref'], variants[chrom][start][end]['alt'], variants[chrom][start][end]['rank'], variants[chrom][start][end]['pvalue'], variants[chrom][start][end]['comb'], variants[chrom][start][end]['pheno'], variants[chrom][start][end]['geneVar'], variants[chrom][start][end]['variant'], variants[chrom][start][end]['moi'], sep = '\t', file = outputFile)
+         print(chrom, start, end, variants[chrom][start][end]['ref'], variants[chrom][start][end]['alt'], variants[chrom][start][end]['rank'], variants[chrom][start][end]['pvalue'], variants[chrom][start][end]['comb'], variants[chrom][start][end]['pheno'], variants[chrom][start][end]['geneVar'], variants[chrom][start][end]['variant'], variants[chrom][start][end]['moi'], variants[chrom][start][end]['cont'], sep = '\t', file = outputFile)
 
   # Create an Exomiser category of variant filters and create filters for the top candidates and the different
   # modes of inheritance. First, get all the existing filters and store those in the Exomiser category
@@ -156,8 +161,10 @@ def main():
   # they don't already exist, otherwise update them
   for name in categories:
     annotationFilters = defineAnnotationFilters(name, annIds, args.pvalue, name)
-    if name in existingFilters: api_vf.updateVariantFilterColSort(mosaicConfig, args.project_id, name, existingFilters[name], displayColumnUids, annIds['rank']['uid'], 'ascending', annotationFilters)
-    else: filterId = api_vf.createVariantFilterWithDisplay(mosaicConfig, args.project_id, name, 'Exomiser', displayColumnUids, annIds['rank']['uid'], 'ascending', annotationFilters)
+    if name in existingFilters:
+      api_vf.updateVariantFilterColSort(mosaicConfig, args.project_id, name, existingFilters[name], displayColumnUids, annIds['rank']['uid'], 'ascending', annotationFilters)
+    else:
+      filterId = api_vf.createVariantFilterWithDisplay(mosaicConfig, args.project_id, name, 'Exomiser', displayColumnUids, annIds['rank']['uid'], 'ascending', annotationFilters)
 
   # Close the input and output files
   variantsFile.close()

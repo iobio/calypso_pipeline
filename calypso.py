@@ -9,6 +9,7 @@ import sys
 
 from datetime import date
 from os.path import exists
+from pprint import pprint
 from sys import path
 
 # Add the path of the common functions and import them
@@ -134,7 +135,7 @@ def main():
   vcfs.checkReference(resourceInfo['tools']['bcftools'], reference, vcf)
 
   # Check that we have read access to the vcf file
-  if not os.access(vcf, os.R_OK): fail('\nFAILED: Calypso does not have access to the vcf file which is required to complate the pipeline')
+  if not os.access(vcf, os.R_OK): fail('\nFAILED: Calypso does not have access to the vcf file which is required to complete the pipeline')
 ##########
 ##########
 ########## DELETE WHEN HANDLED S3 FILES
@@ -296,7 +297,10 @@ def main():
   # 5. Add and set project attributes
   if 'remove' in mosaicInfo: mos.removeAnnotations(mosaicConfig, mosaicInfo['remove'], projectAnnotations, args.project_id, api_va)
   projectAnnotations = mos.importAnnotations(mosaicConfig, mosaicInfo['resources'], projectAnnotations, publicAnnotations, args.project_id, api_va)
-  mos.defaultAnnotations(mosaicConfig, mosaicInfo['defaultAnnotations'], publicAnnotations, privateAnnotations, args.project_id, api_ps)
+  mos.defaultAnnotations(mosaicConfig, mosaicInfo['defaultAnnotations'], projectAnnotations, publicAnnotations, privateAnnotations, args.project_id, api_ps)
+
+  # Generate scripts to upload filtered variants to Mosaic
+  upload.uploadVariants(workingDir, args.utils_directory, args.config, args.project_id, [filteredVcf])
 
   # Determine all of the variant filters (from the calypso_mosaic_filters.json) that are to be added; remove any filters that already
   # exist with the same name; fill out variant filter details not in the json (e.g. the uids of private annotations created by
@@ -304,9 +308,6 @@ def main():
   # Note that the filters to be applied depend on the family structure. E.g. de novo filters won't be added to projects without parents
   #vfilt.readRequiredFilters(mosaicConfig, api_ps, api_vf, mosaicInfo, args.project_id, args.data_directory, args.variant_filters, samples, projectAnnotations, familyType)
   vFilters.setVariantFilters(mosaicConfig, api_ps, api_va, api_vf, args.project_id, args.variant_filters, mosaicSamples)
-
-  # Generate scripts to upload filtered variants to Mosaic
-  upload.uploadVariants(workingDir, args.utils_directory, args.config, args.project_id, [filteredVcf])
 
   # Output a summary file listing the actions undertaken by Calypso with all version histories
   res.calypsoSummary(workingDir, version, resourceInfo, reference)

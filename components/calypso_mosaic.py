@@ -150,14 +150,17 @@ def importAnnotations(mosaicConfig, resources, projectAnnotations, publicAnnotat
 
 # Set the projects default annotations. The default annotations are what a new user will see in the table by default
 # and all users will have the option to reset the annotations table to show only the default annotations
-def defaultAnnotations(mosaicConfig, defaultAnnotations, publicAnnotations, privateAnnotations, projectId, api_ps):
+def defaultAnnotations(mosaicConfig, defaultAnnotations, projectAnnotations, publicAnnotations, privateAnnotations, projectId, api_ps):
 
   # Store all default annotation ids in a list
   annotationIds = []
 
   # Get the ids of all the default annotations
   for annotation in defaultAnnotations:
-    if annotation in publicAnnotations: annotationIds.append(publicAnnotations[annotation]['id'])
+    if annotation in projectAnnotations:
+      annotationIds.append(projectAnnotations[annotation]['id'])
+    elif annotation in publicAnnotations:
+      annotationIds.append(publicAnnotations[annotation]['id'])
 
     # Check if the annotation is a private annotation. In this case, the supplied annotation will not be the uid as
     # this is not known, but will be the annotation name
