@@ -83,7 +83,6 @@ def main():
   # Get the project settings and define the reference genome
   projectSettings = project.get_project_settings()
   reference       = projectSettings['reference']
-  #reference = api_ps.getProjectReference(mosaicConfig, args.project_id) if not args.reference else args.reference
   if reference not in allowedReferences: fail('The specified reference (' + str(reference) + ') is not recognised. Allowed values are: ' + str(', '.join(allowedReferences)))
   print('  Using the reference: ', reference, sep = '')
 
@@ -99,23 +98,53 @@ def main():
   setWorkingDir(resourceInfo['version'])
 
   # Get the samples in the Mosaic projects and determine the id of the proband, and the family structure
-  mosaicSamples = sam.getMosaicSamples(mosaicConfig, api_s, api_sa, args.project_id)
-  proband       = sam.getProband(mosaicConfig, mosaicSamples)
-  if not proband: fail('Could not find a proband for this project')
+  mosaicSamples = {}
+  mosaic_sample_ids = {}
+  proband       = False
+  for sample in project.get_samples():
+    relation = False
+    for attribute in project.get_attributes_for_sample(sample['id']):
+      if attribute['name'] == 'Relation':
+        for value in attribute['values']:
+          if value['sample_id'] == sample['id']:
+            relation = value['value']
+            break
+        break
+
+    # Fail if this sample has no Relation set, and store the sample name if this is the proband
+    if not relation:
+      fail('The Relation attribute is not set for sample ' + sample['name'])
+    elif relation == 'Proband':
+      proband = sample['name']
+
+    # Add this sample to the list of samples
+    mosaicSamples[sample['name']] = {'id': sample['id'], 'relation': relation}
+    mosaic_sample_ids[sample['id']] = sample['name']
+
+  # Fail if no proband is defined
+  if not proband:
+    fail('Could not find a proband for this project')
 
   # If the ped file has not been defined, generate a bed file from pedigree information in Mosaic
-  if not args.ped: args = cped.generatePedFile(api_ped, mosaicConfig, args, workingDir, proband, mosaicSamples[proband]['id'])
+  if not args.ped:
 
-#########
-#########
-######### Family stuff is currently disabled. Add in checks for family type to update the filtering
-######### Add a project attribute with the family type that is read in and use a separate script to
-######### determine and set the family?
-#########
-#########
-  # Determine if this project contains a proband, mother and father. If so, slivar can be user to extract de novo
-  # variants and comp hets
-  isTrio = cped.isTrio(mosaicSamples)
+    # Open a ped file in the working directory
+    pedFileName = str(workingDir) + str(proband) + '.ped'
+    pedFile     = open(pedFileName, 'w')
+    print('#Family_id', 'individual_id', 'paternal_id', 'maternal_id', 'sex', 'affected_status', sep = '\t', file = pedFile)
+ 
+    # Parse the pedigree associated with the proband
+    for pedigree_line in project.get_pedigree(mosaicSamples[proband]['id']):
+      kindred_id = pedigree_line['pedigree']['kindred_id']
+      sample_id = mosaic_sample_ids[pedigree_line['pedigree']['sample_id']]
+      paternal_id = mosaic_sample_ids[pedigree_line['pedigree']['paternal_id']] if pedigree_line['pedigree']['paternal_id'] else 0
+      maternal_id = mosaic_sample_ids[pedigree_line['pedigree']['maternal_id']] if pedigree_line['pedigree']['maternal_id'] else 0
+      sex = pedigree_line['pedigree']['sex']
+      affection_status = pedigree_line['pedigree']['affection_status']
+      print(kindred_id, sample_id, paternal_id, maternal_id, sex, affection_status, sep = '\t', file = pedFile)
+
+    # Close the ped file
+    pedFile.close()
 
   # Get the vcf file for each sample. Currently, Calypso only works for projects with a single multi-sample vcf.
   # Determine the name of this vcf file, then determine if this file has chromosomes listed as e.g. '1' or 'chr1'.
