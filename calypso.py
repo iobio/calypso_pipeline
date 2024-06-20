@@ -600,7 +600,7 @@ def main():
     # Upload the exomiser variants. These may not have passed the Calypso filters, so must be uploaded prior
     # to uploading the annotations
     upload_exomiser_variants(working_directory, args.api_client, args.client_config, args.project_id, proband)
-    exomiser_annotations(root_path, working_directory, args.api_client, args.client_config, args.project_id, proband, args.exomiser_pvalue)
+    exomiser_annotations(root_path, working_directory, args.api_client, args.client_config, args.project_id, proband, args.exomiser_filters_json)
     print('complete')
 
 # Input options
@@ -619,7 +619,9 @@ def parseCommandLine():
   parser.add_argument('--ped', '-e', required = False, metavar = 'string', help = 'The pedigree file for the family. Not required for singletons')
   parser.add_argument('--project_id', '-p', required = True, metavar = 'string', help = 'The project id that variants will be uploaded to')
   parser.add_argument('--variant_filters', '-f', required = False, metavar = 'string', help = 'The json file describing the variant filters to apply to each project')
-  parser.add_argument('--exomiser_pvalue', '-x', required = True, metavar = 'float', help = 'The pvalue to use for the exomiser top candidates')
+
+  # Exomiser arguments
+  parser.add_argument('--exomiser_filters_json', '-x', required = True, metavar = 'string', help = 'The json describing the exomiser filters')
 
   # Optional pipeline arguments
   parser.add_argument('--reference', '-r', required = False, metavar = 'string', help = 'The reference genome to use. Allowed values: ' + ', '.join(allowed_references))
@@ -1788,7 +1790,7 @@ def upload_exomiser_variants(working_dir, api_client, client_config, project_id,
   make_executable = os.popen('chmod +x ' + str(filename)).read()
 
 # Create a script to update and upload the exomiser annotations
-def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, project_id, proband, pvalue):
+def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, project_id, proband, filters_json):
 
   # Open a script file
   script_name = working_dir + 'calypso_exomiser_annotations.sh'
@@ -1817,14 +1819,26 @@ def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, pr
   print('-c $CONFIG ', sep = '', end = '', file = script)
   print('-p ', str(project_id), ' ', sep = '', end = '', file = script)
   print('-i $INPUT_TSV ', sep = '', end = '', file = script)
-  print('-o  $OUTPUT_TSV ', sep = '', end = '', file = script)
-  print('-e ', str(pvalue), sep = '', file = script)
+  print('-o  $OUTPUT_TSV', sep = '', file = script)
+  print('echo "complete"', file = script)
+
+  # Apply exomiser variant filters
+  print(file = script)
+  print('# Set exomiser variant filters', file = script)
+  print('UPLOAD_SCRIPT=$API_CLIENT/project_setup/set_variant_filters.py', file = script)
+  print('FILTERS_JSON=', filters_json, sep = '', file = script)
+  print('echo -n "Setting exomiser filters..."', file = script)
+  print('python3 $UPLOAD_SCRIPT ', end = '', file = script)
+  print('-a $API_CLIENT ', end = '', file = script)
+  print('-c $CONFIG ', end = '', file = script)
+  print('-p ', str(project_id), ' ', sep = '', end = '', file = script)
+  print('-f $FILTERS_JSON', file = script)
   print('echo "complete"', file = script)
 
   # If the parsing completed successfully, upload the annotations to mosaic
-  print('UPLOAD_SCRIPT=$API_CLIENT/variant_annotations/upload_annotations.py', sep = '', file = script)
   print(file = script)
   print('# Upload exomiser annotations', sep = '', file = script)
+  print('UPLOAD_SCRIPT=$API_CLIENT/variant_annotations/upload_annotations.py', sep = '', file = script)
   print('python3 $UPLOAD_SCRIPT ', end = '', file = script)
   print('-a $API_CLIENT ', end = '', file = script)
   print('-c $CONFIG ', end = '', file = script)

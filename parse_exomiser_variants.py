@@ -57,25 +57,6 @@ def main():
   annotations = create_annotation(project, args.project_id, annotations, 'Exomiser Variant Score', 'float')
   annotations = create_annotation(project, args.project_id, annotations, 'Exomiser MOI', 'string')
 
-  # Get the project reference
-  reference = project.get_project_settings()['reference']
-
-  if reference == 'GRCh37':
-    display_column_ids = [str(annotations['Gene Name']['version_id']), str(annotations['Gene Consequence GRCh37']['version_id']), str(annotations['Genotype']['version_id'])]
-  elif reference == 'GRCh38':
-    display_column_ids = [str(annotations['Gene Name']['version_id']), str(annotations['Gene Consequence GRCh38']['version_id']), str(annotations['Genotype']['version_id'])]
-  else:
-    fail('Project has an unknown reference: ' + reference)
-
-  display_column_ids.append(str(annotations['Exomiser Rank']['version_id']))
-  display_column_ids.append(str(annotations['Exomiser P-Value']['version_id']))
-  display_column_ids.append(str(annotations['Exomiser Contributing Variant']['version_id']))
-  display_column_ids.append(str(annotations['Exomiser Gene Combined Score']['version_id']))
-  display_column_ids.append(str(annotations['Exomiser Gene Phenotype Score']['version_id']))
-  display_column_ids.append(str(annotations['Exomiser Gene Variant Score']['version_id']))
-  display_column_ids.append(str(annotations['Exomiser Variant Score']['version_id']))
-  display_column_ids.append(str(annotations['Exomiser MOI']['version_id']))
-
   # Open the output file
   output_file = open(args.output, 'w')
   print('CHROM', 'START', 'END', 'REF', 'ALT', \
@@ -87,11 +68,6 @@ def main():
         annotations['Exomiser Variant Score']['uid'], \
         annotations['Exomiser MOI']['uid'], \
         annotations['Exomiser Contributing Variant']['uid'], sep = '\t', file = output_file)
-
-  # Store the modes of inheritance that have been seen. These will be used to defined variant filters
-  categories = {}
-  categories['Top Candidates'] = []
-  categories['All Candidates']   = []
 
   # Store the variants information
   variants = {}
@@ -161,14 +137,6 @@ def main():
       variants[chrom][start][end]['Exomiser MOI'] = variants[chrom][start][end]['Exomiser MOI'] + ',' + variant_info[i]['Exomiser MOI']
       variants[chrom][start][end]['Exomiser Contributing Variant'] = variants[chrom][start][end]['Exomiser Contributing Variant'] + ',' + variant_info[i]['Exomiser Contributing Variant']
 
-    # If this is a new mode of inheritance, create a new category and store the variant id with it, unless
-    # the p-value is less than the cut-off, in which case, the variant should go in the top candidates
-    # category
-    if float(variant_info[i]['Exomiser P-Value']) < float(args.pvalue):
-      categories['Top Candidates'].append(i)
-    else:
-      categories['All Candidates'].append(i)
-
   # Loop over all variants and write them to file
   for chrom in variants:
     for start in variants[chrom]:
@@ -184,24 +152,6 @@ def main():
               variants[chrom][start][end]['Exomiser Variant Score'], \
               variants[chrom][start][end]['Exomiser MOI'], \
               variants[chrom][start][end]['Exomiser Contributing Variant'], sep = '\t', file = output_file)
-
-  # Create an Exomiser category of variant filters and create filters for the top candidates and the different
-  # modes of inheritance. First, get all the existing filters and store those in the Exomiser category
-  existing_filters = {}
-  for variant_filter in project.get_variant_filters():
-    if variant_filter['category'] == 'Exomiser':
-      existing_filters[variant_filter['name']] = variant_filter['id']
-
-  # Loop over the variant categories (top candidates and modes of inheritance) and create the filters in the 'Exomiser' category if
-  # they don't already exist, otherwise update them
-  for name in categories:
-    annotation_filters = define_annotation_filters(annotations, name, args.pvalue)
-    if name in existing_filters:
-      filter_id = existing_filters[name]
-      project.update_variant_filter(filter_id, annotation_filters)
-    else:
-      sort_column_id = annotations['Exomiser Rank']['version_id']
-      project.post_variant_filter(name = name, category = 'Exomiser', column_ids = display_column_ids, sort_column_id = sort_column_id, sort_direction = 'ascending', filter_data = annotation_filters)
 
   # Close the input and output files
   variants_file.close()
@@ -220,7 +170,6 @@ def parseCommandLine():
   # Required arguments
   parser.add_argument('--input', '-i', required = True, metavar = 'string', help = 'The exomiser variants.tsv file')
   parser.add_argument('--output', '-o', required = True, metavar = 'string', help = 'The output tsv file to upload to Mosaic')
-  parser.add_argument('--pvalue', '-e', required = True, metavar = 'float', help = 'The p-value cutoff for variants to appear in the top candidates list')
   parser.add_argument('--project_id', '-p', required = True, metavar = 'float', help = 'The Mosaic project id that these exomiser results will be uploaded to')
 
   return parser.parse_args()
@@ -243,38 +192,6 @@ def create_annotation(project, project_id, annotations, name, annotation_type):
  
   # Return the updated annotations
   return annotations
-
-# Define the annotation filters
-def define_annotation_filters(annotations, name, pvalue):
-
-  # Handle the Top Candidates filter
-  if str(name) == 'Top Candidates':
-    json_filters = {
-      "annotation_filters": [
-        {
-          "uid": annotations['Exomiser P-Value']['uid'],
-          "annotation_version_id": annotations['Exomiser P-Value']['version_id'],
-          "max": pvalue,
-          "include_nulls": False
-        }
-      ]
-    }
-
-  # The remaining filters are all based on the mode of inheritance
-  elif str(name) == 'All Candidates':
-    json_filters = {
-      "annotation_filters": [
-        {
-          "uid": annotations['Exomiser Rank']['uid'],
-          "annotation_version_id": annotations['Exomiser Rank']['version_id'],
-          "min": "1",
-          "include_nulls": False
-        }
-      ]
-    }
-
-  # Return the json object
-  return json_filters
 
 # If the script fails, provide an error message and exit
 def fail(message):
