@@ -1,17 +1,17 @@
 from datetime import date
 from os.path import exists
 from sys import path
+from pprint import pprint
 
 import argparse
 import os
 import sys
-import calypso_resources as res
 
 # Add the path of the common functions and import them
 path.append(os.path.dirname(__file__) + '/components')
 import tools_bcftools as bcftools
 import calypso_mosaic_resources as mosr
-import calypso_path as cpath
+import calypso_resources as res
 
 def main():
   global allowedClasses
@@ -25,35 +25,19 @@ def main():
     if not args.tools_directory.endswith('/'): args.tools_directory = str(args.tools_directory) + '/'
     bcftoolsExe = args.tools_directory + 'bcftools/bcftools'
   else: bcftoolsExe = 'bcftools'
-  sys.path = cpath.buildPath(sys.path, args.utils_directory)
-  import mosaic_config
-  import api_variant_annotations as api_va
-
-  # Parse the Mosaic config file to get the token and url for the api calls
-  mosaicRequired = {'MOSAIC_TOKEN': {'value': args.token, 'desc': 'An access token', 'long': '--token', 'short': '-t'},
-                    'MOSAIC_URL': {'value': args.url, 'desc': 'The api url', 'long': '--url', 'short': '-u'},
-                    'MOSAIC_ATTRIBUTES_PROJECT_ID': {'value': args.attributes_project, 'desc': 'The public attribtes project id', 'long': '--attributes_project', 'short': '-a'}}
-  mosaicConfig   = mosaic_config.mosaicConfigFile(args.config)
-  mosaicConfig   = mosaic_config.commandLineArguments(mosaicConfig, mosaicRequired)
 
   # Read the mosaicJson file to get information on how to process different annotations
   mosaicInfo = mosr.readMosaicJson(args.mosaic_json, args.reference)
 
   # Open an output tsv file to write annotations to
-  outputFile = open(args.output_tsv, 'w')
-
-  # Get the annotations from Mosaic in order to get the uids. HGVS annotations are private and so wont' be available
-  # in the resource file
-  annotations       = api_va.getAnnotationDictNameIdUid(mosaicConfig, args.project_id)
-  mosaicAnnotations = {}
-  for annotationName in annotations: mosaicAnnotations[annotationName] = annotations[annotationName]['uid']
+  outputFile = open('hgvs.tsv', 'w')
 
   # Loop over the annotations that are to be uploaded to Mosaic for this resource and get the annotation name, uid and
   # type
   annotations = {}
   uids        = []
   for annotation in mosaicInfo['resources']['HGVS']['annotations']:
-    uid = mosaicAnnotations[annotation] if annotation in mosaicAnnotations else fail('Annotation ' + str(annotation) + ' is not present in the Mosaic project')
+    uid     = mosaicInfo['resources']['HGVS']['annotations'][annotation]['uid']
     tagType = mosaicInfo['resources']['HGVS']['annotations'][annotation]['type']
     annotations[annotation] = {'uid': uid, 'type': tagType}
 
@@ -62,14 +46,17 @@ def main():
 
   # Check that the delimiter is provided to determine how to split up the compound annotation. If it is not set, then provide a
   # warning and do not preceed with this annotation
-  try: delimiter = mosaicInfo['resources']['HGVS']['delimiter']
-  except: fail('The delimiter field is not provided for resource ' + str(resource) + ' and so its annotation cannot be processed.')
+  try:
+    delimiter = mosaicInfo['resources']['HGVS']['delimiter']
+  except:
+    fail('The delimiter field is not provided for resource ' + str(resource) + ' and so its annotation cannot be processed.')
 
   # Get all the MANE transcript ids
   maneFile = '/scratch/ucgd/lustre-work/marth/marth-projects/calypso/reannotation/data/GRCh38/reference/MANE.GRCh38.v1.3.ensembl.transcript_ids.txt'
   mane     = open(maneFile, 'r')
   maneIds  = []
-  for record in mane.readlines(): maneIds.append(record.rstrip())
+  for record in mane.readlines():
+    maneIds.append(record.rstrip())
   mane.close()
   
   # Loop over all records in the vcf file
@@ -80,7 +67,8 @@ def main():
   
     # If all values are '.', this line can be ignored
     uniqueValues = set(fields[5:])
-    if len(uniqueValues) == 1 and list(uniqueValues)[0] == '.': continue
+    if len(uniqueValues) == 1 and list(uniqueValues)[0] == '.':
+      continue
 
     # Update the chromosome and position
     fields[0], fields[2] = updateCoords(fields[0], fields[2])
@@ -119,18 +107,6 @@ def main():
     topChoices = []
     for i in options:
       if options[i] == True: topChoices.append(i)
-
-    # Store all the HGVS codes as a string. The 'best' code will be provided by default, but all available
-    # codes will be stored in a separate annotation
-    allCDot = []
-    allPDot = []
-    for i in optionalCodes:
-      if positions[0] in optionalCodes[i]:
-        hgvs = optionalCodes[i][positions[0]][1]
-        if (len(hgvs) < 255) and (hgvs not in allCDot): allCDot.append(hgvs)
-      if positions[1] in optionalCodes[i]:
-        hgvs = optionalCodes[i][positions[1]][1]
-        if (len(hgvs) < 255) and (hgvs not in allPDot): allPDot.append(hgvs)
 
     # If there was a single top choice, use this:
     if len(topChoices) == 1:
@@ -195,29 +171,6 @@ def main():
             if positions[1] in optionalCodes[i]: fields = updateFields(fields, optionalCodes[i][positions[1]][1])
             else: fields.append('')
   
-    # Append the list of all available c. and p. values and write to file
-    allCDotString = ''
-    allPDotString = ''
-    for i, hgvs in enumerate(allCDot):
-      if (len(hgvs) + len(allCDotString)) < 254:
-        if i == 0: allCDotString = str(hgvs)
-        else: allCDotString = str(allCDotString) + ',' + str(hgvs)
-      else:
-        if len(allCDotString) < 233:
-          if i == 0: allCDotString += 'Too long to display'
-          else: allCDotString += ',others not displayed'
-        else: allCDotString = allCDotString[0:229] + '...,' + 'others not displayed'
-    for i, hgvs in enumerate(allPDot):
-      if (len(hgvs) + len(allPDotString)) < 254:
-        if i == 0: allPDotString = str(hgvs)
-        else: allPDotString = str(allPDotString) + ',' + str(hgvs)
-      else:
-        if len(allPDotString) < 233:
-          if i == 0: allPDotString += 'Too long to display'
-          else: allPDotString += ',others not displayed'
-        else: allPDotString = allPDotString[0:229] + '...,' + 'others not displayed'
-    fields.append(str(allCDotString))
-    fields.append(str(allPDotString))
     print('\t'.join(fields), file = outputFile)
 
   # Close the output tsv file
@@ -230,21 +183,9 @@ def parseCommandLine():
 
   # Required arguments
   parser.add_argument('--input_vcf', '-i', required = True, metavar = 'string', help = 'The input vcf file to annotate')
-  parser.add_argument('--output_tsv', '-o', required = True, metavar = 'string', help = 'The output tsv file')
   parser.add_argument('--reference', '-r', required = True, metavar = 'string', help = 'The genome reference file used')
   parser.add_argument('--tools_directory', '-s', required = True, metavar = 'string', help = 'The path to the directory where the tools live')
-  parser.add_argument('--utils_directory', '-l', required = True, metavar = 'string', help = 'The path to the public-utils directory')
   parser.add_argument('--mosaic_json', '-m', required = True, metavar = 'string', help = 'The json file describing the Mosaic parameters')
-  parser.add_argument('--project_id', '-p', required = True, metavar = 'string', help = 'The project id that variants will be uploaded to')
-
-  # Mosaic arguments
-  parser.add_argument('--config', '-c', required = True, metavar = "string", help = "The config file for Mosaic")
-  parser.add_argument('--token', '-t', required = False, metavar = "string", help = "The Mosaic authorization token")
-  parser.add_argument('--url', '-u', required = False, metavar = "string", help = "The base url for Mosaic")
-  parser.add_argument('--attributes_project', '-a', required = False, metavar = "integer", help = "The Mosaic project id that contains public attributes")
-
-  # Version
-  parser.add_argument('--version', '-v', action="version", version='Calypso annotation pipeline version: ' + str(version))
 
   return parser.parse_args()
 
@@ -277,17 +218,8 @@ def fail(message):
 
 # Initialise global variables
 
-# Pipeline version
-version = "0.0.1"
-
-# Mosaic aip information
-mosaicConfig = {}
-
 # Define the bcftools executable
 bcftoolsExe = False
-
-# Define the allowed annotation classes
-allowedClasses = ['A', 'B', 'C', 'clinvar', 'compound', 'OMIM']
 
 if __name__ == "__main__":
   main()
