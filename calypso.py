@@ -45,6 +45,9 @@ def main():
     resource_info = check_resources(reference, args.data_directory, args.tools_directory, args.data_directory + 'resources_' + str(reference) + '.json')
   resource_info = read_resources(reference, root_path, resource_info, args.no_vep)
 
+  # If threads were not set, default to 4
+  args.threads = 4 if not args.threads else args.threads
+
   # Define the tools to be used by Calypso
   resource_info = calypso_tools(resource_info)
 
@@ -401,8 +404,8 @@ def main():
   # Generate the bash script to run the annotation pipeline
   bash_filename, bash_file = open_bash_script(working_directory)
   filtered_vcf = bash_resources(resource_info, working_directory, bash_file, vcf, chr_format, args.ped, lua_filename, toml_filename)
-  annotate_vcf(resource_info, bash_file, chr_format, mosaic_samples)
-  filter_vcf(bash_file, mosaic_samples, proband, resource_info)
+  annotate_vcf(resource_info, bash_file, chr_format, args.threads, mosaic_samples)
+  filter_vcf(bash_file, mosaic_samples, proband, resource_info, args.threads)
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
   print('# Generate tsv files to upload annotations to Mosaic', file = bash_file)
@@ -626,6 +629,7 @@ def parseCommandLine():
   parser.add_argument('--reference', '-r', required = False, metavar = 'string', help = 'The reference genome to use. Allowed values: ' + ', '.join(allowed_references))
   parser.add_argument('--resource_json', '-j', required = False, metavar = 'string', help = 'The json file describing the annotation resources')
   parser.add_argument('--no_vep', '-n', required = False, action = "store_false", help = "If set, do not run VEP annotation")
+  parser.add_argument('--threads', '-t', required = False, metavar = 'integer', help = 'The number of threads to use')
 
   # Optional argument to handle HPO terms
   parser.add_argument('--hpo', '-o', required = False, metavar = "string", help = "A comma separate list of hpo ids for the proband")
@@ -1331,7 +1335,7 @@ def bash_resources(resource_info, working_directory, bash_file, vcf, chr_format,
   return filtered_vcf
 
 # Annotate the vcf file using bcftools, vcfanno, and VEP
-def annotate_vcf(resource_info, bash_file, chr_format, samples):
+def annotate_vcf(resource_info, bash_file, chr_format, threads, samples):
 
   # Generate a comma separated list of samples to extract from the vcf file
   sample_list = ''
@@ -1364,29 +1368,29 @@ def annotate_vcf(resource_info, bash_file, chr_format, samples):
   if resource_info['reference'] == 'GRCh37':
     if not chr_format:
       chroms = '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,X'
-      print('$BCFTOOLS view -a -c 1 -s "', sample_list, '" -r "', chroms, '" $VCF 2>> $STDERR \\', sep = '', file = bash_file)
-      print('  | $BCFTOOLS annotate -x INFO --rename-chrs $NOCHR_CHR_MAP 2>> $STDERR \\', file = bash_file)
+      print('$BCFTOOLS view -a -c 1 --threads ', threads, ' -s "', sample_list, '" -r "', chroms, '" $VCF 2>> $STDERR \\', sep = '', file = bash_file)
+      print('  | $BCFTOOLS annotate -x INFO --threads ', threads, ' --rename-chrs $NOCHR_CHR_MAP 2>> $STDERR \\', sep = '', file = bash_file)
     else:
       chroms = 'chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22,chrX'
-      print('$BCFTOOLS view -a -c 1 -s "', sample_list, '" -r "', chroms, '" $VCF 2>> $STDERR \\', sep = '', file = bash_file)
-      print('  | $BCFTOOLS annotate -x INFO --rename-chrs $CHR_NOCHR_MAP 2>> $STDERR \\', file = bash_file)
+      print('$BCFTOOLS view -a -c 1 --threads ', threads, ' -s "', sample_list, '" -r "', chroms, '" $VCF 2>> $STDERR \\', sep = '', file = bash_file)
+      print('  | $BCFTOOLS annotate -x INFO --threads ', threads, ' --rename-chrs $CHR_NOCHR_MAP 2>> $STDERR \\', sep = '', file = bash_file)
   elif resource_info['reference'] == 'GRCh38':
     if not chrFormat:
       chroms = '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,X'
-      print('$BCFTOOLS view -a -c 1 -s "', sample_list, '" -r "', chroms, '" $VCF 2>> $STDERR \\', sep = '', file = bash_file)
-      print('  | $BCFTOOLS annotate -x INFO --rename-chrs $NOCHR_CHR_MAP 2>> $STDERR \\', file = bash_file)
+      print('$BCFTOOLS view -a -c 1 --threads ', threads, ' -s "', sample_list, '" -r "', chroms, '" $VCF 2>> $STDERR \\', sep = '', file = bash_file)
+      print('  | $BCFTOOLS annotate -x INFO --threads ', threads, ' --rename-chrs $NOCHR_CHR_MAP 2>> $STDERR \\', sep = '', file = bash_file)
     else:
       chroms = 'chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22,chrX'
-      print('$BCFTOOLS view -a -c 1 -s "', sample_list, '" -r "', chroms, '" $VCF 2>> $STDERR \\', sep = '', file = bash_file)
-      print('  | $BCFTOOLS annotate -x INFO 2>> $STDERR \\', file = bash_file)
+      print('$BCFTOOLS view -a -c 1 --threads ', threads, ' -s "', sample_list, '" -r "', chroms, '" $VCF 2>> $STDERR \\', sep = '', file = bash_file)
+      print('  | $BCFTOOLS annotate -x INFO --threads ', threads, ' 2>> $STDERR \\', sep = '', file = bash_file)
 
   # Normalize and decompose the vcf, then extract the variants present in the required samples
-  print('  | $BCFTOOLS norm -m - -w 10000 -f $REF 2> $STDERR \\', file = bash_file)
-  print('  | $BCFTOOLS view -a -c 1 -s "', sample_list, '" 2>> $STDERR \\', sep = '', file = bash_file)
+  print('  | $BCFTOOLS norm -m - -w 10000 -f $REF --threads ', threads, ' 2> $STDERR \\', sep = '', file = bash_file)
+  print('  | $BCFTOOLS view -a -c 1 --threads ', threads, ' -s "', sample_list, '" 2>> $STDERR \\', sep = '', file = bash_file)
 
   # Annotate the vcf file using both bcftools csq and vcfanno
-  print('  | $BCFTOOLS csq -f $REF --ncsq 40 -l -g $GFF 2>> $STDERR \\', file = bash_file)
-  print('  | $VCFANNO -lua $LUA -p 16 $TOML /dev/stdin 2>> $STDERR \\', file = bash_file)
+  print('  | $BCFTOOLS csq -f $REF --ncsq 40 -l -g $GFF --threads ', threads, ' 2>> $STDERR \\', sep = '', file = bash_file)
+  print('  | $VCFANNO -lua $LUA -p ', threads, ' $TOML /dev/stdin 2>> $STDERR \\', sep = '', file = bash_file)
 
   # Annotate with VEP unless it is to be ignored
   if not resource_info['resources']['vep']['ignore']:
@@ -1429,14 +1433,14 @@ def annotate_vcf(resource_info, bash_file, chr_format, samples):
   # ensure the final vcd file is in this format
   if resource_info['reference'] == 'GRCh37':
     if chr_format:
-      print('  | $BCFTOOLS annotate -O z -o $ANNOTATEDVCF --rename-chrs $NOCHR_CHR_MAP - \\', file = bash_file)
+      print('  | $BCFTOOLS annotate -O z -o $ANNOTATEDVCF --threads ' , threads, ' --rename-chrs $NOCHR_CHR_MAP - \\', sep = '', file = bash_file)
     else:
-      print('  | $BCFTOOLS view -O z -o $ANNOTATEDVCF - \\', file = bash_file)
+      print('  | $BCFTOOLS view -O z -o $ANNOTATEDVCF --threads ', threads, ' - \\', sep = '', file = bash_file)
   elif resource_info['reference'] == 'GRCh38':
     if not chr_format:
-      print('  | $BCFTOOLS annotate -O z -o $ANNOTATEDVCF --rename-chrs $CHR_NOCHR_MAP - \\', file = bash_file)
+      print('  | $BCFTOOLS annotate -O z -o $ANNOTATEDVCF --rename-chrs $CHR_NOCHR_MAP --threads ', threads, ' - \\', sep = '', file = bash_file)
     else:
-      print('  | $BCFTOOLS view -O z -o $ANNOTATEDVCF - \\', file = bash_file)
+      print('  | $BCFTOOLS view -O z -o $ANNOTATEDVCF --threads ', threads, ' - \\', sep = '', file = bash_file)
   else:
     fail('Unknown reference: ' + str(resource_info['reference']))
   print('  >> $STDOUT 2>> $STDERR', file = bash_file)
@@ -1445,7 +1449,7 @@ def annotate_vcf(resource_info, bash_file, chr_format, samples):
 
 # Filter the final vcf file to only include variants present in the proband, and based on some
 # basic annotations
-def filter_vcf(bash_file, samples, proband, resource_info):
+def filter_vcf(bash_file, samples, proband, resource_info, threads):
 
   # Create a file containing the name of the proband for use in the filter. Note that there can be multiple probands, e.g.
   # if the family is two affected siblings
@@ -1464,7 +1468,7 @@ def filter_vcf(bash_file, samples, proband, resource_info):
   #   4. The proband has a genotype containing the alt allele
   print('# Filter the VCF file to generate variants to pass to Mosaic', file = bash_file)
   print('echo -n "Filtering final VCF file..."', file = bash_file)
-  print('$BCFTOOLS view \\', file = bash_file)
+  print('$BCFTOOLS view --threads ', threads, ' \\', sep = '', file = bash_file)
   print('  -i \'GT[@proband.txt]="alt" & GT[@proband.txt]!="mis"\' \\', file = bash_file)
   print('  $ANNOTATEDVCF \\', file = bash_file)
   print('  2>> $STDERR \\', file = bash_file)
@@ -1498,7 +1502,7 @@ def filter_vcf(bash_file, samples, proband, resource_info):
   print('  variant.FILTER == "PASS" && variant.ALT[0] != "*"\' \\', file = bash_file)
   print('  --pass-only \\', file = bash_file)
   print('  2>> $STDERR \\', file = bash_file)
-  print('  | $BCFTOOLS view -O z -o $FILTEREDVCF - \\', file = bash_file)
+  print('  | $BCFTOOLS view -O z -o $FILTEREDVCF --threads ', threads, ' - \\', sep = '', file = bash_file)
   print('  >> $STDOUT 2>> $STDERR', file = bash_file)
   print('echo "complete"', file = bash_file)
   print('$BCFTOOLS index -t $FILTEREDVCF', file = bash_file)
