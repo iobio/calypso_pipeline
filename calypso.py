@@ -515,7 +515,7 @@ def main():
   project.put_project_settings(selected_variant_annotation_version_ids = annotation_version_ids)
 
   # Generate scripts to upload filtered variants to Mosaic
-  upload_filename = working_directory + 'calypso_upload_variants.sh'
+  upload_filename = working_directory + '02_calypso_upload_variants.sh'
   try:
     upload_file = open(upload_filename, 'w')
   except:
@@ -542,7 +542,7 @@ def main():
   make_executable = os.popen('chmod +x ' + str(upload_filename)).read()
 
   # Open a file with the commands to upload all the annotations
-  upload_filename = working_directory + 'calypso_upload_annotations.sh'
+  upload_filename = working_directory + '03_calypso_upload_annotations.sh'
   try:
     upload_file = open(upload_filename, 'w')
   except:
@@ -597,9 +597,8 @@ def main():
     yaml = generate_yml(working_directory, proband, reference, str(working_directory) + str(filtered_vcf), args.ped, args.hpo)
     exomiser_script_name, exomiser_script = generate_exomiser_script(working_directory, args.tools_directory, yaml)
   
-    # Upload the exomiser variants. These may not have passed the Calypso filters, so must be uploaded prior
-    # to uploading the annotations
-    upload_exomiser_variants(working_directory, args.api_client, args.client_config, args.project_id, proband)
+    # The exomiser script currently uses the filtered vcf, so no new variants will need to be uploaded
+    #upload_exomiser_variants(working_directory, args.api_client, args.client_config, args.project_id, proband)
     exomiser_annotations(root_path, working_directory, args.api_client, args.client_config, args.project_id, proband, args.exomiser_filters_json)
     print('complete')
 
@@ -1248,7 +1247,7 @@ def generate_lua_file(working_directory):
 def open_bash_script(working_directory):
 
   # Create a script file
-  bash_filename = working_directory + 'calypso_annotation_pipeline.sh'
+  bash_filename = working_directory + '01_calypso_annotation_pipeline.sh'
   try:
     bash_file = open(bash_filename, "w")
   except:
@@ -1720,7 +1719,7 @@ def generate_yml(working_dir, proband, reference, vcf, ped, hpo):
 def generate_exomiser_script(working_dir, tools_dir, yaml):
 
   # Create script file for running exomiser
-  script_name = str(working_directory) + 'calypso_exomiser.sh'
+  script_name = str(working_directory) + '04_calypso_exomiser.sh'
   script = open(script_name, 'w')
   print('set -eou pipefail', file = script)
   print(file = script)
@@ -1793,7 +1792,7 @@ def upload_exomiser_variants(working_dir, api_client, client_config, project_id,
 def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, project_id, proband, filters_json):
 
   # Open a script file
-  script_name = working_dir + 'calypso_exomiser_annotations.sh'
+  script_name = working_dir + '05_calypso_exomiser_annotations.sh'
   try:
     script = open(script_name, 'w')
   except:
