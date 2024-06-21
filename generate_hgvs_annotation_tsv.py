@@ -7,15 +7,9 @@ import argparse
 import os
 import sys
 
-# Add the path of the common functions and import them
-path.append(os.path.dirname(__file__) + '/components')
-import tools_bcftools as bcftools
-import calypso_mosaic_resources as mosr
-import calypso_resources as res
+import read_resource_jsons as read_resources
 
 def main():
-  global allowedClasses
-  global bcftoolsExe
 
   # Parse the command line
   args = parseCommandLine()
@@ -23,11 +17,12 @@ def main():
   # Define the executable bcftools command
   if args.tools_directory:
     if not args.tools_directory.endswith('/'): args.tools_directory = str(args.tools_directory) + '/'
-    bcftoolsExe = args.tools_directory + 'bcftools/bcftools'
-  else: bcftoolsExe = 'bcftools'
+    bcftools = args.tools_directory + 'bcftools/bcftools'
+  else:
+    bcftools = 'bcftools'
 
   # Read the mosaicJson file to get information on how to process different annotations
-  mosaicInfo = mosr.readMosaicJson(args.mosaic_json, args.reference)
+  mosaic_info = read_resources.read_mosaic_json(args.mosaic_json, args.reference)
 
   # Open an output tsv file to write annotations to
   outputFile = open('hgvs.tsv', 'w')
@@ -36,9 +31,9 @@ def main():
   # type
   annotations = {}
   uids        = []
-  for annotation in mosaicInfo['resources']['HGVS']['annotations']:
-    uid     = mosaicInfo['resources']['HGVS']['annotations'][annotation]['uid']
-    tagType = mosaicInfo['resources']['HGVS']['annotations'][annotation]['type']
+  for annotation in mosaic_info['resources']['HGVS']['annotations']:
+    uid     = mosaic_info['resources']['HGVS']['annotations'][annotation]['uid']
+    tagType = mosaic_info['resources']['HGVS']['annotations'][annotation]['type']
     annotations[annotation] = {'uid': uid, 'type': tagType}
 
   # Write the header line to the tsv file
@@ -47,7 +42,7 @@ def main():
   # Check that the delimiter is provided to determine how to split up the compound annotation. If it is not set, then provide a
   # warning and do not preceed with this annotation
   try:
-    delimiter = mosaicInfo['resources']['HGVS']['delimiter']
+    delimiter = mosaic_info['resources']['HGVS']['delimiter']
   except:
     fail('The delimiter field is not provided for resource ' + str(resource) + ' and so its annotation cannot be processed.')
 
@@ -60,7 +55,8 @@ def main():
   mane.close()
   
   # Loop over all records in the vcf file
-  for record in os.popen(bcftools.query(bcftoolsExe, args.input_vcf, [mosaicInfo['resources']['HGVS']['info_field']])).readlines():
+  command = bcftools + ' query -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%INFO/' + '\\t%INFO/'.join([mosaic_info['resources']['HGVS']['info_field']]) + '\\n\' ' + str(args.input_vcf)
+  for record in os.popen(command).readlines():
 
     # Split the record on tabs
     fields = record.rstrip().split('\t')
@@ -78,8 +74,8 @@ def main():
     hgvsFields    = fields.pop()
     combinedCodes = hgvsFields.split(',') if ',' in hgvsFields else [hgvsFields]
     positions = []
-    for annotation in mosaicInfo['resources']['HGVS']['annotations']:
-      position = mosaicInfo['resources']['HGVS']['annotations'][annotation]['position']
+    for annotation in mosaic_info['resources']['HGVS']['annotations']:
+      position = mosaic_info['resources']['HGVS']['annotations'][annotation]['position']
       if position: positions.append(position)
 
     # Loop over the HGVS annotations
@@ -217,9 +213,6 @@ def fail(message):
   exit(1)
 
 # Initialise global variables
-
-# Define the bcftools executable
-bcftoolsExe = False
 
 if __name__ == "__main__":
   main()

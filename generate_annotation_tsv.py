@@ -6,14 +6,9 @@ import argparse
 import os
 import sys
 
-# Add the path of the common functions and import them
-path.append(os.path.dirname(__file__) + '/components')
-import tools_bcftools as bcftools
-import calypso_resources as res
-import calypso_mosaic_resources as mosr
+import read_resource_jsons as read_resources
 
 def main():
-  global bcftoolsExe
 
   # Parse the command line
   args = parseCommandLine()
@@ -22,12 +17,12 @@ def main():
   if args.tools_directory:
     if not args.tools_directory.endswith('/'):
       args.tools_directory = str(args.tools_directory) + '/'
-    bcftoolsExe = args.tools_directory + 'bcftools/bcftools'
+    bcftools = args.tools_directory + 'bcftools/bcftools'
   else:
-    bcftoolsExe = 'bcftools'
+    bcftools = 'bcftools'
 
   # Read the mosaicJson file to get information on how to process different annotations
-  mosaicInfo = mosr.readMosaicJson(args.mosaic_json, args.reference)
+  mosaicInfo = read_resources.read_mosaic_json(args.mosaic_json, args.reference)
 
   # Open an output tsv file to write annotations to
   output_file = open(args.output_tsv, 'w')
@@ -45,7 +40,7 @@ def main():
   print('CHROM\tSTART\tEND\tREF\tALT\t', '\t'.join(str(x['uid']) for x in annotations.values()), sep = '', file = output_file)
 
   # Parse the vcf file, check the annotations and generate a tsv file for upload to Mosaic
-  process_vcf(args.input_vcf, annotations, output_file)
+  process_vcf(bcftools, args.input_vcf, annotations, output_file)
 
   # Close the output tsv file
   output_file.close()
@@ -67,11 +62,11 @@ def parseCommandLine():
 
 # The majority of annotations can be processed in a standard way. The type is checked and numerical
 # annotations are checked to ensure they fall within the required bounds
-def process_vcf(vcf, annotations, output_file):
-  global bcftoolsExe
+def process_vcf(bcftools, vcf, annotations, output_file):
 
   # Loop over all records in the vcf file
-  for record in os.popen(bcftools.query(bcftoolsExe, vcf, annotations.keys())).readlines():
+  command = bcftools + ' query -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%INFO/' + '\\t%INFO/'.join(annotations.keys()) + '\\n\' ' + str(vcf)
+  for record in os.popen(command).readlines():
 
     # Split the record on tabs
     fields = record.rstrip().split('\t')
@@ -145,9 +140,6 @@ def fail(message):
   exit(1)
 
 # Initialise global variables
-
-# Define the bcftools executable
-bcftoolsExe = False
 
 if __name__ == "__main__":
   main()
