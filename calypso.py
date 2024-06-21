@@ -599,6 +599,15 @@ def main():
     application_properties(working_directory, args.tools_directory, reference)
     yaml = generate_yml(working_directory, proband, reference, str(working_directory) + str(filtered_vcf), args.ped, args.hpo)
     exomiser_script_name, exomiser_script = generate_exomiser_script(working_directory, args.tools_directory, yaml)
+
+    # Check the variant filters json is set
+    if not args.exomiser_filters_json:
+      if mosaic_info['exomiser_variant_filters']:
+        args.exomiser_filters_json = str(args.data_directory) + str(mosaic_info['exomiser_variant_filters'])
+      else:
+        fail('No json file describing the exomiser variant filters is specified. This can be specified in the mosaic resources file or on the command line')
+    if not os.path.exists(args.exomiser_filters_json):
+      fail('ERROR: The json file describing the preset exomiser variant filters does not exist (' + str(args.exomiser_filters_json) + ')')
   
     # The exomiser script currently uses the filtered vcf, so no new variants will need to be uploaded
     #upload_exomiser_variants(working_directory, args.api_client, args.client_config, args.project_id, proband)
@@ -623,7 +632,7 @@ def parseCommandLine():
   parser.add_argument('--variant_filters', '-f', required = False, metavar = 'string', help = 'The json file describing the variant filters to apply to each project')
 
   # Exomiser arguments
-  parser.add_argument('--exomiser_filters_json', '-x', required = True, metavar = 'string', help = 'The json describing the exomiser filters')
+  parser.add_argument('--exomiser_filters_json', '-x', required = False, metavar = 'string', help = 'The json describing the exomiser filters')
 
   # Optional pipeline arguments
   parser.add_argument('--reference', '-r', required = False, metavar = 'string', help = 'The reference genome to use. Allowed values: ' + ', '.join(allowed_references))
@@ -1038,6 +1047,11 @@ def read_mosaic_json(filename, reference):
     mosaic_info['variantFilters'] = mosaic_data['variant_filters']
   except:
     fail('The Mosaic json does not include a json describing the variant filters to apply')
+
+  try:
+    mosaic_info['exomiser_variant_filters'] = mosaic_data['exomiser_variant_filters']
+  except:
+    fail('The Mosaic json does not include a json describing the variant filters to apply to exomiser variants')
 
   # Loop over all the specified resources, and get all information required to pull the annotations
   # into Mosaic
