@@ -119,6 +119,11 @@ def main():
     if not exists(vcf):
       fail('Input vcf file does not exist')
 
+    # Check that the index file also exists
+    index_file = vcf + '.tbi'
+    if not exists(index_file):
+      fail('The vcf index file does not exist')
+
     # Get the vcf header
     header = os.popen(str(resource_info['tools']['bcftools']) + ' view -h ' + str(vcf)).read()
     for line in header.split('\n'):
