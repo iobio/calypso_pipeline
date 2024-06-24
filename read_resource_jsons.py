@@ -376,3 +376,8 @@ def read_mosaic_json(filename, reference):
 
   # Return the mosaic information
   return mosaic_info
+
+# If the script fails, provide an error message and exit
+def fail(message):
+  print(message, sep = '')
+  exit(1)

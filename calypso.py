@@ -128,8 +128,10 @@ def main():
 
     # Loop over the samples in the vcf file and find the ones in the mosaic_samples list
     for vcf_sample in vcf_samples:
-      if '-' in vcf_sample:
-        vcf_sample = vcf_sample.split('-')[0]
+
+      # This is a hack for UDN where the sample name has the experiment id appended
+      #if '-' in vcf_sample:
+      #  vcf_sample = vcf_sample.split('-')[0]
       if vcf_sample in mosaic_samples:
         mosaic_samples[vcf_sample]['vcf_file'] = vcf
         mosaic_samples[vcf_sample]['vcf_sample_name'] = vcf_sample
@@ -264,7 +266,7 @@ def main():
   # line, use these
   if not args.hpo:
     hpo_terms = []
-    for hpo_term in project.get_sample_hpo_terms(sample_id):
+    for hpo_term in project.get_sample_hpo_terms(mosaic_samples[proband]['id']):
       if hpo_term['hpo_id'] not in hpo_terms:
         hpo_terms.append(hpo_term['hpo_id'])
     args.hpo = ','.join(hpo_terms)
@@ -965,7 +967,7 @@ def bash_resources(resource_info, working_directory, bash_file, vcf, chr_format,
   print('LUA=$FILEPATH/', lua_filename, sep = '', file = bash_file)
 
   # If the chr map is required, include the path to it. The chromosome format is different depending on whether this is a GRCh37
-  # or GRCh38 reference. GRCh37 needs to use the '1' format, but GRCh38 uses 'chr1'. chrFormat is False if in the '1' format
+  # or GRCh38 reference. GRCh37 needs to use the '1' format, but GRCh38 uses 'chr1'. chr_format is False if in the '1' format
   if resource_info['reference'] == 'GRCh37':
     if chr_format:
       print('CHR_NOCHR_MAP=$DATAPATH/chr_nochr_map.txt', sep = '', file = bash_file)
@@ -1013,7 +1015,7 @@ def annotate_vcf(resource_info, bash_file, chr_format, threads, samples):
 ################
 ################
   # Start the script by extracting the required samples from the vcf, and limiting to the autosome and X chromosomes.
-  # Ensure the correct format is used for the chromosomes. chrFormat is False if in the '1' format
+  # Ensure the correct format is used for the chromosomes. chr_format is False if in the '1' format
   if resource_info['reference'] == 'GRCh37':
     if not chr_format:
       chroms = '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,X'
@@ -1024,7 +1026,7 @@ def annotate_vcf(resource_info, bash_file, chr_format, threads, samples):
       print('$BCFTOOLS view -a -c 1 --threads ', threads, ' -s "', sample_list, '" -r "', chroms, '" $VCF 2>> $STDERR \\', sep = '', file = bash_file)
       print('  | $BCFTOOLS annotate -x INFO --threads ', threads, ' --rename-chrs $CHR_NOCHR_MAP 2>> $STDERR \\', sep = '', file = bash_file)
   elif resource_info['reference'] == 'GRCh38':
-    if not chrFormat:
+    if not chr_format:
       chroms = '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,X'
       print('$BCFTOOLS view -a -c 1 --threads ', threads, ' -s "', sample_list, '" -r "', chroms, '" $VCF 2>> $STDERR \\', sep = '', file = bash_file)
       print('  | $BCFTOOLS annotate -x INFO --threads ', threads, ' --rename-chrs $NOCHR_CHR_MAP 2>> $STDERR \\', sep = '', file = bash_file)
