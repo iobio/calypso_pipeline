@@ -142,6 +142,14 @@ def main():
         mosaic_samples[vcf_sample]['vcf_sample_name'] = vcf_sample
         print('  Sample ', vcf_sample, ' appears as "', vcf_sample, '" in the header of vcf file: ', vcf, sep = '')
 
+    # Check that all samples have been associated with a vcf file
+    samples_with_no_vcf = []
+    for sample in mosaic_samples:
+      if 'vcf_file' not in mosaic_samples[sample]:
+        samples_with_no_vcf.append(sample)
+    if samples_with_no_vcf:
+      fail('\nERROR: The following samples do not appear in the vcf header:\n  ' + '\n  '.join(samples_with_no_vcf))
+
   # If the vcf wasn't specified on the command line, get it from the Mosaic project
   else:
     all_vcfs = []
