@@ -1339,7 +1339,8 @@ def generate_yml(working_dir, proband, reference, vcf, ped, hpo):
   # Define the resources to be used for determining pathogenicity
   print('  pathogenicitySources: [', file = yaml)
   print('    REVEL,', file = yaml)
-  print('    MVP', file = yaml)
+  print('    MVP,', file = yaml)
+  print('    ALPHA_MISSENSE', file = yaml)
   print('  ]', file = yaml)
   print(file = yaml)
 
