@@ -44,7 +44,9 @@ def main():
   if args.resource_json:
     resource_info = check_resources(reference, args.data_directory, args.tools_directory, args.resource_json)
   else:
-    resource_info = check_resources(reference, args.data_directory, args.tools_directory, args.data_directory + 'resources_' + str(reference) + '.json')
+    args.resource_json = str(args.data_directory) + 'resources_' + str(reference) + '.json'
+    resource_info = check_resources(reference, args.data_directory, args.tools_directory, args.resource_json)
+  print('Using resources file: ', args.resource_json, sep = '')
   resource_info = read_resources.read_resources(reference, root_path, resource_info, args.no_vep)
 
   # If threads were not set, default to 4
@@ -308,6 +310,7 @@ def main():
   # Read the Mosaic json and validate its contents
   if not args.mosaic_json:
     args.mosaic_json = args.data_directory + 'resources_mosaic_' + reference + '.json'
+  print('Using Mosaic resources file: ', args.mosaic_json, sep = '')
   mosaic_info = read_resources.read_mosaic_json(args.mosaic_json, reference)
 
   # Check that the Mosaic resource file does not include resources that are not defined in the resources json
@@ -1495,13 +1498,11 @@ def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, pr
   print('# Set exomiser variant filters', file = script)
   print('UPLOAD_SCRIPT=$API_CLIENT/project_setup/set_variant_filters.py', file = script)
   print('FILTERS_JSON=', filters_json, sep = '', file = script)
-  print('echo -n "Setting exomiser filters..."', file = script)
   print('python3 $UPLOAD_SCRIPT ', end = '', file = script)
   print('-a $API_CLIENT ', end = '', file = script)
   print('-c $CONFIG ', end = '', file = script)
   print('-p ', str(project_id), ' ', sep = '', end = '', file = script)
   print('-f $FILTERS_JSON', file = script)
-  print('echo "complete"', file = script)
 
   # If the parsing completed successfully, upload the annotations to mosaic
   print(file = script)
