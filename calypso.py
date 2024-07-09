@@ -595,7 +595,7 @@ def main():
   # Calypso); create the filters; and finally update the project settings to put the filters in the correct category and sort order.
   # Note that the filters to be applied depend on the family structure. E.g. de novo filters won't be added to projects without parents
   if not args.variant_filters:
-    args.variant_filters = mosaic_info['variant_filters']:
+    args.variant_filters = mosaic_info['variant_filters']
   if args.api_client.endswith('/'):
     variant_filter_command = 'python3 ' + args.api_client + 'project_setup/set_variant_filters.py'
   else:
