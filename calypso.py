@@ -291,7 +291,6 @@ def main():
     print('Using the HPO terms: No terrms available')
 
   # Get all the project attributes in the target Mosaic project
-  print('Generating Calypso script file...', end = '')
 
   # Get all the project attributes from Mosaic for the project
   project_attributes = {}
@@ -457,9 +456,6 @@ def main():
   bash_file.close()
   make_executable = os.popen('chmod +x ' + bash_filename).read()
 
-  # Print the pipeline completed successfully
-  print('complete')
-
   # Prepare the target project. This includes:
   # 1. Remove any unnecessary annotations from the project
   # 2. Import public annotations into the project
@@ -598,6 +594,8 @@ def main():
   # exist with the same name; fill out variant filter details not in the json (e.g. the uids of private annotations created by
   # Calypso); create the filters; and finally update the project settings to put the filters in the correct category and sort order.
   # Note that the filters to be applied depend on the family structure. E.g. de novo filters won't be added to projects without parents
+  if not args.variant_filters:
+    args.variant_filters = mosaic_info['variant_filters']:
   if args.api_client.endswith('/'):
     variant_filter_command = 'python3 ' + args.api_client + 'project_setup/set_variant_filters.py'
   else:
