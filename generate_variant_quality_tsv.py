@@ -22,13 +22,16 @@ def main():
     bcftools = 'bcftools'
 
   # Open an output tsv file to write annotations to
-  outputFile = open('variant_confidence.tsv', 'w')
+  outputFile = open('variant_quality.tsv', 'w')
 
   # Write the header line to the tsv file
   print('CHROM\tSTART\tEND\tREF\tALT\t', args.uid, file = outputFile)
 
   # Loop over all records in the vcf file
-  command = bcftools + ' query -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%INFO/het_low_qual\\t%INFO/het_med_qual\\t%INFO/het_hi_qual\\t%INFO/hom_low_qual\\t%INFO/hom_med_qual\\t%INFO/hom_hi_qual' + '\\n\' ' + str(args.input_vcf)
+
+  ### UPDATE FOR ONLY HIGH AND LOW QUAL - NO MEDIUM
+  #command = bcftools + ' query -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%INFO/het_low_qual\\t%INFO/het_med_qual\\t%INFO/het_hi_qual\\t%INFO/hom_low_qual\\t%INFO/hom_med_qual\\t%INFO/hom_hi_qual' + '\\n\' ' + str(args.input_vcf)
+  command = bcftools + ' query -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%INFO/het_low_qual\\t%INFO/het_hi_qual\\t%INFO/hom_low_qual\\t%INFO/hom_hi_qual' + '\\n\' ' + str(args.input_vcf)
   for record in os.popen(command).readlines():
 
     # Split the record on tabs
@@ -37,27 +40,43 @@ def main():
 
     # A maximum of one of the qual fields will have a value (which will be the proband id). Use the order to determine the
     # assigned quality
+
+    ### UPDATE FOR ONLY HIGH AND LOW QUAL - NO MEDIUM
+    #text = ''.join(fields[5:11])
     text = ''.join(fields[5:11])
-    if text.count('.') != 5:
+    #if text.count('.') != 5:
+    if text.count('.') != 3:
       fail('Unexpected number of variant confidence values assigned to variant at ' + str(fields[0]) + ':' + str(fields[1]))
 
     # If there are no .'s at the beginning of "text", this is a het_low_qual. If there is one, then this is a het_med_qual etc
     # based on the order in the command above this loop
-    variant_confidence = False
-    if text.startswith('.....'):
-      variant_confidence = 'High'
-    elif text.startswith('....'):
-      variant_confidence = 'Medium'
-    elif text.startswith('...'):
-      variant_confidence = 'Low'
+    variant_quality = False
+
+    # THE FOLLOWING IS FOR THE CASE WHERE WE HAVE MEDIUM
+#    if text.startswith('.....'):
+#      variant_quality = 'High'
+#    elif text.startswith('....'):
+#      variant_quality = 'Medium'
+#    elif text.startswith('...'):
+#      variant_quality = 'Low'
+#    elif text.startswith('..'):
+#      variant_quality = 'High'
+#    elif text.startswith('.'):
+#      variant_quality = 'Medium'
+#    else:
+#      variant_quality = 'Low'
+
+    # AND THE FOLLOWING IS JUST PASS \ FAIL
+    if text.startswith('...'):
+      variant_quality = 'Pass'
     elif text.startswith('..'):
-      variant_confidence = 'High'
+      variant_quality = 'Fail'
     elif text.startswith('.'):
-      variant_confidence = 'Medium'
+      variant_quality = 'Pass'
     else:
-      variant_confidence = 'Low'
+      variant_quality = 'Fail'
   
-    print('\t'.join(fields[0:5]), '\t', variant_confidence, sep = '', file = outputFile)
+    print('\t'.join(fields[0:5]), '\t', variant_quality, sep = '', file = outputFile)
 
   # Close the output tsv file
   outputFile.close()

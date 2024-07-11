@@ -1189,23 +1189,34 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads):
   # ...and that the variant does not have "*" as the alt allele
   print('  variant.FILTER == "PASS" && variant.ALT[0] != "*"\' \\', file = bash_file)
 
-  # Then tag variants based on their confidence
+  # Then tag variants based on their quality
+  ###### TEMP CHANGE FOR TESTING
+  ###### There medium quality are being called high quality for now pending user testing
+#  print('  --trio \"het_low_qual:kid.het && ', file = bash_file)
+#  print('    ((kid.GQ >= 10 && kid.GQ < 20 && kid.AB >= 0.1 && kid.AB <= 0.9) || ', file = bash_file)
+#  print('    (kid.GQ >= 20 && kid.AB >= 0.1 && kid.AB < 0.2) || ', file = bash_file)
+#  print('    (kid.GQ >= 20 && kid.AB > 0.8 && kid.AB <= 0.9))\" \\', file = bash_file)
+#  print('  --trio "het_med_qual:kid.het && ', file = bash_file)
+#  print('    ((kid.GQ >=20 && kid.GQ < 30 && kid.AB >= 0.2 && kid.AB <= 0.8) || ', file = bash_file)
+#  print('    (kid.GQ >=30 && kid.AB >= 0.2 && kid.AB < 0.3) || ', file = bash_file)
+#  print('    (kid.GQ >=30 && kid.AB > 0.7 && kid.AB <= 0.8))\" \\', file = bash_file)
+#  print('  --trio \"het_hi_qual:kid.het && kid.GQ >= 30 && kid.AB >= 0.3 && kid.AB <= 0.7\" \\', file = bash_file)
+#  print('  --trio \"hom_low_qual:kid.hom_alt && ', file = bash_file)
+#  print('    ((kid.GQ >= 10 && kid.GQ < 20 && kid.AB >= 0.7) || ', file = bash_file)
+#  print('    (kid.GQ >= 20 && kid.AB >= 0.7 && kid.AB < 0.8))\" \\', file = bash_file)
+#  print('  --trio "hom_med_qual: kid.hom_alt && ', file = bash_file)
+#  print('    ((kid.GQ >= 20 && kid.GQ < 30 && kid.AB >= 0.8) || ', file = bash_file)
+#  print('    (kid.GQ >= 30 && kid.AB >= 0.8 && kid.AB < 0.9))\" \\', file = bash_file)
+#  print('  --trio \"hom_hi_qual: kid.hom_alt && kid.GQ >= 30 && kid.AB >= 0.9\" \\', file = bash_file)
   print('  --trio \"het_low_qual:kid.het && ', file = bash_file)
   print('    ((kid.GQ >= 10 && kid.GQ < 20 && kid.AB >= 0.1 && kid.AB <= 0.9) || ', file = bash_file)
   print('    (kid.GQ >= 20 && kid.AB >= 0.1 && kid.AB < 0.2) || ', file = bash_file)
   print('    (kid.GQ >= 20 && kid.AB > 0.8 && kid.AB <= 0.9))\" \\', file = bash_file)
-  print('  --trio "het_med_qual:kid.het && ', file = bash_file)
-  print('    ((kid.GQ >=20 && kid.GQ < 30 && kid.AB >= 0.2 && kid.AB <= 0.8) || ', file = bash_file)
-  print('    (kid.GQ >=30 && kid.AB >= 0.2 && kid.AB < 0.3) || ', file = bash_file)
-  print('    (kid.GQ >=30 && kid.AB > 0.7 && kid.AB <= 0.8))\" \\', file = bash_file)
-  print('  --trio \"het_hi_qual:kid.het && kid.GQ >= 30 && kid.AB >= 0.3 && kid.AB <= 0.7\" \\', file = bash_file)
+  print('  --trio \"het_hi_qual:kid.het && kid.GQ >= 20 && kid.AB >= 0.2 && kid.AB <= 0.8\" \\', file = bash_file)
   print('  --trio \"hom_low_qual:kid.hom_alt && ', file = bash_file)
   print('    ((kid.GQ >= 10 && kid.GQ < 20 && kid.AB >= 0.7) || ', file = bash_file)
   print('    (kid.GQ >= 20 && kid.AB >= 0.7 && kid.AB < 0.8))\" \\', file = bash_file)
-  print('  --trio "hom_med_qual: kid.hom_alt && ', file = bash_file)
-  print('    ((kid.GQ >= 20 && kid.GQ < 30 && kid.AB >= 0.8) || ', file = bash_file)
-  print('    (kid.GQ >= 30 && kid.AB >= 0.8 && kid.AB < 0.9))\" \\', file = bash_file)
-  print('  --trio \"hom_hi_qual: kid.hom_alt && kid.GQ >= 30 && kid.AB >= 0.9\" \\', file = bash_file)
+  print('  --trio \"hom_hi_qual: kid.hom_alt && kid.GQ >= 20 && kid.AB >= 0.8\" \\', file = bash_file)
 
   # And final compression
   print('  --pass-only \\', file = bash_file)
