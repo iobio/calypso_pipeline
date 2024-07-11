@@ -340,7 +340,7 @@ def main():
   # Get all the project annotations already in the Mosaic project
   project_annotations = {}
   for annotation in project.get_variant_annotations():
-    project_annotations[annotation['uid']] = {'id': annotation['id'], 'name': annotation['name'], 'type': annotation['type']}
+    project_annotations[annotation['uid']] = {'id': annotation['id'], 'name': annotation['name'], 'type': annotation['value_type']}
 
   # Get all available public annotations
   public_annotations = {}
@@ -401,14 +401,10 @@ def main():
             break
       else:
         data = project.post_variant_annotation(name = annotation, value_type = value_type, privacy_level = 'private')
-
-        print('CHECK CREATED PRIVATE ANNOTATION', annotation)
-        print(data)
-        exit(0)
         private_annotations[data['uid']] = {'name': annotation, 'id': data['id']}
         mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': data['uid'], 'type': value_type, 'id': data['id']}
 
-        # Add the created private annotation to the projectAnnotations dictionary
+        # Add the created private annotation to the project_annotations dictionary
         project_annotations[data['uid']] = {'id': data['id'], 'name': annotation, 'type': value_type}
 
   # Loop over all of the public annotations defined in the Mosaic resources json file and check that they exist
@@ -441,7 +437,7 @@ def main():
   print('# Generate tsv files to upload annotations to Mosaic', file = bash_file)
   print('GENERATE_TSV=', root_path, '/generate_annotation_tsv.py', sep = '', file = bash_file)
   print('GENERATE_HGVS_TSV=', root_path, '/generate_hgvs_annotation_tsv.py', sep = '', file = bash_file)
-  print('TOOLS_PATH=', args.tools_directory, sep = '', file = bash_file)
+  print('GENERATE_VARIANT_QUALITY_TSV=', root_path, '/generate_variant_quality_tsv.py', sep = '', file = bash_file)
   print('MOSAIC_JSON=', args.mosaic_json, sep = '', file = bash_file)
 
   # Loop over all the resources to be uploaded to Mosaic
@@ -453,6 +449,15 @@ def main():
     if resource == 'HGVS':
       generate_hgvs_tsv(bash_file, reference)
       tsv_files.append('hgvs.tsv')
+
+    # Extract the Variant Quality scores after getting the uid of this annotation
+    elif resource == 'variant_quality':
+      for annotation in private_annotations:
+        if private_annotations[annotation]['name'] == 'Variant Quality':
+          uid = annotation
+          break
+      generate_variant_quality_tsv(bash_file, uid)
+      tsv_files.append('variant_quality.tsv')
 
     # Annotations to ignore
     elif resource == 'GQ':
@@ -1228,10 +1233,21 @@ def generate_hgvs_tsv(bash_file, reference):
   print('# Resource: HGVS', sep = '', file = bash_file)
   print('echo -n "Creating tsv file for HGVS..."', sep = '', file = bash_file)
   print('python3 $GENERATE_HGVS_TSV ', end = '', file = bash_file)
-  print('  -i $FILTEREDVCF ', end = '', file = bash_file)
-  print('  -r "', reference, '" ', sep = '', end = '', file = bash_file)
-  print('  -m $MOSAIC_JSON ', end = '', file = bash_file)
-  print('  -s $TOOLS_PATH ', file = bash_file)
+  print('-i $FILTEREDVCF ', end = '', file = bash_file)
+  print('-r "', reference, '" ', sep = '', end = '', file = bash_file)
+  print('-m $MOSAIC_JSON ', end = '', file = bash_file)
+  print('-s $TOOLPATH ', file = bash_file)
+  print('echo "complete"', file = bash_file)
+
+# Call the command to extract the variant quality values
+def generate_variant_quality_tsv(bash_file, uid):
+  print(file = bash_file)
+  print('# Resource: Variant Quality', sep = '', file = bash_file)
+  print('echo -n "Creating tsv file for Variant Quality..."', sep = '', file = bash_file)
+  print('python3 $GENERATE_VARIANT_QUALITY_TSV ', end = '', file = bash_file)
+  print('-i $FILTEREDVCF ', end = '', file = bash_file)
+  print('-u "', uid, '" ', sep = '', end = '', file = bash_file)
+  print('-t $TOOLPATH ', file = bash_file)
   print('echo "complete"', file = bash_file)
 
 # Generate the command to process general annotations
@@ -1247,7 +1263,7 @@ def generate_annotation_tsv(bash_file, resource, reference):
   print('-e ', resource, ' ', sep = '', end = '', file = bash_file)
   print('-r ', reference, ' ', sep = '', end = '', file = bash_file)
   print('-m $MOSAIC_JSON ', end = '', file = bash_file)
-  print('-s $TOOLS_PATH', file = bash_file)
+  print('-s $TOOLPATH', file = bash_file)
   print('echo "complete"', file = bash_file)
 
   # Return the name of the output file
