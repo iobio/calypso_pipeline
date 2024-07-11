@@ -300,7 +300,7 @@ def read_mosaic_json(filename, reference):
   try:
     mosaic_info['exomiser_variant_filters'] = mosaic_data['exomiser_variant_filters']
   except:
-    fail('The Mosaic json does not include a json describing the variant filters to apply to exomiser variants')
+    pass
 
   # Loop over all the specified resources, and get all information required to pull the annotations
   # into Mosaic

@@ -17,7 +17,7 @@ def main():
   print('Starting the Calypso pipeline')
 
   # Parse the command line
-  args = parseCommandLine()
+  args = parse_command_line()
 
   # Check the supplied parameters are as expected, then expand the path to enable scripts and api commands
   # to be accessed for Calypso
@@ -86,30 +86,6 @@ def main():
   if not proband:
     fail('Could not find a proband for this project')
 
-  # If the ped file has not been defined, generate a bed file from pedigree information in Mosaic
-  if not args.ped:
-
-    # Open a ped file in the working directory
-    ped_filename = str(working_directory) + str(proband) + '.ped'
-    ped_file = open(ped_filename, 'w')
-    print('#Family_id', 'individual_id', 'paternal_id', 'maternal_id', 'sex', 'affected_status', sep = '\t', file = ped_file)
- 
-    # Parse the pedigree associated with the proband
-    for pedigree_line in project.get_pedigree(mosaic_samples[proband]['id']):
-      kindred_id = pedigree_line['pedigree']['kindred_id']
-      sample_id = mosaic_sample_ids[pedigree_line['pedigree']['sample_id']]
-      paternal_id = mosaic_sample_ids[pedigree_line['pedigree']['paternal_id']] if pedigree_line['pedigree']['paternal_id'] else 0
-      maternal_id = mosaic_sample_ids[pedigree_line['pedigree']['maternal_id']] if pedigree_line['pedigree']['maternal_id'] else 0
-      sex = pedigree_line['pedigree']['sex']
-      affection_status = pedigree_line['pedigree']['affection_status']
-      print(kindred_id, sample_id, paternal_id, maternal_id, sex, affection_status, sep = '\t', file = ped_file)
-
-    # Close the ped file
-    ped_file.close()
-
-    # Set args.ped to the created ped file
-    args.ped = ped_filename
-
   # Get the vcf file for each sample. Currently, Calypso only works for projects with a single multi-sample vcf.
   # Determine the name of this vcf file, then determine if this file has chromosomes listed as e.g. '1' or 'chr1'.
   # If a vcf was supplied on the command line, use this. This is for occasions where the vcf file has not been
@@ -137,12 +113,18 @@ def main():
     for vcf_sample in vcf_samples:
 
       # This is a hack for UDN where the sample name has the experiment id appended
-      #if '-' in vcf_sample:
-      #  vcf_sample = vcf_sample.split('-')[0]
-      if vcf_sample in mosaic_samples:
-        mosaic_samples[vcf_sample]['vcf_file'] = vcf
-        mosaic_samples[vcf_sample]['vcf_sample_name'] = vcf_sample
-        print('  Sample ', vcf_sample, ' appears as "', vcf_sample, '" in the header of vcf file: ', vcf, sep = '')
+      vcf_sample_name = vcf_sample
+      if args.udn:
+        if '-' in vcf_sample:
+          vcf_sample = vcf_sample.split('-')[0]
+          mosaic_samples[vcf_sample]['vcf_file'] = vcf
+          mosaic_samples[vcf_sample]['vcf_sample_name'] = vcf_sample_name
+
+      else:
+        if vcf_sample in mosaic_samples:
+          mosaic_samples[vcf_sample]['vcf_file'] = vcf
+          mosaic_samples[vcf_sample]['vcf_sample_name'] = vcf_sample
+      print('  Sample ', vcf_sample, ' appears as "', vcf_sample_name, '" in the header of vcf file: ', vcf, sep = '')
 
     # Check that all samples have been associated with a vcf file
     samples_with_no_vcf = []
@@ -196,6 +178,35 @@ def main():
 
     # Store the name of the vcf file
     vcf = mosaic_samples[list(mosaic_samples.keys())[0]]['vcf_file']
+
+  # If the ped file has not been defined, generate a bed file from pedigree information in Mosaic
+  if not args.ped:
+
+    # Open a ped file in the working directory
+    ped_filename = str(working_directory) + str(proband) + '.ped'
+    ped_file = open(ped_filename, 'w')
+    print('#Family_id', 'individual_id', 'paternal_id', 'maternal_id', 'sex', 'affected_status', sep = '\t', file = ped_file)
+ 
+    # Parse the pedigree associated with the proband
+    for pedigree_line in project.get_pedigree(mosaic_samples[proband]['id']):
+      kindred_id = pedigree_line['pedigree']['kindred_id']
+      sample_id = mosaic_sample_ids[pedigree_line['pedigree']['sample_id']]
+      paternal_id = mosaic_sample_ids[pedigree_line['pedigree']['paternal_id']] if pedigree_line['pedigree']['paternal_id'] else 0
+      maternal_id = mosaic_sample_ids[pedigree_line['pedigree']['maternal_id']] if pedigree_line['pedigree']['maternal_id'] else 0
+      sex = pedigree_line['pedigree']['sex']
+      affection_status = pedigree_line['pedigree']['affection_status']
+
+      # The ped file must use the names as they appear in the vcf file, so use the sample_id to get the vcf_sample_name
+      sample_vcf_id = mosaic_samples[sample_id]['vcf_sample_name']
+      paternal_vcf_id = mosaic_samples[paternal_id]['vcf_sample_name'] if paternal_id != 0 else 0
+      maternal_vcf_id = mosaic_samples[maternal_id]['vcf_sample_name'] if maternal_id != 0 else 0
+      print(kindred_id, sample_vcf_id, paternal_vcf_id, maternal_vcf_id, sex, affection_status, sep = '\t', file = ped_file)
+
+    # Close the ped file
+    ped_file.close()
+
+    # Set args.ped to the created ped file
+    args.ped = ped_filename
 
   # Check that the reference genome associated with the vcf file matches the project reference
   header = os.popen(str(resource_info['tools']['bcftools']) + ' view -h ' + str(vcf)).read()
@@ -617,10 +628,11 @@ def main():
     application_properties(working_directory, args.tools_directory, reference)
     yaml = generate_yml(working_directory, proband, reference, str(working_directory) + str(filtered_vcf), args.ped, args.hpo)
     exomiser_script_name, exomiser_script = generate_exomiser_script(working_directory, args.tools_directory, yaml)
+    print('complete')
 
     # Check the variant filters json is set
     if not args.exomiser_filters_json:
-      if mosaic_info['exomiser_variant_filters']:
+      if 'exomiser_variant_filters' in mosaic_info:
         args.exomiser_filters_json = str(args.data_directory) + str(mosaic_info['exomiser_variant_filters'])
       else:
         fail('No json file describing the exomiser variant filters is specified. This can be specified in the mosaic resources file or on the command line')
@@ -629,11 +641,12 @@ def main():
   
     # The exomiser script currently uses the filtered vcf, so no new variants will need to be uploaded
     #upload_exomiser_variants(working_directory, args.api_client, args.client_config, args.project_id, proband)
+    print('Applying exomiser filters...', end = '')
     exomiser_annotations(root_path, working_directory, args.api_client, args.client_config, args.project_id, proband, args.exomiser_filters_json)
     print('complete')
 
 # Input options
-def parseCommandLine():
+def parse_command_line():
   global version
   parser = argparse.ArgumentParser(description='Process the command line')
 
@@ -664,8 +677,11 @@ def parseCommandLine():
   # Optional mosaic arguments
   parser.add_argument('--mosaic_json', '-m', required = False, metavar = 'string', help = 'The json file describing the Mosaic parameters')
 
+  # Flag for UDN projects as they have a slightly different naming convention
+  parser.add_argument('--udn', '-u', required = False, action = 'store_true', help = 'Set for UDN projects to handle the request id in the sample name')
+
   # Version
-  parser.add_argument('--version', '-v', action="version", version='Calypso annotation pipeline version: ' + str(version))
+  parser.add_argument('--version', '-v', action='version', version='Calypso annotation pipeline version: ' + str(version))
 
   return parser.parse_args()
 
@@ -1138,6 +1154,8 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads):
   print('  $ANNOTATEDVCF \\', file = bash_file)
   print('  2>> $STDERR \\', file = bash_file)
   print('  | $SLIVAR expr --vcf - \\', file = bash_file)
+  print('  -p $PED \\', file = bash_file)
+  print('  --js $JS \\', file = bash_file)
 
   # The filter should return all variants that are not in, or have popmax AF < 0.01 in gnomAD. The versions depend on the reference
   if str(resource_info['reference']) == 'GRCh37':
@@ -1165,6 +1183,26 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads):
 
   # ...and that the variant does not have "*" as the alt allele
   print('  variant.FILTER == "PASS" && variant.ALT[0] != "*"\' \\', file = bash_file)
+
+  # Then tag variants based on their confidence
+  print('  --trio \"het_low_qual:kid.het && ', file = bash_file)
+  print('    ((kid.GQ >= 10 && kid.GQ < 20 && kid.AB >= 0.1 && kid.AB <= 0.9) || ', file = bash_file)
+  print('    (kid.GQ >= 20 && kid.AB >= 0.1 && kid.AB < 0.2) || ', file = bash_file)
+  print('    (kid.GQ >= 20 && kid.AB > 0.8 && kid.AB <= 0.9))\" \\', file = bash_file)
+  print('  --trio "het_med_qual:kid.het && ', file = bash_file)
+  print('    ((kid.GQ >=20 && kid.GQ < 30 && kid.AB >= 0.2 && kid.AB <= 0.8) || ', file = bash_file)
+  print('    (kid.GQ >=30 && kid.AB >= 0.2 && kid.AB < 0.3) || ', file = bash_file)
+  print('    (kid.GQ >=30 && kid.AB > 0.7 && kid.AB <= 0.8))\" \\', file = bash_file)
+  print('  --trio \"het_hi_qual:kid.het && kid.GQ >= 30 && kid.AB >= 0.3 && kid.AB <= 0.7\" \\', file = bash_file)
+  print('  --trio \"hom_low_qual:kid.hom_alt && ', file = bash_file)
+  print('    ((kid.GQ >= 10 && kid.GQ < 20 && kid.AB >= 0.7) || ', file = bash_file)
+  print('    (kid.GQ >= 20 && kid.AB >= 0.7 && kid.AB < 0.8))\" \\', file = bash_file)
+  print('  --trio "hom_med_qual: kid.hom_alt && ', file = bash_file)
+  print('    ((kid.GQ >= 20 && kid.GQ < 30 && kid.AB >= 0.8) || ', file = bash_file)
+  print('    (kid.GQ >= 30 && kid.AB >= 0.8 && kid.AB < 0.9))\" \\', file = bash_file)
+  print('  --trio \"hom_hi_qual: kid.hom_alt && kid.GQ >= 30 && kid.AB >= 0.9\" \\', file = bash_file)
+
+  # And final compression
   print('  --pass-only \\', file = bash_file)
   print('  2>> $STDERR \\', file = bash_file)
   print('  | $BCFTOOLS view -O z -o $FILTEREDVCF --threads ', threads, ' - \\', sep = '', file = bash_file)

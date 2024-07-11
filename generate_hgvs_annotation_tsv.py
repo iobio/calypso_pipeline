@@ -76,7 +76,8 @@ def main():
     positions = []
     for annotation in mosaic_info['resources']['HGVS']['annotations']:
       position = mosaic_info['resources']['HGVS']['annotations'][annotation]['position']
-      if position: positions.append(position)
+      if position:
+        positions.append(position)
 
     # Loop over the HGVS annotations
     options       = {}
