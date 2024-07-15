@@ -1004,13 +1004,11 @@ def bash_resources(resource_info, working_directory, bash_file, vcf, chr_format,
   # If the chr map is required, include the path to it. The chromosome format is different depending on whether this is a GRCh37
   # or GRCh38 reference. GRCh37 needs to use the '1' format, but GRCh38 uses 'chr1'. chr_format is False if in the '1' format
   if resource_info['reference'] == 'GRCh37':
-    if chr_format:
-      print('CHR_NOCHR_MAP=$DATAPATH/chr_nochr_map.txt', sep = '', file = bash_file)
-      print('NOCHR_CHR_MAP=$DATAPATH/nochr_chr_map.txt', sep = '', file = bash_file)
+    print('CHR_NOCHR_MAP=$DATAPATH/chr_nochr_map.txt', sep = '', file = bash_file)
+    print('NOCHR_CHR_MAP=$DATAPATH/nochr_chr_map.txt', sep = '', file = bash_file)
   elif resource_info['reference'] == 'GRCh38':
-    if not chr_format:
-      print('CHR_NOCHR_MAP=$DATAPATH/chr_nochr_map.txt', sep = '', file = bash_file)
-      print('NOCHR_CHR_MAP=$DATAPATH/nochr_chr_map.txt', sep = '', file = bash_file)
+    print('CHR_NOCHR_MAP=$DATAPATH/chr_nochr_map.txt', sep = '', file = bash_file)
+    print('NOCHR_CHR_MAP=$DATAPATH/nochr_chr_map.txt', sep = '', file = bash_file)
 
   # The slivar js file is based on the family structure. Check that a file exists for the current family
   js_file = 'slivar-functions.js'
