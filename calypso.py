@@ -137,10 +137,10 @@ def main():
   # If the vcf wasn't specified on the command line, get it from the Mosaic project
   else:
     all_vcfs = []
-    vcf_files = {}
 
     # Loop over all the samples
     for sample in mosaic_samples:
+      vcf_files = {}
       sample_id = mosaic_samples[sample]['id']
       for sample_file in project.get_sample_files(sample_id):
         if sample_file['type'] == 'vcf':
@@ -161,7 +161,7 @@ def main():
         for vcf_file_id in vcf_files:
           vcf_file_names.append(vcf_files[vcf_file_id]['name'])
         print()
-        fail('ERROR: Multiple vcf files for the samples. Calypso requires a single multi sample vcf. The following vcf files were found:\n  ' + '\n  '.join(vcf_file_names))
+        fail('ERROR: Multiple vcf files for the same sample (' + sample + ', id: ' + str(sample_id) + '). Calypso requires a single multi sample vcf. The following vcf files were found:\n  ' + '\n  '.join(vcf_file_names))
       else:
         for vcf_file in vcf_files:
           uri = vcf_files[vcf_file]['uri']
