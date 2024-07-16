@@ -157,7 +157,11 @@ def main():
   
       # If there is more than one vcf file for the sample, fail
       elif len(vcf_files) > 1:
-        fail('calypso_vcf_files: Mosaic has no, or multiple vcf files associated with it, so the file to use cannot be determined')
+        vcf_file_names = []
+        for vcf_file_id in vcf_files:
+          vcf_file_names.append(vcf_files[vcf_file_id]['name'])
+        print()
+        fail('ERROR: Multiple vcf files for the samples. Calypso requires a single multi sample vcf. The following vcf files were found:\n  ' + '\n  '.join(vcf_file_names))
       else:
         for vcf_file in vcf_files:
           uri = vcf_files[vcf_file]['uri']
@@ -174,7 +178,7 @@ def main():
     # If there are multiple VCF files, not all samples are in a single joint-called vcf. This case
     # is not yet handled:
     if len(all_vcfs) > 1:
-      fail('calypso_vcf_files.py: Multiple vcf files for the samples. Calypso requires a single multi sample vcf')
+      fail('ERROR: Multiple vcf files for the samples. Calypso requires a single multi sample vcf. The following vcf files were found:\n  ' + '\n  '.join(all_vcfs))
 
     # Store the name of the vcf file
     vcf = mosaic_samples[list(mosaic_samples.keys())[0]]['vcf_file']
