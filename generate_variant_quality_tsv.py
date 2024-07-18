@@ -38,19 +38,28 @@ def main():
     fields = record.rstrip().split('\t')
     fields[0], fields[2] = updateCoords(fields[0], fields[2])
 
-    # A maximum of one of the qual fields will have a value (which will be the proband id). Use the order to determine the
-    # assigned quality
+    # Since all samples in the vcf are evaluated for quailty, there could be sample ids associated with multiple of
+    # the variant quality annotations
+    variant_quality = 'Fail'
+    if args.proband in fields[5] or args.proband in fields[7]:
+      variant_quality = 'Fail'
+    elif args.proband in fields[6] or args.proband in fields[8]:
+      variant_quality = 'Pass'
 
+    # If the proband quality is fail, but there are other samples that are high quality, mark this as Fail+
+    if variant_quality == 'Fail':
+      if fields[6] != '.' or fields[8] != '.':
+        variant_quality = 'Fail+'
     ### UPDATE FOR ONLY HIGH AND LOW QUAL - NO MEDIUM
     #text = ''.join(fields[5:11])
-    text = ''.join(fields[5:11])
     #if text.count('.') != 5:
-    if text.count('.') != 3:
-      fail('Unexpected number of variant confidence values assigned to variant at ' + str(fields[0]) + ':' + str(fields[1]))
+    #if text.count('.') != 3:
+    #  fail('Unexpected number of variant confidence values assigned to variant at ' + str(fields[0]) + ':' + str(fields[1]))
 
     # If there are no .'s at the beginning of "text", this is a het_low_qual. If there is one, then this is a het_med_qual etc
-    # based on the order in the command above this loop
-    variant_quality = False
+    # based on the order in the command above this loop. All samples in the vcf are evaluated for quality, so there could be a
+    # comma separated list of samples associated with the quality tag
+    #variant_quality = False
 
     # THE FOLLOWING IS FOR THE CASE WHERE WE HAVE MEDIUM
 #    if text.startswith('.....'):
@@ -67,14 +76,14 @@ def main():
 #      variant_quality = 'Low'
 
     # AND THE FOLLOWING IS JUST PASS \ FAIL
-    if text.startswith('...'):
-      variant_quality = 'Pass'
-    elif text.startswith('..'):
-      variant_quality = 'Fail'
-    elif text.startswith('.'):
-      variant_quality = 'Pass'
-    else:
-      variant_quality = 'Fail'
+#    if text.startswith('...'):
+#      variant_quality = 'Pass'
+#    elif text.startswith('..'):
+#      variant_quality = 'Fail'
+#    elif text.startswith('.'):
+#      variant_quality = 'Pass'
+#    else:
+#      variant_quality = 'Fail'
   
     print('\t'.join(fields[0:5]), '\t', variant_quality, sep = '', file = outputFile)
 
@@ -90,6 +99,7 @@ def parseCommandLine():
   parser.add_argument('--input_vcf', '-i', required = True, metavar = 'string', help = 'The input vcf file to annotate')
   parser.add_argument('--tools_directory', '-t', required = True, metavar = 'string', help = 'The path to the directory where the tools live')
   parser.add_argument('--uid', '-u', required = True, metavar = 'string', help = 'The uid of the variant quality attribute')
+  parser.add_argument('--proband', '-p', required = True, metavar = 'string', help = 'The name of the proband as it appears in the vcf header')
 
   return parser.parse_args()
 

@@ -64,22 +64,41 @@ def main():
   proband = False
   for sample in project.get_samples():
     relation = False
+    sex = False
+    affected_status = False
     for attribute in project.get_attributes_for_sample(sample['id']):
       if attribute['name'] == 'Relation':
         for value in attribute['values']:
           if value['sample_id'] == sample['id']:
             relation = value['value']
             break
-        break
+
+      # Get the sample sex
+      elif attribute['uid'] == 'sex':
+        for value in attribute['values']:
+          if value['sample_id'] == sample['id']:
+            sex = value['value']
+            break
+
+      # Get the samples affectation status
+      elif attribute['uid'] == 'affected_status':
+        for value in attribute['values']:
+          if value['sample_id'] == sample['id']:
+            affected_status = value['value']
+            break
 
     # Fail if this sample has no Relation set, and store the sample name if this is the proband
     if not relation:
       fail('The Relation attribute is not set for sample ' + sample['name'])
     elif relation == 'Proband':
       proband = sample['name']
+    if not sex:
+      fail('The Sex attribute is not set for sample ' + sample['name'])
+    if not affected_status:
+      fail('The Affected Status attribute is not set for sample ' + sample['name'])
 
     # Add this sample to the list of samples
-    mosaic_samples[sample['name']] = {'id': sample['id'], 'relation': relation}
+    mosaic_samples[sample['name']] = {'id': sample['id'], 'relation': relation, 'sex': sex, 'affected_status': affected_status}
     mosaic_sample_ids[sample['id']] = sample['name']
 
   # Fail if no proband is defined
@@ -190,21 +209,47 @@ def main():
     ped_filename = str(working_directory) + str(proband) + '.ped'
     ped_file = open(ped_filename, 'w')
     print('#Family_id', 'individual_id', 'paternal_id', 'maternal_id', 'sex', 'affected_status', sep = '\t', file = ped_file)
- 
-    # Parse the pedigree associated with the proband
-    for pedigree_line in project.get_pedigree(mosaic_samples[proband]['id']):
-      kindred_id = pedigree_line['pedigree']['kindred_id']
-      sample_id = mosaic_sample_ids[pedigree_line['pedigree']['sample_id']]
-      paternal_id = mosaic_sample_ids[pedigree_line['pedigree']['paternal_id']] if pedigree_line['pedigree']['paternal_id'] else 0
-      maternal_id = mosaic_sample_ids[pedigree_line['pedigree']['maternal_id']] if pedigree_line['pedigree']['maternal_id'] else 0
-      sex = pedigree_line['pedigree']['sex']
-      affection_status = pedigree_line['pedigree']['affection_status']
 
-      # The ped file must use the names as they appear in the vcf file, so use the sample_id to get the vcf_sample_name
-      sample_vcf_id = mosaic_samples[sample_id]['vcf_sample_name']
-      paternal_vcf_id = mosaic_samples[paternal_id]['vcf_sample_name'] if paternal_id != 0 else 0
-      maternal_vcf_id = mosaic_samples[maternal_id]['vcf_sample_name'] if maternal_id != 0 else 0
-      print(kindred_id, sample_vcf_id, paternal_vcf_id, maternal_vcf_id, sex, affection_status, sep = '\t', file = ped_file)
+    # If this is a singleton, there may be no pedigree information
+    if len(mosaic_samples) == 1:
+      sample_vcf_id = mosaic_samples[proband]['vcf_sample_name']
+      sex = mosaic_samples[proband]['sex']
+      if sex == 'Male':
+        sex_id = 1
+      elif sex == 'Female':
+        sex_id = 2
+      else:
+        sex_id = 0
+        print('WARNING: Unknown sex for sample: ', proband, sep = '')
+      affected_status = mosaic_samples[proband]['affected_status']
+      if affected_status == 'Affected':
+        affected_id = 2
+      elif affected_status == 'Unaffected':
+        affected_id = 1
+      else:
+        affected_id = 0
+        print('WARNING: Unknown affected status for sample: ', proband, sep = '')
+        
+      print(sample_vcf_id, sample_vcf_id, '0', '0', sex_id, affected_id, sep = '\t', file = ped_file)
+
+    # If there are multiple samples, get the pedigree information
+    else:
+ 
+      # Parse the pedigree associated with the proband
+      for pedigree_line in project.get_pedigree(mosaic_samples[proband]['id']):
+        print(pedigree_line)
+        kindred_id = pedigree_line['pedigree']['kindred_id']
+        sample_id = mosaic_sample_ids[pedigree_line['pedigree']['sample_id']]
+        paternal_id = mosaic_sample_ids[pedigree_line['pedigree']['paternal_id']] if pedigree_line['pedigree']['paternal_id'] else 0
+        maternal_id = mosaic_sample_ids[pedigree_line['pedigree']['maternal_id']] if pedigree_line['pedigree']['maternal_id'] else 0
+        sex = pedigree_line['pedigree']['sex']
+        affection_status = pedigree_line['pedigree']['affection_status']
+  
+        # The ped file must use the names as they appear in the vcf file, so use the sample_id to get the vcf_sample_name
+        sample_vcf_id = mosaic_samples[sample_id]['vcf_sample_name']
+        paternal_vcf_id = mosaic_samples[paternal_id]['vcf_sample_name'] if paternal_id != 0 else 0
+        maternal_vcf_id = mosaic_samples[maternal_id]['vcf_sample_name'] if maternal_id != 0 else 0
+        print(kindred_id, sample_vcf_id, paternal_vcf_id, maternal_vcf_id, sex, affection_status, sep = '\t', file = ped_file)
 
     # Close the ped file
     ped_file.close()
@@ -460,7 +505,7 @@ def main():
         if private_annotations[annotation]['name'] == 'Variant Quality':
           uid = annotation
           break
-      generate_variant_quality_tsv(bash_file, uid)
+      generate_variant_quality_tsv(bash_file, uid, proband)
       tsv_files.append('variant_quality.tsv')
 
     # Annotations to ignore
@@ -1210,15 +1255,16 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads):
 #  print('    ((kid.GQ >= 20 && kid.GQ < 30 && kid.AB >= 0.8) || ', file = bash_file)
 #  print('    (kid.GQ >= 30 && kid.AB >= 0.8 && kid.AB < 0.9))\" \\', file = bash_file)
 #  print('  --trio \"hom_hi_qual: kid.hom_alt && kid.GQ >= 30 && kid.AB >= 0.9\" \\', file = bash_file)
-  print('  --trio \"het_low_qual:kid.het && ', file = bash_file)
-  print('    ((kid.GQ >= 10 && kid.GQ < 20 && kid.AB >= 0.1 && kid.AB <= 0.9) || ', file = bash_file)
-  print('    (kid.GQ >= 20 && kid.AB >= 0.1 && kid.AB < 0.2) || ', file = bash_file)
-  print('    (kid.GQ >= 20 && kid.AB > 0.8 && kid.AB <= 0.9))\" \\', file = bash_file)
-  print('  --trio \"het_hi_qual:kid.het && kid.GQ >= 20 && kid.AB >= 0.2 && kid.AB <= 0.8\" \\', file = bash_file)
-  print('  --trio \"hom_low_qual:kid.hom_alt && ', file = bash_file)
-  print('    ((kid.GQ >= 10 && kid.GQ < 20 && kid.AB >= 0.7) || ', file = bash_file)
-  print('    (kid.GQ >= 20 && kid.AB >= 0.7 && kid.AB < 0.8))\" \\', file = bash_file)
-  print('  --trio \"hom_hi_qual: kid.hom_alt && kid.GQ >= 20 && kid.AB >= 0.8\" \\', file = bash_file)
+
+  print('  --sample-expr \"het_low_qual:sample.het && ', file = bash_file)
+  print('    ((sample.GQ >= 10 && sample.GQ < 20 && sample.AB >= 0.1 && sample.AB <= 0.9) || ', file = bash_file)
+  print('    (sample.GQ >= 20 && sample.AB >= 0.1 && sample.AB < 0.2) || ', file = bash_file)
+  print('    (sample.GQ >= 20 && sample.AB > 0.8 && sample.AB <= 0.9))\" \\', file = bash_file)
+  print('  --sample-expr \"het_hi_qual:sample.het && sample.GQ >= 20 && sample.AB >= 0.2 && sample.AB <= 0.8\" \\', file = bash_file)
+  print('  --sample-expr \"hom_low_qual:sample.hom_alt && ', file = bash_file)
+  print('    ((sample.GQ >= 10 && sample.GQ < 20 && sample.AB >= 0.7) || ', file = bash_file)
+  print('    (sample.GQ >= 20 && sample.AB >= 0.7 && sample.AB < 0.8))\" \\', file = bash_file)
+  print('  --sample-expr \"hom_hi_qual: sample.hom_alt && sample.GQ >= 20 && sample.AB >= 0.8\" \\', file = bash_file)
 
   # And final compression
   print('  --pass-only \\', file = bash_file)
@@ -1253,14 +1299,15 @@ def generate_hgvs_tsv(bash_file, reference):
   print('echo "complete"', file = bash_file)
 
 # Call the command to extract the variant quality values
-def generate_variant_quality_tsv(bash_file, uid):
+def generate_variant_quality_tsv(bash_file, uid, proband):
   print(file = bash_file)
   print('# Resource: Variant Quality', sep = '', file = bash_file)
   print('echo -n "Creating tsv file for Variant Quality..."', sep = '', file = bash_file)
   print('python3 $GENERATE_VARIANT_QUALITY_TSV ', end = '', file = bash_file)
   print('-i $FILTEREDVCF ', end = '', file = bash_file)
   print('-u "', uid, '" ', sep = '', end = '', file = bash_file)
-  print('-t $TOOLPATH ', file = bash_file)
+  print('-t $TOOLPATH ', end = '', file = bash_file)
+  print('-p ', proband, sep = '', file = bash_file)
   print('echo "complete"', file = bash_file)
 
 # Generate the command to process general annotations
