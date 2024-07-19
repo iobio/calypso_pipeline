@@ -374,6 +374,9 @@ def read_mosaic_json(filename, reference):
       # Check if the "fields" value is set. This is used to determine which fields are used to generate the value for a specific operation
       mosaic_info['resources'][resource]['annotations'][annotation]['fields'] = resources[resource]['annotations'][annotation]['fields'] if 'fields' in resources[resource]['annotations'][annotation] else False
 
+      # Check if "display_type" is set. If so, this will be used when creating new private annotations
+      mosaic_info['resources'][resource]['annotations'][annotation]['display_type'] = resources[resource]['annotations'][annotation]['display_type'] if 'display_type' in resources[resource]['annotations'][annotation] else False
+
       # Check if "severity" is set. If so, the severity will be used when creating new private annotations
       mosaic_info['resources'][resource]['annotations'][annotation]['severity'] = resources[resource]['annotations'][annotation]['severity'] if 'severity' in resources[resource]['annotations'][annotation] else False
 

@@ -451,7 +451,8 @@ def main():
             break
       else:
         severity = mosaic_info['resources'][resource]['annotations'][annotation]['severity']
-        data = project.post_variant_annotation(name = annotation, value_type = value_type, privacy_level = 'private', severity = severity)
+        display_type = mosaic_info['resources'][resource]['annotations'][annotation]['display_type']
+        data = project.post_variant_annotation(name = annotation, value_type = value_type, privacy_level = 'private', severity = severity, display_type = display_type)
         private_annotations[data['uid']] = {'name': annotation, 'id': data['id']}
         mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': data['uid'], 'type': value_type, 'id': data['id']}
 
