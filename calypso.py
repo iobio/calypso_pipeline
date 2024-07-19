@@ -646,7 +646,13 @@ def main():
     print('python3 $UPLOAD_SCRIPT ', end = '', file = upload_file)
     print('-a $API_CLIENT ', end = '', file = upload_file)
     print('-c $CONFIG ', end = '', file = upload_file)
-    print('-p ', annotation_project_id, ' ', sep = '', end = '', file = upload_file)
+
+    # Public annotations are posted to the annotation project, private annotations are posted to the
+    # case project
+    if tsv == 'variant_quality.tsv':
+      print('-p ', args.project_id, ' ', sep = '', end = '', file = upload_file)
+    else:
+      print('-p ', annotation_project_id, ' ', sep = '', end = '', file = upload_file)
     print('-t $TSV', sep = '', file = upload_file)
 
   # Close the upload file
