@@ -432,9 +432,10 @@ def main():
         else:
           annotations[annotation] = value_type
 
-      # Remove this annotation from the resources dictionary. It will be replaced below with the new annotations with the
-      # corresponding uids
-      mosaic_info['resources'][resource]['annotations'] = {}
+        # Reset this annotation in the resources dictionary. It will be replaced below with the new annotations with the
+        # corresponding uids
+        severity = mosaic_info['resources'][resource]['annotations'][annotation]['severity']
+        mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': False, 'type': False, 'id': False, 'severity': severity}
 
     # Loop over the annotations to be created, check that there doesn't already exist an annotation of that name in the
     # project, and if not, create a new, private annotation
@@ -449,7 +450,8 @@ def main():
             mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': existing_annotation, 'type': value_type, 'id': project_annotations[existing_annotation]['id']}
             break
       else:
-        data = project.post_variant_annotation(name = annotation, value_type = value_type, privacy_level = 'private')
+        severity = mosaic_info['resources'][resource]['annotations'][annotation]['severity']
+        data = project.post_variant_annotation(name = annotation, value_type = value_type, privacy_level = 'private', severity = severity)
         private_annotations[data['uid']] = {'name': annotation, 'id': data['id']}
         mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': data['uid'], 'type': value_type, 'id': data['id']}
 
