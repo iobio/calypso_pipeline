@@ -237,7 +237,6 @@ def main():
  
       # Parse the pedigree associated with the proband
       for pedigree_line in project.get_pedigree(mosaic_samples[proband]['id']):
-        print(pedigree_line)
         kindred_id = pedigree_line['pedigree']['kindred_id']
         sample_id = mosaic_sample_ids[pedigree_line['pedigree']['sample_id']]
         paternal_id = mosaic_sample_ids[pedigree_line['pedigree']['paternal_id']] if pedigree_line['pedigree']['paternal_id'] else 0
@@ -259,25 +258,29 @@ def main():
 
   # Check that the reference genome associated with the vcf file matches the project reference
   header = os.popen(str(resource_info['tools']['bcftools']) + ' view -h ' + str(vcf)).read()
+  chr1_length = False
   for line in header.split('\n'):
     if line.startswith('##contig=<ID=chr1,'):
-      chr1_line = line.rstrip()
+      for contig_field in line.rstrip().replace('##contig=<ID=chr1,', '').rstrip('>').split(','):
+        if contig_field.startswith('length='):
+          chr1_length = contig_field.split('=')[1]
+          break
       break
     elif line.startswith('##contig=<ID=1,'):
-      chr1_line = line.rstrip()
+      for contig_field in line.rstrip().replace('##contig=<ID=1,', '').rstrip('>').split(','):
+        if contig_field.startswith('length='):
+          chr1_length = contig_field.split('=')[1]
+          break
       break
-    else:
-      chr1_line = False
 
   # Check the length of chr1
   is_correct = False
-  if 'length' not in chr1_line or not chr1_line:
+  if not chr1_length:
     print('Could not verify the reference genome for the vcf file')
   else:
-    length = (line.rstrip().split('=')[3]).rstrip('>')
-    if reference == 'GRCh38' and str(length).startswith('248956422'):
+    if reference == 'GRCh38' and str(chr1_length).startswith('248956422'):
       is_correct = True
-    elif reference == 'GRCh37' and str(length).startswith('249250621'):
+    elif reference == 'GRCh37' and str(chr1_length).startswith('249250621'):
       is_correct = True
 
   if is_correct:
