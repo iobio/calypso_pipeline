@@ -1227,8 +1227,8 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads):
     print('  --info \'( ( (!("ge2_1_1_AF_popmax" in INFO) || ("ge2_1_1_AF_popmax" in INFO && INFO.ge2_1_1_AF_popmax < 0.01)) && ', file = bash_file)
     print('            (  !("gg2_1_1_AF_popmax" in INFO) || ("gg2_1_1_AF_popmax" in INFO && INFO.gg2_1_1_AF_popmax < 0.01)) ) ||', file = bash_file)
   elif str(resource_info['reference']) == 'GRCh38':
-    print('  --info \'( ( (!("ge4_0_0_AF_grpmax" in INFO) || ("ge4_0_0_AF_grpmax" in INFO && INFO.ge4_0_0_AF_grpmax < 0.01)) && ', file = bash_file)
-    print('            (  !("gg4_0_0_AF_grpmax" in INFO) || ("gg4_0_0_AF_grpmax" in INFO && INFO.gg4_0_0_AF_grpmax < 0.01)) ) ||', file = bash_file)
+    print('  --info \'( ( (!("ge4_0_0_AF" in INFO) || ("ge4_0_0_AF" in INFO && INFO.ge4_0_0_AF < 0.01)) && ', file = bash_file)
+    print('            (  !("gg4_0_0_AF" in INFO) || ("gg4_0_0_AF" in INFO && INFO.gg4_0_0_AF < 0.01)) ) ||', file = bash_file)
 
   # ...or that the variant is present in ClinVar...
   print('  ("CLNSIG" in INFO) ||', file = bash_file)
