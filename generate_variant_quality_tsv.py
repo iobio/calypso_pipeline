@@ -22,7 +22,10 @@ def main():
     bcftools = 'bcftools'
 
   # Open an output tsv file to write annotations to
-  outputFile = open('variant_quality.tsv', 'w')
+  if args.output:
+    outputFile = open(args.output, 'w')
+  else:
+    outputFile = open('variant_quality.tsv', 'w')
 
   # Write the header line to the tsv file
   print('CHROM\tSTART\tEND\tREF\tALT\t', args.uid, file = outputFile)
@@ -100,6 +103,9 @@ def parseCommandLine():
   parser.add_argument('--tools_directory', '-t', required = True, metavar = 'string', help = 'The path to the directory where the tools live')
   parser.add_argument('--uid', '-u', required = True, metavar = 'string', help = 'The uid of the variant quality attribute')
   parser.add_argument('--proband', '-p', required = True, metavar = 'string', help = 'The name of the proband as it appears in the vcf header')
+
+  # Optional arguments
+  parser.add_argument('--output', '-o', required = False, metavar = 'string', help = 'The name of the output file. Will default to variant_quality.tsv')
 
   return parser.parse_args()
 
