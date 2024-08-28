@@ -405,6 +405,8 @@ def main():
   # Get the names (not the uids) of all the annotations in the project
   existing_annotations = []
   for annotation in project_annotations:
+    if annotation.startswith('variant_quality_grch38'):
+      pass
     existing_annotations.append(project_annotations[annotation]['name'])
 
   # Loop over each resource in the Mosaic resources file
