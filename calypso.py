@@ -714,6 +714,8 @@ def main():
     exomiser_annotations(root_path, working_directory, args.api_client, args.client_config, args.project_id, proband, args.exomiser_filters_json)
     print('complete')
 
+  print('Calypso pipeline completed successfully')
+
 # Input options
 def parse_command_line():
   global version
