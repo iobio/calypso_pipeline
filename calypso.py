@@ -465,7 +465,6 @@ def main():
         # Add the created private annotation to the project_annotations dictionary
         project_annotations[data['uid']] = {'id': data['id'], 'name': annotation, 'type': value_type}
 
-  exit(0)
   # Loop over all of the public annotations defined in the Mosaic resources json file and check that they exist
   # in Mosaic and can be imported
   for resource in mosaic_info['resources']:
