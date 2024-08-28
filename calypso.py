@@ -405,8 +405,8 @@ def main():
   # Get the names (not the uids) of all the annotations in the project
   existing_annotations = []
   for annotation in project_annotations:
-    if annotation.startswith('variant_quality_grch38'):
-      pass
+    if annotation == 'variant_quality_grch38':
+      continue
     existing_annotations.append(project_annotations[annotation]['name'])
 
   # Loop over each resource in the Mosaic resources file
@@ -442,7 +442,7 @@ def main():
         severity = mosaic_info['resources'][resource]['annotations'][annotation]['severity']
         display_type = mosaic_info['resources'][resource]['annotations'][annotation]['display_type']
         mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': False, 'type': False, 'id': False, 'severity': severity, 'display_type': display_type}
-
+    
     # Loop over the annotations to be created, check that there doesn't already exist an annotation of that name in the
     # project, and if not, create a new, private annotation
     for annotation in annotations:
@@ -465,6 +465,7 @@ def main():
         # Add the created private annotation to the project_annotations dictionary
         project_annotations[data['uid']] = {'id': data['id'], 'name': annotation, 'type': value_type}
 
+  exit(0)
   # Loop over all of the public annotations defined in the Mosaic resources json file and check that they exist
   # in Mosaic and can be imported
   for resource in mosaic_info['resources']:
