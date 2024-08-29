@@ -405,7 +405,9 @@ def main():
   # Get the names (not the uids) of all the annotations in the project
   existing_annotations = []
   for annotation in project_annotations:
-    if annotation == 'variant_quality_grch38':
+    if annotation == 'variant_quality_grch37':
+      continue
+    elif annotation == 'variant_quality_grch38':
       continue
     existing_annotations.append(project_annotations[annotation]['name'])
 
