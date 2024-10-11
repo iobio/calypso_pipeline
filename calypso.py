@@ -275,20 +275,23 @@ def main():
 
   # Check the length of chr1
   is_correct = False
-  if not chr1_length:
-    print('Could not verify the reference genome for the vcf file')
+  if args.ignore_vcf_ref_check:
+    print('Check on VCF reference genome NOT performed')
   else:
-    if reference == 'GRCh38' and str(chr1_length).startswith('248956422'):
-      is_correct = True
-    elif reference == 'GRCh37' and str(chr1_length).startswith('249250621'):
-      is_correct = True
-
-  if is_correct:
-    print('The vcf file matches the reference genome of the project (', str(reference), ')', sep = '')
-  else:
-    print('The vcf file DOES NOT match the reference genome of the project (', str(reference), ')', sep = '')
-    print('Please verify the reference genome in Mosaic and ensure these match')
-    exit(1)
+    if not chr1_length:
+      print('Could not verify the reference genome for the vcf file')
+    else:
+      if reference == 'GRCh38' and str(chr1_length).startswith('248956422'):
+        is_correct = True
+      elif reference == 'GRCh37' and str(chr1_length).startswith('249250621'):
+        is_correct = True
+  
+    if is_correct:
+      print('The vcf file matches the reference genome of the project (', str(reference), ')', sep = '')
+    else:
+      print('The vcf file DOES NOT match the reference genome of the project (', str(reference), ')', sep = '')
+      print('Please verify the reference genome in Mosaic and ensure these match')
+      exit(1)
 
   # Check that we have read access to the vcf file
   if not os.access(vcf, os.R_OK):
@@ -752,6 +755,9 @@ def parse_command_line():
 
   # Flag for UDN projects as they have a slightly different naming convention
   parser.add_argument('--udn', '-u', required = False, action = 'store_true', help = 'Set for UDN projects to handle the request id in the sample name')
+
+  # Do not check the vcf header to verify the reference genome based on chromosome length
+  parser.add_argument('--ignore_vcf_ref_check', '-g', required = False, action = 'store_true', help = 'Ignore the check on the VCF reference genome')
 
   # Version
   parser.add_argument('--version', '-v', action='version', version='Calypso annotation pipeline version: ' + str(version))
