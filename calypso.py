@@ -492,7 +492,7 @@ def main():
 
   # Generate the bash script to run the annotation pipeline
   bash_filename, bash_file = open_bash_script(working_directory)
-  filtered_vcf = bash_resources(resource_info, working_directory, bash_file, vcf, chr_format, args.ped, lua_filename, toml_filename)
+  filtered_vcf = bash_resources(args.queue, resource_info, working_directory, bash_file, vcf, chr_format, args.ped, lua_filename, toml_filename)
   annotate_vcf(resource_info, bash_file, chr_format, args.threads, mosaic_samples)
   filter_vcf(bash_file, mosaic_samples, proband, resource_info, args.threads)
 
@@ -759,6 +759,9 @@ def parse_command_line():
   # Do not check the vcf header to verify the reference genome based on chromosome length
   parser.add_argument('--ignore_vcf_ref_check', '-g', required = False, action = 'store_true', help = 'Ignore the check on the VCF reference genome')
 
+  # Use the queue in Utah
+  parser.add_argument('--queue', '-q', required = False, action = 'store_true', help = 'Add queue information to the 01 script')
+
   # Version
   parser.add_argument('--version', '-v', action='version', version='Calypso annotation pipeline version: ' + str(version))
 
@@ -1021,7 +1024,19 @@ def open_bash_script(working_directory):
   return bash_filename, bash_file
 
 # Write all the resource file information to the bash file for the script to use
-def bash_resources(resource_info, working_directory, bash_file, vcf, chr_format, ped, lua_filename, toml_filename):
+def bash_resources(use_queue, resource_info, working_directory, bash_file, vcf, chr_format, ped, lua_filename, toml_filename):
+
+  # Add the queue information if requested
+  if use_queue:
+    print('#! /bin/bash', file = bash_file)
+    print('#SBATCH --time=72:00:00', file = bash_file)
+    print('#SBATCH --mem=8G', file = bash_file)
+    print('#SBATCH --cpus-per-task=4', file = bash_file)
+    print('#SBATCH --account=marth-rw', file = bash_file)
+    print('#SBATCH --partition=marth-shared-rw', file = bash_file)
+    print('#SBATCH -o calypso_batch.out', file = bash_file)
+    print('#SBATCH -e calypso_batch.err', file = bash_file)
+    print(file = bash_file)
 
   # Initial information
   print('set -eou pipefail', file = bash_file)
