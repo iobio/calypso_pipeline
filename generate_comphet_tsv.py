@@ -51,7 +51,7 @@ def parse_command_line():
 def process_vcf(bcftools, vcf, output_file):
 
   # Loop over all records in the vcf file
-  command = bcftools + ' query -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t1\\n\' ' + str(vcf)
+  command = bcftools + ' query -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\tPass\\n\' ' + str(vcf)
   for record in os.popen(command).readlines():
 
     # Split the record on tabs
