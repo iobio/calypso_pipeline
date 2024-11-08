@@ -444,9 +444,10 @@ def main():
 
         # Reset this annotation in the resources dictionary. It will be replaced below with the new annotations with the
         # corresponding uids
+        category = mosaic_info['resources'][resource]['annotations'][annotation]['category']
         severity = mosaic_info['resources'][resource]['annotations'][annotation]['severity']
         display_type = mosaic_info['resources'][resource]['annotations'][annotation]['display_type']
-        mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': False, 'type': False, 'id': False, 'severity': severity, 'display_type': display_type}
+        mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': False, 'type': False, 'id': False, 'category': category, 'severity': severity, 'display_type': display_type}
     
     # Loop over the annotations to be created, check that there doesn't already exist an annotation of that name in the
     # project, and if not, create a new, private annotation
@@ -463,7 +464,8 @@ def main():
       else:
         severity = mosaic_info['resources'][resource]['annotations'][annotation]['severity']
         display_type = mosaic_info['resources'][resource]['annotations'][annotation]['display_type']
-        data = project.post_variant_annotation(name = annotation, value_type = value_type, privacy_level = 'private', severity = severity, display_type = display_type)
+        category = mosaic_info['resources'][resource]['annotations'][annotation]['category']
+        data = project.post_variant_annotation(name = annotation, value_type = value_type, privacy_level = 'private', category = category, severity = severity, display_type = display_type)
         private_annotations[data['uid']] = {'name': annotation, 'id': data['id']}
         mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': data['uid'], 'type': value_type, 'id': data['id']}
 
@@ -520,8 +522,17 @@ def main():
         if private_annotations[annotation]['name'] == 'Comp Het':
           uid = annotation
           break
-      generate_comp_het_tsv(bash_file, uid, proband)
-      tsv_files.append('comp_het.tsv')
+      output_tsv = "comp_het.tsv"
+      generate_comp_het_tsv(bash_file, "COMPHET_VCF", output_tsv, uid, proband)
+      tsv_files.append(output_tsv)
+    elif resource == 'compound_heterozygotes_rare':
+      for annotation in private_annotations:
+        if private_annotations[annotation]['name'] == 'Comp Het Rare':
+          uid = annotation
+          break
+      output_tsv = "comp_het_rare.tsv"
+      generate_comp_het_tsv(bash_file, "COMPHET_RARE_VCF", output_tsv, uid, proband)
+      tsv_files.append(output_tsv)
 
     # Extract the Variant Quality scores after getting the uid of this annotation
     elif resource == 'variant_quality':
@@ -673,7 +684,7 @@ def main():
 
     # Public annotations are posted to the annotation project, private annotations are posted to the
     # case project
-    if tsv == 'variant_quality.tsv' or tsv == 'comp_het.tsv':
+    if tsv == 'variant_quality.tsv' or tsv == 'comp_het.tsv' or tsv == 'comp_het_rare.tsv':
       print('-p ', args.project_id, ' ', sep = '', end = '', file = upload_file)
     else:
       print('-p ', annotation_project_id, ' ', sep = '', end = '', file = upload_file)
@@ -1078,10 +1089,14 @@ def bash_resources(use_queue, resource_info, working_directory, bash_file, vcf, 
   vcf_base = os.path.abspath(vcf).split('/')[-1].rstrip('vcf.gz')
   filtered_vcf = str(vcf_base) + '_calypso_filtered.vcf.gz'
   comphet_vcf = str(vcf_base) + '_calypso_comphet.vcf.gz'
+  rare_temp_vcf = str(vcf_base) + '_calypso_rare_comphet_temp.vcf.gz'
+  rare_comphet_vcf = str(vcf_base) + '_calypso_rare_comphet.vcf.gz'
   print('FILEPATH=', working_directory, sep = '', file = bash_file)
   print('ANNOTATEDVCF=$FILEPATH/' + str(vcf_base) + '_annotated.vcf.gz', sep = '', file = bash_file)
   print('FILTEREDVCF=$FILEPATH/' + str(filtered_vcf), sep = '', file = bash_file)
   print('COMPHET_VCF=$FILEPATH/' + str(comphet_vcf), sep = '', file = bash_file)
+  print('TEMP_RARE_VCF=$FILEPATH/' + str(rare_temp_vcf), sep = '', file = bash_file)
+  print('COMPHET_RARE_VCF=$FILEPATH/' + str(rare_comphet_vcf), sep = '', file = bash_file)
   print('STDOUT=calypso_annotation_pipeline.stdout', file = bash_file)
   print('STDERR=calypso_annotation_pipeline.stderr', file = bash_file)
 
@@ -1325,6 +1340,7 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads):
   print('  2>> $STDERR \\', file = bash_file)
   print('  | $BCFTOOLS view -O z -o $FILTEREDVCF --threads ', threads, ' - \\', sep = '', file = bash_file)
   print('  >> $STDOUT 2>> $STDERR', file = bash_file)
+  print('echo "complete"', file = bash_file)
   print('$BCFTOOLS index -t $FILTEREDVCF', file = bash_file)
   print(file = bash_file)
 
@@ -1339,6 +1355,32 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads):
   print('echo "complete"', file = bash_file)
   print(file = bash_file)
 
+  # Now perform a more stringent filter on the comp het list to pull out "rare" comp hets. First remove
+  # the original comp het annotations, then filter the variants that form comp hets to those with gnomAD
+  # hom alts < 5
+  print('# Find rare compound hets', file = bash_file)
+  print('echo -n "Find rare compound hets..."', file = bash_file)
+  print('$BCFTOOLS annotate -x INFO/comphet_side,INFO/slivar_comphet $COMPHET_VCF \\', file = bash_file)
+  print('  | $SLIVAR expr --vcf - -p $PED --js $JS \\', file = bash_file)
+  print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && (!("gg4_0_0_nhomalt" in INFO) || ("gg4_0_0_nhomalt" in INFO && INFO.gg4_0_0_nhomalt < 5))\' \\', file = bash_file)
+  print('  --pass-only \\', file = bash_file)
+  print('  2>> $STDERR \\', file = bash_file)
+  print('  | $BCFTOOLS view -O z -o $TEMP_RARE_VCF --threads ', threads, ' - \\', sep = '', file = bash_file)
+  print('  >> $STDOUT 2>> $STDERR', file = bash_file)
+  print('$BCFTOOLS index -t $TEMP_RARE_VCF', file = bash_file)
+  print('echo "complete"', file = bash_file)
+  print(file = bash_file)
+
+  # Extract all comp hets
+  print('# Extract rare compound hets', file = bash_file)
+  print('echo -n "Extracting rare compound hets..."', file = bash_file)
+  print('$SLIVAR compound-hets -v $TEMP_RARE_VCF \\', file = bash_file)
+  print('  --sample-field comphet_side \\', file = bash_file)
+  print('  --sample-field denovo -p $PED \\', file = bash_file)
+  print('  | $BCFTOOLS view -O z -o $COMPHET_RARE_VCF', file = bash_file)
+  print('$BCFTOOLS index -t $COMPHET_RARE_VCF', file = bash_file)
+  print('echo "complete"', file = bash_file)
+  print(file = bash_file)
 
 
 
@@ -1362,14 +1404,14 @@ def generate_hgvs_tsv(bash_file, reference):
   print('echo "complete"', file = bash_file)
 
 # Call the command line to extract compound hets
-def generate_comp_het_tsv(bash_file, uid, proband):
+def generate_comp_het_tsv(bash_file, filename, output, uid, proband):
   print(file = bash_file)
   print('# Resource: Comp Hets', sep = '', file = bash_file)
   print('echo -n "Creating tsv file for Comp Hets..."', sep = '', file = bash_file)
   print('python3 $GENERATE_COMP_HET_TSV ', end = '', file = bash_file)
-  print('-i $COMPHET_VCF ', end = '', file = bash_file)
+  print('-i $', str(filename), ' ', sep = '', end = '', file = bash_file)
   print('-s $TOOLPATH ', end = '', file = bash_file)
-  print('-o "comp_het.tsv" ', end = '', file = bash_file)
+  print('-o "', str(output), '" ', sep = '', end = '', file = bash_file)
   print('-u "', uid, '"', sep = '', file = bash_file)
   print('echo "complete"', file = bash_file)
 
