@@ -500,6 +500,7 @@ def main():
   print('# Generate tsv files to upload annotations to Mosaic', file = bash_file)
   print('GENERATE_TSV=', root_path, '/generate_annotation_tsv.py', sep = '', file = bash_file)
   print('GENERATE_HGVS_TSV=', root_path, '/generate_hgvs_annotation_tsv.py', sep = '', file = bash_file)
+  print('GENERATE_COMP_HET_TSV=', root_path, '/generate_comphet_tsv.py', sep = '', file = bash_file)
   print('GENERATE_VARIANT_QUALITY_TSV=', root_path, '/generate_variant_quality_tsv.py', sep = '', file = bash_file)
   print('MOSAIC_JSON=', args.mosaic_json, sep = '', file = bash_file)
 
@@ -512,6 +513,15 @@ def main():
     if resource == 'HGVS':
       generate_hgvs_tsv(bash_file, reference)
       tsv_files.append('hgvs.tsv')
+
+    # Extract compound hets
+    elif resource == 'compound_heterozygotes':
+      for annotation in private_annotations:
+        if private_annotations[annotation]['name'] == 'Comp Het':
+          uid = annotation
+          break
+      generate_comp_het_tsv(bash_file, uid, proband)
+      tsv_files.append('comp_het.tsv')
 
     # Extract the Variant Quality scores after getting the uid of this annotation
     elif resource == 'variant_quality':
@@ -663,7 +673,7 @@ def main():
 
     # Public annotations are posted to the annotation project, private annotations are posted to the
     # case project
-    if tsv == 'variant_quality.tsv':
+    if tsv == 'variant_quality.tsv' or tsv == 'comp_het.tsv':
       print('-p ', args.project_id, ' ', sep = '', end = '', file = upload_file)
     else:
       print('-p ', annotation_project_id, ' ', sep = '', end = '', file = upload_file)
@@ -1067,9 +1077,11 @@ def bash_resources(use_queue, resource_info, working_directory, bash_file, vcf, 
   # Generate the names of the intermediate and final vcf files
   vcf_base = os.path.abspath(vcf).split('/')[-1].rstrip('vcf.gz')
   filtered_vcf = str(vcf_base) + '_calypso_filtered.vcf.gz'
+  comphet_vcf = str(vcf_base) + '_calypso_comphet.vcf.gz'
   print('FILEPATH=', working_directory, sep = '', file = bash_file)
   print('ANNOTATEDVCF=$FILEPATH/' + str(vcf_base) + '_annotated.vcf.gz', sep = '', file = bash_file)
   print('FILTEREDVCF=$FILEPATH/' + str(filtered_vcf), sep = '', file = bash_file)
+  print('COMPHET_VCF=$FILEPATH/' + str(comphet_vcf), sep = '', file = bash_file)
   print('STDOUT=calypso_annotation_pipeline.stdout', file = bash_file)
   print('STDERR=calypso_annotation_pipeline.stderr', file = bash_file)
 
@@ -1263,9 +1275,10 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads):
   # ...or that the CADD_Phred score is over 15...
   print('  ("CADD_Phred" in INFO && INFO.CADD_Phred > 15) ||', file = bash_file)
 
-  # ...or that the REVEL or MutScores are over 0.1...
+  # ...or that the REVEL, MutScores, or AlphaMissense are over 0.1...
   print('  ("REVEL" in INFO && INFO.REVEL > 0.1) ||', file = bash_file)
   print('  ("MutScore" in INFO && INFO.MutScore > 0.1) ||', file = bash_file)
+  print('  ("AM_SC" in INFO && INFO.AM_SC > 0.1) ||', file = bash_file)
 
   # ...or that the variant has a spliceAI score > 0.1 for any of the acceptor / donor sites.
   print('  ("SpliceAI_DS_AG" in INFO && INFO.SpliceAI_DS_AG > 0.1) ||', file = bash_file)
@@ -1305,16 +1318,26 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads):
   print('    ((sample.GQ >= 10 && sample.GQ < 20 && sample.AB >= 0.7) || ', file = bash_file)
   print('    (sample.GQ >= 20 && sample.AB >= 0.7 && sample.AB < 0.8))\" \\', file = bash_file)
   print('  --sample-expr \"hom_hi_qual: sample.hom_alt && sample.GQ >= 20 && sample.AB >= 0.8\" \\', file = bash_file)
+  print('  --trio \"comphet_side:comphet_side(kid, mom, dad)" \\', file = bash_file)
 
   # And final compression
   print('  --pass-only \\', file = bash_file)
   print('  2>> $STDERR \\', file = bash_file)
   print('  | $BCFTOOLS view -O z -o $FILTEREDVCF --threads ', threads, ' - \\', sep = '', file = bash_file)
   print('  >> $STDOUT 2>> $STDERR', file = bash_file)
-  print('echo "complete"', file = bash_file)
   print('$BCFTOOLS index -t $FILTEREDVCF', file = bash_file)
   print(file = bash_file)
 
+  # Extract all comp hets
+  print('# Extract compound hets', file = bash_file)
+  print('echo -n "Extracting compound hets..."', file = bash_file)
+  print('$SLIVAR compound-hets -v $FILTEREDVCF \\', file = bash_file)
+  print('  --sample-field comphet_side \\', file = bash_file)
+  print('  --sample-field denovo -p $PED \\', file = bash_file)
+  print('  | $BCFTOOLS view -O z -o $COMPHET_VCF', file = bash_file)
+  print('$BCFTOOLS index -t $COMPHET_VCF', file = bash_file)
+  print('echo "complete"', file = bash_file)
+  print(file = bash_file)
 
 
 
@@ -1336,6 +1359,18 @@ def generate_hgvs_tsv(bash_file, reference):
   print('-r "', reference, '" ', sep = '', end = '', file = bash_file)
   print('-m $MOSAIC_JSON ', end = '', file = bash_file)
   print('-s $TOOLPATH ', file = bash_file)
+  print('echo "complete"', file = bash_file)
+
+# Call the command line to extract compound hets
+def generate_comp_het_tsv(bash_file, uid, proband):
+  print(file = bash_file)
+  print('# Resource: Comp Hets', sep = '', file = bash_file)
+  print('echo -n "Creating tsv file for Comp Hets..."', sep = '', file = bash_file)
+  print('python3 $GENERATE_COMP_HET_TSV ', end = '', file = bash_file)
+  print('-i $COMPHET_VCF ', end = '', file = bash_file)
+  print('-s $TOOLPATH ', end = '', file = bash_file)
+  print('-o "comp_het.tsv" ', end = '', file = bash_file)
+  print('-u "', uid, '"', sep = '', file = bash_file)
   print('echo "complete"', file = bash_file)
 
 # Call the command to extract the variant quality values

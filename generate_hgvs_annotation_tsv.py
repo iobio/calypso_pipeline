@@ -12,7 +12,7 @@ import read_resource_jsons as read_resources
 def main():
 
   # Parse the command line
-  args = parseCommandLine()
+  args = parse_command_line()
 
   # Define the executable bcftools command
   if args.tools_directory:
@@ -47,9 +47,9 @@ def main():
     fail('The delimiter field is not provided for resource ' + str(resource) + ' and so its annotation cannot be processed.')
 
   # Get all the MANE transcript ids
-  maneFile = '/scratch/ucgd/lustre-work/marth/marth-projects/calypso/reannotation/data/GRCh38/reference/MANE.GRCh38.v1.3.ensembl.transcript_ids.txt'
-  mane     = open(maneFile, 'r')
-  maneIds  = []
+  mane_file = '/scratch/ucgd/lustre-labs/marth/scratch/calypso/data/GRCh38/reference/MANE.GRCh38.v1.3.ensembl.transcript_ids.txt'
+  mane = open(mane_file, 'r')
+  maneIds = []
   for record in mane.readlines():
     maneIds.append(record.rstrip())
   mane.close()
@@ -174,7 +174,7 @@ def main():
   outputFile.close()
 
 # Input options
-def parseCommandLine():
+def parse_command_line():
   global version
   parser = argparse.ArgumentParser(description='Process the command line')
 
