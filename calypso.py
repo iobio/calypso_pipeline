@@ -518,18 +518,24 @@ def main():
 
     # Extract compound hets
     elif resource == 'compound_heterozygotes':
+      uid = False
       for annotation in private_annotations:
-        if private_annotations[annotation]['name'] == 'Comp Het':
+        if private_annotations[annotation]['name'] == 'Compound Heterozygotes':
           uid = annotation
           break
+      if not uid:
+        fail('No private annotation with the name Compound Heterozygotes defined in the resources')
       output_tsv = "comp_het.tsv"
       generate_comp_het_tsv(bash_file, "COMPHET_VCF", output_tsv, uid, proband)
       tsv_files.append(output_tsv)
     elif resource == 'compound_heterozygotes_rare':
+      uid = False
       for annotation in private_annotations:
-        if private_annotations[annotation]['name'] == 'Comp Het Rare':
+        if private_annotations[annotation]['name'] == 'Rare Compound Heterozygotes':
           uid = annotation
           break
+      if not uid:
+        fail('No private annotation with the name Rare Compound Heterozygotes defined in the resources')
       output_tsv = "comp_het_rare.tsv"
       generate_comp_het_tsv(bash_file, "COMPHET_RARE_VCF", output_tsv, uid, proband)
       tsv_files.append(output_tsv)
