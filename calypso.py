@@ -492,11 +492,21 @@ def main():
   toml_filename = buildToml(working_directory, resource_info)
   lua_filename = generate_lua_file(working_directory)
 
+  # Check if parents exist for this sample
+  has_mother = False
+  has_father = False
+  for sample in mosaic_samples:
+    if mosaic_samples[sample]['relation'] == 'Mother':
+      has_mother = True
+    elif mosaic_samples[sample]['relation'] == 'Fother':
+      has_father = True
+  has_parents = True if has_mother and has_father else False
+
   # Generate the bash script to run the annotation pipeline
   bash_filename, bash_file = open_bash_script(working_directory)
   filtered_vcf = bash_resources(args.queue, resource_info, working_directory, bash_file, vcf, chr_format, args.ped, lua_filename, toml_filename)
   annotate_vcf(resource_info, bash_file, chr_format, args.threads, mosaic_samples)
-  filter_vcf(bash_file, mosaic_samples, proband, resource_info, args.threads)
+  filter_vcf(bash_file, mosaic_samples, proband, resource_info, args.threads, has_parents)
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
   print('# Generate tsv files to upload annotations to Mosaic', file = bash_file)
@@ -518,27 +528,29 @@ def main():
 
     # Extract compound hets
     elif resource == 'compound_heterozygotes':
-      uid = False
-      for annotation in private_annotations:
-        if private_annotations[annotation]['name'] == 'Compound Heterozygotes':
-          uid = annotation
-          break
-      if not uid:
-        fail('No private annotation with the name Compound Heterozygotes defined in the resources')
-      output_tsv = "comp_het.tsv"
-      generate_comp_het_tsv(bash_file, "COMPHET_VCF", output_tsv, uid, proband)
-      tsv_files.append(output_tsv)
+      if has_parents:
+        uid = False
+        for annotation in private_annotations:
+          if private_annotations[annotation]['name'] == 'Compound Heterozygotes':
+            uid = annotation
+            break
+        if not uid:
+          fail('No private annotation with the name Compound Heterozygotes defined in the resources')
+        output_tsv = "comp_het.tsv"
+        generate_comp_het_tsv(bash_file, "COMPHET_VCF", output_tsv, uid, proband)
+        tsv_files.append(output_tsv)
     elif resource == 'compound_heterozygotes_rare':
-      uid = False
-      for annotation in private_annotations:
-        if private_annotations[annotation]['name'] == 'Rare Compound Heterozygotes':
-          uid = annotation
-          break
-      if not uid:
-        fail('No private annotation with the name Rare Compound Heterozygotes defined in the resources')
-      output_tsv = "comp_het_rare.tsv"
-      generate_comp_het_tsv(bash_file, "COMPHET_RARE_VCF", output_tsv, uid, proband)
-      tsv_files.append(output_tsv)
+      if has_parents:
+        uid = False
+        for annotation in private_annotations:
+          if private_annotations[annotation]['name'] == 'Rare Compound Heterozygotes':
+            uid = annotation
+            break
+        if not uid:
+          fail('No private annotation with the name Rare Compound Heterozygotes defined in the resources')
+        output_tsv = "comp_het_rare.tsv"
+        generate_comp_het_tsv(bash_file, "COMPHET_RARE_VCF", output_tsv, uid, proband)
+        tsv_files.append(output_tsv)
 
     # Extract the Variant Quality scores after getting the uid of this annotation
     elif resource == 'variant_quality':
@@ -1255,7 +1267,7 @@ def annotate_vcf(resource_info, bash_file, chr_format, threads, samples):
 
 # Filter the final vcf file to only include variants present in the proband, and based on some
 # basic annotations
-def filter_vcf(bash_file, samples, proband, resource_info, threads):
+def filter_vcf(bash_file, samples, proband, resource_info, threads, has_parents):
 
   # Create a file containing the name of the proband for use in the filter. Note that there can be multiple probands, e.g.
   # if the family is two affected siblings
@@ -1311,25 +1323,6 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads):
   print('  variant.FILTER == "PASS" && variant.ALT[0] != "*"\' \\', file = bash_file)
 
   # Then tag variants based on their quality
-  ###### TEMP CHANGE FOR TESTING
-  ###### There medium quality are being called high quality for now pending user testing
-#  print('  --trio \"het_low_qual:kid.het && ', file = bash_file)
-#  print('    ((kid.GQ >= 10 && kid.GQ < 20 && kid.AB >= 0.1 && kid.AB <= 0.9) || ', file = bash_file)
-#  print('    (kid.GQ >= 20 && kid.AB >= 0.1 && kid.AB < 0.2) || ', file = bash_file)
-#  print('    (kid.GQ >= 20 && kid.AB > 0.8 && kid.AB <= 0.9))\" \\', file = bash_file)
-#  print('  --trio "het_med_qual:kid.het && ', file = bash_file)
-#  print('    ((kid.GQ >=20 && kid.GQ < 30 && kid.AB >= 0.2 && kid.AB <= 0.8) || ', file = bash_file)
-#  print('    (kid.GQ >=30 && kid.AB >= 0.2 && kid.AB < 0.3) || ', file = bash_file)
-#  print('    (kid.GQ >=30 && kid.AB > 0.7 && kid.AB <= 0.8))\" \\', file = bash_file)
-#  print('  --trio \"het_hi_qual:kid.het && kid.GQ >= 30 && kid.AB >= 0.3 && kid.AB <= 0.7\" \\', file = bash_file)
-#  print('  --trio \"hom_low_qual:kid.hom_alt && ', file = bash_file)
-#  print('    ((kid.GQ >= 10 && kid.GQ < 20 && kid.AB >= 0.7) || ', file = bash_file)
-#  print('    (kid.GQ >= 20 && kid.AB >= 0.7 && kid.AB < 0.8))\" \\', file = bash_file)
-#  print('  --trio "hom_med_qual: kid.hom_alt && ', file = bash_file)
-#  print('    ((kid.GQ >= 20 && kid.GQ < 30 && kid.AB >= 0.8) || ', file = bash_file)
-#  print('    (kid.GQ >= 30 && kid.AB >= 0.8 && kid.AB < 0.9))\" \\', file = bash_file)
-#  print('  --trio \"hom_hi_qual: kid.hom_alt && kid.GQ >= 30 && kid.AB >= 0.9\" \\', file = bash_file)
-
   print('  --sample-expr \"het_low_qual:sample.het && ', file = bash_file)
   print('    ((sample.GQ >= 10 && sample.GQ < 20 && sample.AB >= 0.1 && sample.AB <= 0.9) || ', file = bash_file)
   print('    (sample.GQ >= 20 && sample.AB >= 0.1 && sample.AB < 0.2) || ', file = bash_file)
@@ -1339,7 +1332,10 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads):
   print('    ((sample.GQ >= 10 && sample.GQ < 20 && sample.AB >= 0.7) || ', file = bash_file)
   print('    (sample.GQ >= 20 && sample.AB >= 0.7 && sample.AB < 0.8))\" \\', file = bash_file)
   print('  --sample-expr \"hom_hi_qual: sample.hom_alt && sample.GQ >= 20 && sample.AB >= 0.8\" \\', file = bash_file)
-  print('  --trio \"comphet_side:comphet_side(kid, mom, dad)" \\', file = bash_file)
+
+  # ...and include trio information for comp hets if both parents are present
+  if has_parents:
+    print('  --trio \"comphet_side:comphet_side(kid, mom, dad)" \\', file = bash_file)
 
   # And final compression
   print('  --pass-only \\', file = bash_file)
@@ -1350,43 +1346,44 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads):
   print('$BCFTOOLS index -t $FILTEREDVCF', file = bash_file)
   print(file = bash_file)
 
-  # Extract all comp hets
-  print('# Extract compound hets', file = bash_file)
-  print('echo -n "Extracting compound hets..."', file = bash_file)
-  print('$SLIVAR compound-hets -v $FILTEREDVCF \\', file = bash_file)
-  print('  --sample-field comphet_side \\', file = bash_file)
-  print('  --sample-field denovo -p $PED \\', file = bash_file)
-  print('  | $BCFTOOLS view -O z -o $COMPHET_VCF', file = bash_file)
-  print('$BCFTOOLS index -t $COMPHET_VCF', file = bash_file)
-  print('echo "complete"', file = bash_file)
-  print(file = bash_file)
-
-  # Now perform a more stringent filter on the comp het list to pull out "rare" comp hets. First remove
-  # the original comp het annotations, then filter the variants that form comp hets to those with gnomAD
-  # hom alts < 5
-  print('# Find rare compound hets', file = bash_file)
-  print('echo -n "Find rare compound hets..."', file = bash_file)
-  print('$BCFTOOLS annotate -x INFO/comphet_side,INFO/slivar_comphet $COMPHET_VCF \\', file = bash_file)
-  print('  | $SLIVAR expr --vcf - -p $PED --js $JS \\', file = bash_file)
-  print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && (!("gg4_0_0_nhomalt" in INFO) || ("gg4_0_0_nhomalt" in INFO && INFO.gg4_0_0_nhomalt < 5))\' \\', file = bash_file)
-  print('  --pass-only \\', file = bash_file)
-  print('  2>> $STDERR \\', file = bash_file)
-  print('  | $BCFTOOLS view -O z -o $TEMP_RARE_VCF --threads ', threads, ' - \\', sep = '', file = bash_file)
-  print('  >> $STDOUT 2>> $STDERR', file = bash_file)
-  print('$BCFTOOLS index -t $TEMP_RARE_VCF', file = bash_file)
-  print('echo "complete"', file = bash_file)
-  print(file = bash_file)
-
-  # Extract all comp hets
-  print('# Extract rare compound hets', file = bash_file)
-  print('echo -n "Extracting rare compound hets..."', file = bash_file)
-  print('$SLIVAR compound-hets -v $TEMP_RARE_VCF \\', file = bash_file)
-  print('  --sample-field comphet_side \\', file = bash_file)
-  print('  --sample-field denovo -p $PED \\', file = bash_file)
-  print('  | $BCFTOOLS view -O z -o $COMPHET_RARE_VCF', file = bash_file)
-  print('$BCFTOOLS index -t $COMPHET_RARE_VCF', file = bash_file)
-  print('echo "complete"', file = bash_file)
-  print(file = bash_file)
+  # Extract all comp hets if parents are present
+  if has_parents:
+    print('# Extract compound hets', file = bash_file)
+    print('echo -n "Extracting compound hets..."', file = bash_file)
+    print('$SLIVAR compound-hets -v $FILTEREDVCF \\', file = bash_file)
+    print('  --sample-field comphet_side \\', file = bash_file)
+    print('  --sample-field denovo -p $PED \\', file = bash_file)
+    print('  | $BCFTOOLS view -O z -o $COMPHET_VCF', file = bash_file)
+    print('$BCFTOOLS index -t $COMPHET_VCF', file = bash_file)
+    print('echo "complete"', file = bash_file)
+    print(file = bash_file)
+  
+    # Now perform a more stringent filter on the comp het list to pull out "rare" comp hets. First remove
+    # the original comp het annotations, then filter the variants that form comp hets to those with gnomAD
+    # hom alts < 5
+    print('# Find rare compound hets', file = bash_file)
+    print('echo -n "Find rare compound hets..."', file = bash_file)
+    print('$BCFTOOLS annotate -x INFO/comphet_side,INFO/slivar_comphet $COMPHET_VCF \\', file = bash_file)
+    print('  | $SLIVAR expr --vcf - -p $PED --js $JS \\', file = bash_file)
+    print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && (!("gg4_0_0_nhomalt" in INFO) || ("gg4_0_0_nhomalt" in INFO && INFO.gg4_0_0_nhomalt < 5))\' \\', file = bash_file)
+    print('  --pass-only \\', file = bash_file)
+    print('  2>> $STDERR \\', file = bash_file)
+    print('  | $BCFTOOLS view -O z -o $TEMP_RARE_VCF --threads ', threads, ' - \\', sep = '', file = bash_file)
+    print('  >> $STDOUT 2>> $STDERR', file = bash_file)
+    print('$BCFTOOLS index -t $TEMP_RARE_VCF', file = bash_file)
+    print('echo "complete"', file = bash_file)
+    print(file = bash_file)
+  
+    # Extract all comp hets
+    print('# Extract rare compound hets', file = bash_file)
+    print('echo -n "Extracting rare compound hets..."', file = bash_file)
+    print('$SLIVAR compound-hets -v $TEMP_RARE_VCF \\', file = bash_file)
+    print('  --sample-field comphet_side \\', file = bash_file)
+    print('  --sample-field denovo -p $PED \\', file = bash_file)
+    print('  | $BCFTOOLS view -O z -o $COMPHET_RARE_VCF', file = bash_file)
+    print('$BCFTOOLS index -t $COMPHET_RARE_VCF', file = bash_file)
+    print('echo "complete"', file = bash_file)
+    print(file = bash_file)
 
 
 
