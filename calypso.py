@@ -686,9 +686,15 @@ def main():
     fail('Could not open ' + str(upload_filename) + ' to write to')
 
   if reference == 'GRCh37':
-    annotation_project_id = api_store.get('Project ids', 'annotations_grch37')
+    try:
+      annotation_project_id = api_store.get('Project ids', 'annotations_grch37')
+    except:
+      fail('Config file does not contain the project id of project "annotations_grch38"')
   elif reference == 'GRCh38':
-    annotation_project_id = api_store.get('Project ids', 'annotations_grch38')
+    try:
+      annotation_project_id = api_store.get('Project ids', 'annotations_grch38')
+    except:
+      fail('Config file does not contain the project id of project "annotations_grch38"')
   print('API_CLIENT=', args.api_client, sep = '', file = upload_file)
   print('CONFIG=', args.client_config, sep = '', file = upload_file)
   print('UPLOAD_SCRIPT=$API_CLIENT/variant_annotations/upload_annotations.py', sep = '', file = upload_file)
@@ -1759,7 +1765,7 @@ def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, pr
 
 # If the script fails, provide an error message and exit
 def fail(message):
-  print(message, sep = '')
+  print('ERROR:', message, sep = '')
   exit(1)
 
 # Initialise global variables

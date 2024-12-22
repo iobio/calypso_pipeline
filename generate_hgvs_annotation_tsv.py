@@ -47,7 +47,7 @@ def main():
     fail('The delimiter field is not provided for resource ' + str(resource) + ' and so its annotation cannot be processed.')
 
   # Get all the MANE transcript ids
-  mane_file = '/scratch/ucgd/lustre-labs/marth/scratch/calypso/data/GRCh38/reference/MANE.GRCh38.v1.3.ensembl.transcript_ids.txt'
+  mane_file = '/scratch/ucgd/lustre-core/UCGD_Research/marth_NIH/Calypso/data/GRCh38/reference/MANE.GRCh38.v1.3.ensembl.transcript_ids.txt'
   mane = open(mane_file, 'r')
   maneIds = []
   for record in mane.readlines():
