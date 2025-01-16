@@ -1330,12 +1330,12 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads, has_parents)
 
   # Then tag variants based on their quality
   print('  --sample-expr \"het_low_qual:sample.het && ', file = bash_file)
-  print('    ((sample.GQ >= 10 && sample.GQ < 20 && sample.AB >= 0.1 && sample.AB <= 0.9) || ', file = bash_file)
+  print('    ((sample.GQ >= 8 && sample.GQ < 20 && sample.AB >= 0.1 && sample.AB <= 0.9) || ', file = bash_file)
   print('    (sample.GQ >= 20 && sample.AB >= 0.1 && sample.AB < 0.2) || ', file = bash_file)
   print('    (sample.GQ >= 20 && sample.AB > 0.8 && sample.AB <= 0.9))\" \\', file = bash_file)
   print('  --sample-expr \"het_hi_qual:sample.het && sample.GQ >= 20 && sample.AB >= 0.2 && sample.AB <= 0.8\" \\', file = bash_file)
   print('  --sample-expr \"hom_low_qual:sample.hom_alt && ', file = bash_file)
-  print('    ((sample.GQ >= 10 && sample.GQ < 20 && sample.AB >= 0.7) || ', file = bash_file)
+  print('    ((sample.GQ >= 8 && sample.GQ < 20 && sample.AB >= 0.7) || ', file = bash_file)
   print('    (sample.GQ >= 20 && sample.AB >= 0.7 && sample.AB < 0.8))\" \\', file = bash_file)
   print('  --sample-expr \"hom_hi_qual: sample.hom_alt && sample.GQ >= 20 && sample.AB >= 0.8\" \\', file = bash_file)
 
