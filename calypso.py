@@ -62,6 +62,11 @@ def main():
   mosaic_samples = {}
   mosaic_sample_ids = {}
   proband = False
+  has_mother = False
+  has_father = False
+  has_other_relations = False
+  parents = ''
+  family = ''
   for sample in project.get_samples():
     relation = False
     sex = False
@@ -92,6 +97,17 @@ def main():
       fail('The Relation attribute is not set for sample ' + sample['name'])
     elif relation == 'Proband':
       proband = sample['name']
+    elif relation == 'Mother':
+      has_mother = True
+      parents += sample['name'] + ','
+      family += sample['name'] + ','
+    elif relation == 'Father':
+      has_father = True
+      parents += sample['name'] + ','
+      family += sample['name'] + ','
+    else:
+      has_other_relations = True
+      family += sample['name'] + ','
     if not sex:
       fail('The Sex attribute is not set for sample ' + sample['name'])
     if not affected_status:
@@ -104,6 +120,11 @@ def main():
   # Fail if no proband is defined
   if not proband:
     fail('Could not find a proband for this project')
+
+  # Set the parents and family members for quality measures
+  has_parents = True if has_mother and has_father else False
+  parents = parents.rstrip(',')
+  family = family.rstrip(',')
 
   # Get the vcf file for each sample. Currently, Calypso only works for projects with a single multi-sample vcf.
   # Determine the name of this vcf file, then determine if this file has chromosomes listed as e.g. '1' or 'chr1'.
@@ -354,7 +375,7 @@ def main():
   if args.hpo:
     print('Using the HPO terms: ', args.hpo, sep = '')
   else:
-    print('Using the HPO terms: No terrms available')
+    print('Using the HPO terms: No terms available')
 
   # Get all the project attributes in the target Mosaic project
 
@@ -413,6 +434,44 @@ def main():
     elif annotation == 'variant_quality_grch38':
       continue
     existing_annotations.append(project_annotations[annotation]['name'])
+
+
+###############3
+###############3
+################ Hard code the addition of a couple of annotations (trio quality and family quality). These are only
+################ added depending on the samples in the project
+################
+################
+  if has_father and has_mother:
+    resource = 'variant_quality'
+    annotation = 'Trio Quality'
+    value_type = 'string'
+    mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': annotation, \
+                                                                     'type': value_type, \
+                                                                     'id': False, \
+                                                                     'fields': False, \
+                                                                     'isSample': False, \
+                                                                     'operation': False, \
+                                                                     'position': False, \
+                                                                     'positions': False, \
+                                                                     'category': 'Quality', \
+                                                                     'severity': {'Pass': 8, 'Dummy': 3, 'Dummy2': 4, 'Fail': 1}, \
+                                                                     'display_type': 'badge'}
+  if has_other_relations:
+    resource = 'variant_quality'
+    annotation = 'Family Quality'
+    value_type = 'string'
+    mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': annotation, \
+                                                                     'type': value_type, \
+                                                                     'id': False, \
+                                                                     'fields': False, \
+                                                                     'isSample': False, \
+                                                                     'operation': False, \
+                                                                     'position': False, \
+                                                                     'positions': False, \
+                                                                     'category': 'Quality', \
+                                                                     'severity': {'Pass': 8, 'Dummy': 3, 'Dummy2': 4, 'Fail': 1}, \
+                                                                     'display_type': 'badge'}
 
   # Loop over each resource in the Mosaic resources file
   for resource in mosaic_info['resources']:
@@ -491,16 +550,17 @@ def main():
   # for postannotation
   toml_filename = buildToml(working_directory, resource_info)
   lua_filename = generate_lua_file(working_directory)
-
-  # Check if parents exist for this sample
-  has_mother = False
-  has_father = False
-  for sample in mosaic_samples:
-    if mosaic_samples[sample]['relation'] == 'Mother':
-      has_mother = True
-    elif mosaic_samples[sample]['relation'] == 'Fother':
-      has_father = True
-  has_parents = True if has_mother and has_father else False
+#
+#  # Check if parents exist for this sample
+#  has_mother = False
+#  has_father = False
+#  for sample in mosaic_samples:
+#    if mosaic_samples[sample]['relation'] == 'Mother':
+#      has_mother = True
+#    elif mosaic_samples[sample]['relation'] == 'Fother':
+#      has_father = True
+#
+#  has_parents = True if has_mother and has_father else False
 
   # Generate the bash script to run the annotation pipeline
   bash_filename, bash_file = open_bash_script(working_directory)
@@ -554,11 +614,18 @@ def main():
 
     # Extract the Variant Quality scores after getting the uid of this annotation
     elif resource == 'variant_quality':
+      trio_uid = False
+      family_uid = False
       for annotation in private_annotations:
         if private_annotations[annotation]['name'] == 'Variant Quality':
           uid = annotation
-          break
-      generate_variant_quality_tsv(bash_file, uid, proband)
+        if private_annotations[annotation]['name'] == 'Trio Quality':
+          trio_uid = annotation
+          tsv_files.append('trio_quality.tsv')
+        if private_annotations[annotation]['name'] == 'Family Quality':
+          family_uid = annotation
+          tsv_files.append('family_quality.tsv')
+      generate_variant_quality_tsv(bash_file, uid, proband, trio_uid, parents, family_uid, family)
       tsv_files.append('variant_quality.tsv')
 
     # Annotations to ignore
@@ -708,7 +775,11 @@ def main():
 
     # Public annotations are posted to the annotation project, private annotations are posted to the
     # case project
-    if tsv == 'variant_quality.tsv' or tsv == 'comp_het.tsv' or tsv == 'comp_het_rare.tsv':
+    if tsv == 'variant_quality.tsv' or \
+       tsv == 'trio_quality.tsv' or \
+       tsv == 'family_quality.tsv' or \
+       tsv == 'comp_het.tsv' or \
+       tsv == 'comp_het_rare.tsv':
       print('-p ', args.project_id, ' ', sep = '', end = '', file = upload_file)
     else:
       print('-p ', annotation_project_id, ' ', sep = '', end = '', file = upload_file)
@@ -1339,6 +1410,9 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads, has_parents)
   print('    (sample.GQ >= 20 && sample.AB >= 0.7 && sample.AB < 0.8))\" \\', file = bash_file)
   print('  --sample-expr \"hom_hi_qual: sample.hom_alt && sample.GQ >= 20 && sample.AB >= 0.8\" \\', file = bash_file)
 
+  # Include an additional filter 
+  print('  --sample-expr \"fam_geno: sample.GQ > 8\" \\', file = bash_file)
+
   # ...and include trio information for comp hets if both parents are present
   if has_parents:
     print('  --trio \"comphet_side:comphet_side(kid, mom, dad)" \\', file = bash_file)
@@ -1359,8 +1433,10 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads, has_parents)
     print('$SLIVAR compound-hets -v $FILTEREDVCF \\', file = bash_file)
     print('  --sample-field comphet_side \\', file = bash_file)
     print('  --sample-field denovo -p $PED \\', file = bash_file)
+    print('  2>> $STDERR \\', file = bash_file)
     print('  | $BCFTOOLS view -O z -o $COMPHET_VCF', file = bash_file)
     print('$BCFTOOLS index -t $COMPHET_VCF', file = bash_file)
+    print('>> $STDOUT 2>> $STDERR \\', file = bash_file)
     print('echo "complete"', file = bash_file)
     print(file = bash_file)
   
@@ -1386,7 +1462,9 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads, has_parents)
     print('$SLIVAR compound-hets -v $TEMP_RARE_VCF \\', file = bash_file)
     print('  --sample-field comphet_side \\', file = bash_file)
     print('  --sample-field denovo -p $PED \\', file = bash_file)
+    print('  2>> $STDERR \\', file = bash_file)
     print('  | $BCFTOOLS view -O z -o $COMPHET_RARE_VCF', file = bash_file)
+    print('  >> $STDOUT 2>> $STDERR', file = bash_file)
     print('$BCFTOOLS index -t $COMPHET_RARE_VCF', file = bash_file)
     print('echo "complete"', file = bash_file)
     print(file = bash_file)
@@ -1425,15 +1503,26 @@ def generate_comp_het_tsv(bash_file, filename, output, uid, proband):
   print('echo "complete"', file = bash_file)
 
 # Call the command to extract the variant quality values
-def generate_variant_quality_tsv(bash_file, uid, proband):
+def generate_variant_quality_tsv(bash_file, uid, proband, trio_uid, parents, family_uid, family):
   print(file = bash_file)
   print('# Resource: Variant Quality', sep = '', file = bash_file)
   print('echo -n "Creating tsv file for Variant Quality..."', sep = '', file = bash_file)
   print('python3 $GENERATE_VARIANT_QUALITY_TSV ', end = '', file = bash_file)
   print('-i $FILTEREDVCF ', end = '', file = bash_file)
-  print('-u "', uid, '" ', sep = '', end = '', file = bash_file)
   print('-t $TOOLPATH ', end = '', file = bash_file)
-  print('-p ', proband, sep = '', file = bash_file)
+  print('-p "', proband, '" ', sep = '', end = '', file = bash_file)
+  print('-u "', uid, '" ', sep = '', end = '', file = bash_file)
+
+  # If trio quality data is to be generated
+  if trio_uid:
+    print('-d "', trio_uid, '" ', sep = '', end = '', file = bash_file)
+    print('-a "', parents, '" ', sep = '', end = '', file = bash_file)
+
+  # If there are additional family members, the family quality data is to be generated
+  if family_uid:
+    print('-m "', family_uid, '" ', sep = '', end = '', file = bash_file)
+    print('-f "', family, '" ', sep = '', end = '', file = bash_file)
+  print(file = bash_file)
   print('echo "complete"', file = bash_file)
 
 # Generate the command to process general annotations

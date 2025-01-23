@@ -21,20 +21,26 @@ def main():
   else:
     bcftools = 'bcftools'
 
-  # Open an output tsv file to write annotations to
-  if args.output:
-    outputFile = open(args.output, 'w')
-  else:
-    outputFile = open('variant_quality.tsv', 'w')
+  # Open output tsv files to write annotations to
+  vq_output_file = open('variant_quality.tsv', 'w')
+  print('CHROM\tSTART\tEND\tREF\tALT\t', args.uid, file = vq_output_file)
 
-  # Write the header line to the tsv file
-  print('CHROM\tSTART\tEND\tREF\tALT\t', args.uid, file = outputFile)
+  # Store the samples that must have the minimum GQ value
+  if args.parents:
+    parents = args.parents.split(',') if ',' in args.parents else [args.parents]
+    trio_output_file = open('trio_quality.tsv', 'w')
+    if not args.trio_uid:
+      fail('parents have been provided and so --trio_uid (-d) must also be provided')
+    print('CHROM\tSTART\tEND\tREF\tALT\t', args.trio_uid, file = trio_output_file)
+  if args.family:
+    family = args.family.split(',') if ',' in args.family else [args.parents]
+    family_output_file = open('family_quality.tsv', 'w')
+    if not args.family_uid:
+      fail('additional family members have been provided and so the --family_uid (-m) must also be provided')
+    print('CHROM\tSTART\tEND\tREF\tALT\t', args.family_uid, file = family_output_file)
 
   # Loop over all records in the vcf file
-
-  ### UPDATE FOR ONLY HIGH AND LOW QUAL - NO MEDIUM
-  #command = bcftools + ' query -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%INFO/het_low_qual\\t%INFO/het_med_qual\\t%INFO/het_hi_qual\\t%INFO/hom_low_qual\\t%INFO/hom_med_qual\\t%INFO/hom_hi_qual' + '\\n\' ' + str(args.input_vcf)
-  command = bcftools + ' query -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%INFO/het_low_qual\\t%INFO/het_hi_qual\\t%INFO/hom_low_qual\\t%INFO/hom_hi_qual' + '\\n\' ' + str(args.input_vcf)
+  command = bcftools + ' query -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%INFO/het_low_qual\\t%INFO/het_hi_qual\\t%INFO/hom_low_qual\\t%INFO/hom_hi_qual\\t%INFO/fam_geno' + '\\n\' ' + str(args.input_vcf)
   for record in os.popen(command).readlines():
 
     # Split the record on tabs
@@ -44,54 +50,45 @@ def main():
     # Since all samples in the vcf are evaluated for quailty, there could be sample ids associated with multiple of
     # the variant quality annotations
     variant_quality = 'Fail'
+    trio_quality = False
+    family_quality = False
     if args.proband in fields[5] or args.proband in fields[7]:
       variant_quality = 'Fail'
     elif args.proband in fields[6] or args.proband in fields[8]:
       variant_quality = 'Pass'
 
+      # If additional samples were provided, check if they are present in the fam_geno annotation. If the proband quality is
+      # Fail, there is no need for this check
+      if args.parents:
+        trio_quality = True
+        for sample in parents:
+          if sample not in fields[9]:
+            trio_quality = False
+            break
+      if args.family:
+        family_quality = True
+        for sample in family:
+          if sample not in fields[9]:
+            family_quality = False
+            break
+
     # If the proband quality is fail, but there are other samples that are high quality, mark this as Fail+
     if variant_quality == 'Fail':
       if fields[6] != '.' or fields[8] != '.':
         variant_quality = 'Fail+'
-    ### UPDATE FOR ONLY HIGH AND LOW QUAL - NO MEDIUM
-    #text = ''.join(fields[5:11])
-    #if text.count('.') != 5:
-    #if text.count('.') != 3:
-    #  fail('Unexpected number of variant confidence values assigned to variant at ' + str(fields[0]) + ':' + str(fields[1]))
-
-    # If there are no .'s at the beginning of "text", this is a het_low_qual. If there is one, then this is a het_med_qual etc
-    # based on the order in the command above this loop. All samples in the vcf are evaluated for quality, so there could be a
-    # comma separated list of samples associated with the quality tag
-    #variant_quality = False
-
-    # THE FOLLOWING IS FOR THE CASE WHERE WE HAVE MEDIUM
-#    if text.startswith('.....'):
-#      variant_quality = 'High'
-#    elif text.startswith('....'):
-#      variant_quality = 'Medium'
-#    elif text.startswith('...'):
-#      variant_quality = 'Low'
-#    elif text.startswith('..'):
-#      variant_quality = 'High'
-#    elif text.startswith('.'):
-#      variant_quality = 'Medium'
-#    else:
-#      variant_quality = 'Low'
-
-    # AND THE FOLLOWING IS JUST PASS \ FAIL
-#    if text.startswith('...'):
-#      variant_quality = 'Pass'
-#    elif text.startswith('..'):
-#      variant_quality = 'Fail'
-#    elif text.startswith('.'):
-#      variant_quality = 'Pass'
-#    else:
-#      variant_quality = 'Fail'
   
-    print('\t'.join(fields[0:5]), '\t', variant_quality, sep = '', file = outputFile)
+    print('\t'.join(fields[0:5]), '\t', variant_quality, sep = '', file = vq_output_file)
+    if trio_quality:
+      print('\t'.join(fields[0:5]), '\tPass', sep = '', file = trio_output_file)
+    if family_quality:
+      print('\t'.join(fields[0:5]), '\tPass', sep = '', file = family_output_file)
 
   # Close the output tsv file
-  outputFile.close()
+  vq_output_file.close()
+  if args.parents:
+    trio_output_file.close()
+  if args.family:
+    family_output_file.close()
 
 # Input options
 def parseCommandLine():
@@ -101,11 +98,17 @@ def parseCommandLine():
   # Required arguments
   parser.add_argument('--input_vcf', '-i', required = True, metavar = 'string', help = 'The input vcf file to annotate')
   parser.add_argument('--tools_directory', '-t', required = True, metavar = 'string', help = 'The path to the directory where the tools live')
-  parser.add_argument('--uid', '-u', required = True, metavar = 'string', help = 'The uid of the variant quality attribute')
   parser.add_argument('--proband', '-p', required = True, metavar = 'string', help = 'The name of the proband as it appears in the vcf header')
 
-  # Optional arguments
-  parser.add_argument('--output', '-o', required = False, metavar = 'string', help = 'The name of the output file. Will default to variant_quality.tsv')
+  # The uids of the quality annotations. The trio and family quality uids should only be included if --parents and --family are used
+  parser.add_argument('--uid', '-u', required = True, metavar = 'string', help = 'The uid of the variant quality attribute')
+  parser.add_argument('--trio_uid', '-d', required = False, metavar = 'string', help = 'The uid of the trio variant quality attribute')
+  parser.add_argument('--family_uid', '-m', required = False, metavar = 'string', help = 'The uid of the family variant quality attribute')
+
+  # Optionally list the sample names of the mother and father. If these are provided, generate the additional family quality annotation to
+  # determine whether the inheritance can be believed
+  parser.add_argument('--parents', '-a', required = False, metavar = 'string', help = 'A comma separated list of the sample names of the mother and father')
+  parser.add_argument('--family', '-f', required = False, metavar = 'string', help = 'A comma separated list of the sample names of additional family members that should be considered in the family quality filter')
 
   return parser.parse_args()
 
@@ -133,7 +136,7 @@ def updateFields(fields, value):
 
 # If the script fails, provide an error message and exit
 def fail(message):
-  print(message, sep = "")
+  print('ERROR: ', message, sep = '')
   exit(1)
 
 # Initialise global variables
