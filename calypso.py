@@ -435,7 +435,6 @@ def main():
       continue
     existing_annotations.append(project_annotations[annotation]['name'])
 
-
 ###############3
 ###############3
 ################ Hard code the addition of a couple of annotations (trio quality and family quality). These are only
@@ -575,6 +574,10 @@ def main():
   print('GENERATE_COMP_HET_TSV=', root_path, '/generate_comphet_tsv.py', sep = '', file = bash_file)
   print('GENERATE_VARIANT_QUALITY_TSV=', root_path, '/generate_variant_quality_tsv.py', sep = '', file = bash_file)
   print('MOSAIC_JSON=', args.mosaic_json, sep = '', file = bash_file)
+
+  # If an SV vcf file was provided, annotate and filter the sv file
+  if args.sv_vcf:
+    filter_sv_vcf()
 
   # Loop over all the resources to be uploaded to Mosaic
   tsv_files = []
@@ -849,10 +852,13 @@ def parse_command_line():
   # Required arguments
   parser.add_argument('--data_directory', '-d', required = False, metavar = 'string', help = 'The path to the directory where the resources live')
   parser.add_argument('--tools_directory', '-s', required = False, metavar = 'string', help = 'The path to the directory where the tools to use live')
-  parser.add_argument('--input_vcf', '-i', required = False, metavar = 'string', help = 'The input vcf file to annotate')
   parser.add_argument('--ped', '-e', required = False, metavar = 'string', help = 'The pedigree file for the family. Not required for singletons')
   parser.add_argument('--project_id', '-p', required = True, metavar = 'string', help = 'The project id that variants will be uploaded to')
   parser.add_argument('--variant_filters', '-f', required = False, metavar = 'string', help = 'The json file describing the variant filters to apply to each project')
+
+  # Input vcf files
+  parser.add_argument('--input_vcf', '-i', required = False, metavar = 'string', help = 'The input vcf file to annotate')
+  parser.add_argument('--sv_vcf', '-sv', required = False, metavar = 'string', help = 'The input SV vcf file')
 
   # Exomiser arguments
   parser.add_argument('--exomiser_filters_json', '-x', required = False, metavar = 'string', help = 'The json describing the exomiser filters')
@@ -1474,6 +1480,63 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads, has_parents)
 
 
 
+
+
+#####
+##### Deal with SV data
+#####
+
+def filter_sv_vcf(sv_output_file):
+  print('set -euo pipefail', file = sv_output_file)
+  print(file = sv_output_file)
+  print('# Define the tools', file = sv_output_file)
+  print('$SVAFOTATE=', sep = '', file = sv_output_file)
+  print('$BCFTOOLS=', sep = '', file = sv_output_file)
+  print('$SLIVAR=', sep = '', file = sv_output_file)
+  print(file = sv_output_file)
+  print('# Define the input files', file = sv_output_file)
+  print('FASTA=', fasta, sep = '', file = sv_output_file)
+  print('SVAFBED=', bed, sep = '', file = sv_output_file)
+  print('SV_VCF=', vcf, sep = '', file = sv_output_file)
+  print(file = sv_output_file)
+  print('# Define the output files', file = sv_output_file)
+  print('ANNOTATED_VCF=', sep = '', file = sv_output_file)
+  print('', sep = '', file = sv_output_file)
+
+  # Annotate the SV vcf file
+  print('$SVAFOTATE annotate -v $SV_VCF \\', sep = '', file = sv_output_file)
+  print('  -b $SVAFBED \\', sep = '', file = sv_output_file)
+  print('  -f 0.8 \\', sep = '', file = sv_output_file)
+  print('  -o $ANNOTATED_VCF', sep = '', file = sv_output_file)
+
+  # Filter the annotated SV vcf file
+  print('$BCFTOOLS view \\', sep = '', file = sv_output_file)
+  print('  -i 0.8 \\', sep = '', file = sv_output_file)
+  print('  -o $ANNOTATED_VCF', sep = '', file = sv_output_file)
+
+# pass in variables
+SVAF_OUT=$VCF.svaf.vcf.gz
+BCF_OUT=$SVAF_OUT.bcf.vcf.gz
+OUTPUT=$VCF.final.vcf.gz
+
+# set variables
+FASTA=~/reference/GRCh38/human_g1k_v38_decoy_phix.fasta
+SVAFBED=~/reference/SVAFotate_core_SV_popAFs.GRCh38.v4.1.bed.gz
+
+# filter with bcftools
+#bcftools view -i '((INFO/SVTYPE="DEL" && FMT/DHFFC[0]<0.7) || (INFO/SVTYPE="DUP" && FMT/DHBFC[0]>1.3) || (INFO/SVTYPE!="DEL" && INFO/SVTYPE!="DUP")) && INFO/Max_AF<0.05' $SVAF_OUT \
+#    -O z \
+#    -o $BCF_OUT
+
+# filter on popmax af with slivar
+slivar expr --info "INFO.Max_AF < 0.05" --vcf $SVAF_OUT | bgzip -c > $OUTPUT
+
+
+
+
+
+
+
 #####
 ##### Following are scripts to deal with annotation tsvs
 #####
@@ -1573,12 +1636,12 @@ def application_properties(working_dir, tools_dir, reference):
   # Write the data versions to the file
   print('exomiser.data-directory=', tools_dir, 'exomiser-cli-14.0.0/data', sep = '', file = properties_file)
   print('remm.version=0.3.1.post1', file = properties_file)
-  print('cadd.version=1.4', file = properties_file)
+  print('cadd.version=1.7', file = properties_file)
   if reference == 'GRCh37':
-    print('exomiser.hg19.data-version=2402', file = properties_file)
+    print('exomiser.hg19.data-version=2406', file = properties_file)
   elif reference == 'GRCh38':
-    print('exomiser.hg38.data-version=2402', file = properties_file)
-  print('exomiser.phenotype.data-version=2402', file = properties_file)
+    print('exomiser.hg38.data-version=2406', file = properties_file)
+  print('exomiser.phenotype.data-version=2406', file = properties_file)
 
   # Close the application properties file
   properties_file.close()
@@ -1646,9 +1709,7 @@ def generate_yml(working_dir, proband, reference, vcf, ped, hpo):
   print('    EXAC_AMERICAN,', file = yaml)
   print('    EXAC_SOUTH_ASIAN,', file = yaml)
   print('    EXAC_EAST_ASIAN,', file = yaml)
-  print('    EXAC_FINNISH,', file = yaml)
   print('    EXAC_NON_FINNISH_EUROPEAN,', file = yaml)
-  print('    EXAC_OTHER,', file = yaml)
   print('    GNOMAD_E_AFR,', file = yaml)
   print('    GNOMAD_E_AMR,', file = yaml)
   print('    GNOMAD_E_EAS,', file = yaml)
@@ -1670,7 +1731,8 @@ def generate_yml(working_dir, proband, reference, vcf, ped, hpo):
   print('  pathogenicitySources: [', file = yaml)
   print('    REVEL,', file = yaml)
   print('    MVP,', file = yaml)
-  print('    ALPHA_MISSENSE', file = yaml)
+  print('    ALPHA_MISSENSE,', file = yaml)
+  print('    SPLICE_AI', file = yaml)
   print('  ]', file = yaml)
   print(file = yaml)
 
