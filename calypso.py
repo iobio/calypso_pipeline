@@ -1542,7 +1542,7 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf):
   print('$SVAFOTATE annotate -v $SV_VCF \\', sep = '', file = sv_output_file)
   print('  -b $SVAFBED \\', sep = '', file = sv_output_file)
   print('  -f 0.8 \\', sep = '', file = sv_output_file)
-  print('  -o $ANNOTATED_VCF', sep = '', file = sv_output_file)
+  print('  -o $ANNOTATED_VCF \\', sep = '', file = sv_output_file)
   print('  > $STDOUT 2> $STDERR', file = sv_output_file)
   print(sep = '', file = sv_output_file)
 
@@ -1556,7 +1556,7 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf):
   print('$SLIVAR expr \\', file = sv_output_file)
   print('  --info "INFO.Max_AF < 0.05" \\', file = sv_output_file)
   print('  --vcf $ANNOTATED_VCF |\\', file = sv_output_file)
-  print('  $BCFTOOLS view -O z -o $FILTERED_VCF', file = sv_output_file)
+  print('  $BCFTOOLS view -O z -o $FILTERED_VCF \\', file = sv_output_file)
   print('  >> $STDOUT 2>> $STDERR', file = sv_output_file)
   print(sep = '', file = sv_output_file)
 
