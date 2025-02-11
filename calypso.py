@@ -577,7 +577,20 @@ def main():
 
   # If an SV vcf file was provided, annotate and filter the sv file
   if args.sv_vcf:
-    filter_sv_vcf()
+    sv_vcf = os.path.abspath(args.sv_vcf)
+
+    # Check the file exists
+    if not exists(sv_vcf):
+      fail('Input SV vcf file (' + str(sv_vcf) + ') does not exist')
+
+    # Check that the index file also exists
+    sv_index_file = sv_vcf + '.tbi'
+    if not exists(sv_index_file):
+      fail('The vcf index file for the SV vcf (' + str(sv_vcf) + ') does not exist')
+    sv_filename, sv_output_file = open_sv_script(working_directory)
+    filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf)
+    sv_output_file.close()
+    make_executable = os.popen('chmod +x ' + sv_filename).read()
 
   # Loop over all the resources to be uploaded to Mosaic
   tsv_files = []
@@ -1140,7 +1153,20 @@ def open_bash_script(working_directory):
   try:
     bash_file = open(bash_filename, "w")
   except:
-    fail('There was a problem opening a file (calypso_annotation_pipeline.sh) to write to')
+    fail('There was a problem opening a file (01_calypso_annotation_pipeline.sh) to write to')
+
+  # Return the file
+  return bash_filename, bash_file
+
+# Open a file to write the SV processing pipeline to
+def open_sv_script(working_directory):
+
+  # Create a script file
+  bash_filename = working_directory + '06_calypso_sv_annotation_pipeline.sh'
+  try:
+    bash_file = open(bash_filename, "w")
+  except:
+    fail('There was a problem opening a file (06_calypso_sv_annotation_pipeline.sh) to write to')
 
   # Return the file
   return bash_filename, bash_file
@@ -1187,7 +1213,7 @@ def bash_resources(use_queue, resource_info, working_directory, bash_file, vcf, 
   print(file = bash_file)
 
   # Generate the names of the intermediate and final vcf files
-  vcf_base = os.path.abspath(vcf).split('/')[-1].rstrip('vcf.gz')
+  vcf_base = os.path.abspath(vcf).split('/')[-1].replace('vcf.gz', '')
   filtered_vcf = str(vcf_base) + '_calypso_filtered.vcf.gz'
   comphet_vcf = str(vcf_base) + '_calypso_comphet.vcf.gz'
   rare_temp_vcf = str(vcf_base) + '_calypso_rare_comphet_temp.vcf.gz'
@@ -1486,50 +1512,53 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads, has_parents)
 ##### Deal with SV data
 #####
 
-def filter_sv_vcf(sv_output_file):
+def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf):
+  vcf_base = os.path.abspath(vcf).split('/')[-1].replace('.vcf.gz', '')
+  annotated_vcf = str(vcf_base) + '_annotated.vcf.gz'
+  filtered_vcf = str(vcf_base) + '_filtered.vcf.gz'
+
   print('set -euo pipefail', file = sv_output_file)
   print(file = sv_output_file)
   print('# Define the tools', file = sv_output_file)
-  print('$SVAFOTATE=', sep = '', file = sv_output_file)
-  print('$BCFTOOLS=', sep = '', file = sv_output_file)
-  print('$SLIVAR=', sep = '', file = sv_output_file)
+  print('TOOLPATH=', resource_info['toolsPath'], sep = '', file = sv_output_file)
+  print('SVAFOTATE=$TOOLPATH/svafotate', sep = '', file = sv_output_file)
+  print('BCFTOOLS=$TOOLPATH/bcftools/bcftools', sep = '', file = sv_output_file)
+  print('SLIVAR=$TOOLPATH/slivar', sep = '', file = sv_output_file)
   print(file = sv_output_file)
   print('# Define the input files', file = sv_output_file)
-  print('FASTA=', fasta, sep = '', file = sv_output_file)
-  print('SVAFBED=', bed, sep = '', file = sv_output_file)
-  print('SV_VCF=', vcf, sep = '', file = sv_output_file)
+  print('DATAPATH=', resource_info['path'], sep = '', file = sv_output_file)
+  print('SVAFBED=$DATAPATH/', resource_info['resources']['SVAFotate']['file'], sep = '', file = sv_output_file)
   print(file = sv_output_file)
-  print('# Define the output files', file = sv_output_file)
-  print('ANNOTATED_VCF=', sep = '', file = sv_output_file)
-  print('', sep = '', file = sv_output_file)
+  print('# Define the input and output files', file = sv_output_file)
+  print('FILEPATH=', working_directory, sep = '', file = sv_output_file)
+  print('SV_VCF=', vcf, sep = '', file = sv_output_file)
+  print('ANNOTATED_VCF=$FILEPATH/', annotated_vcf, sep = '', file = sv_output_file)
+  print('FILTERED_VCF=$FILEPATH/', filtered_vcf, sep = '', file = sv_output_file)
+  print('STDOUT=sv_pipeline.stdout', file = sv_output_file)
+  print('STDERR=sv_pipeline.stderr', file = sv_output_file)
+  print(sep = '', file = sv_output_file)
 
   # Annotate the SV vcf file
   print('$SVAFOTATE annotate -v $SV_VCF \\', sep = '', file = sv_output_file)
   print('  -b $SVAFBED \\', sep = '', file = sv_output_file)
   print('  -f 0.8 \\', sep = '', file = sv_output_file)
   print('  -o $ANNOTATED_VCF', sep = '', file = sv_output_file)
+  print('  > $STDOUT 2> $STDERR', file = sv_output_file)
+  print(sep = '', file = sv_output_file)
 
-  # Filter the annotated SV vcf file
-  print('$BCFTOOLS view \\', sep = '', file = sv_output_file)
-  print('  -i 0.8 \\', sep = '', file = sv_output_file)
-  print('  -o $ANNOTATED_VCF', sep = '', file = sv_output_file)
+#  # Filter the annotated SV vcf file
+#  print('$BCFTOOLS view \\', sep = '', file = sv_output_file)
+#  print('  -i 0.8 \\', sep = '', file = sv_output_file)
+#  print('  -o $ANNOTATED_VCF', sep = '', file = sv_output_file)
+#  print(sep = '', file = sv_output_file)
 
-# pass in variables
-SVAF_OUT=$VCF.svaf.vcf.gz
-BCF_OUT=$SVAF_OUT.bcf.vcf.gz
-OUTPUT=$VCF.final.vcf.gz
-
-# set variables
-FASTA=~/reference/GRCh38/human_g1k_v38_decoy_phix.fasta
-SVAFBED=~/reference/SVAFotate_core_SV_popAFs.GRCh38.v4.1.bed.gz
-
-# filter with bcftools
-#bcftools view -i '((INFO/SVTYPE="DEL" && FMT/DHFFC[0]<0.7) || (INFO/SVTYPE="DUP" && FMT/DHBFC[0]>1.3) || (INFO/SVTYPE!="DEL" && INFO/SVTYPE!="DUP")) && INFO/Max_AF<0.05' $SVAF_OUT \
-#    -O z \
-#    -o $BCF_OUT
-
-# filter on popmax af with slivar
-slivar expr --info "INFO.Max_AF < 0.05" --vcf $SVAF_OUT | bgzip -c > $OUTPUT
+  # Filter on popmax af with slivar
+  print('$SLIVAR expr \\', file = sv_output_file)
+  print('  --info "INFO.Max_AF < 0.05" \\', file = sv_output_file)
+  print('  --vcf $ANNOTATED_VCF |\\', file = sv_output_file)
+  print('  $BCFTOOLS view -O z -o $FILTERED_VCF', file = sv_output_file)
+  print('  >> $STDOUT 2>> $STDERR', file = sv_output_file)
+  print(sep = '', file = sv_output_file)
 
 
 
