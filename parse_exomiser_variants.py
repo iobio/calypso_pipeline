@@ -1,4 +1,6 @@
 from os.path import exists
+from pprint import pprint
+from datetime import datetime
 
 import argparse
 import os
@@ -22,18 +24,17 @@ def main():
   # Open an api client project object for the defined project
   project = api_mosaic.get_project(args.project_id)
 
+  # Get the date
+  date = datetime.today().strftime('%Y-%m-%d')
+
   # Variant filters will be added to the project and we need to define the annotation ids for the displayed columns. This will be
   # the Exomiser annotations just created as well as ClinVar and the gene symbol, the consequence and the genotypes. We need to
   # get the ids for some of these columns
-  #
-  # For now, just use the default annotation version
   annotations = {}
   for annotation in project.get_variant_annotations():
+    annotations[annotation['name']] = {'id': annotation['id'], 'uid': annotation['uid'], 'version_ids': {}}
     for version in annotation['annotation_versions']:
-      if version['version'] == 'default':
-        version_id = version['id']
-        break
-    annotations[annotation['name']] = {'id': annotation['id'], 'uid': annotation['uid'], 'version_id': version_id}
+      annotations[annotation['name']]['version_ids'][version['version']] = version['id']
 
   # The following private variant annotations need to be created in Mosaic. These need to be private as they
   # are ranks or scores that are specific to the project they are run in - the same variant could have a 
@@ -48,26 +49,27 @@ def main():
   # Exomiser gene variant score
   # Exomiser variant score
   # Exomiser mode of inheritance
-  annotations = create_annotation(project, args.project_id, annotations, 'Exomiser Rank', 'float')
-  annotations = create_annotation(project, args.project_id, annotations, 'Exomiser Contributing Variant', 'float')
-  annotations = create_annotation(project, args.project_id, annotations, 'Exomiser P-Value', 'float')
-  annotations = create_annotation(project, args.project_id, annotations, 'Exomiser Gene Combined Score', 'float')
-  annotations = create_annotation(project, args.project_id, annotations, 'Exomiser Gene Phenotype Score', 'float')
-  annotations = create_annotation(project, args.project_id, annotations, 'Exomiser Gene Variant Score', 'float')
-  annotations = create_annotation(project, args.project_id, annotations, 'Exomiser Variant Score', 'float')
-  annotations = create_annotation(project, args.project_id, annotations, 'Exomiser MOI', 'string')
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Rank', 'float')
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Contributing Variant', 'float')
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser P-Value', 'float')
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Gene Combined Score', 'float')
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Gene Phenotype Score', 'float')
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Gene Variant Score', 'float')
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Variant Score', 'float')
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser MOI', 'string')
 
   # Open the output file
   output_file = open(args.output, 'w')
   print('CHROM', 'START', 'END', 'REF', 'ALT', \
-        annotations['Exomiser Rank']['uid'], \
-        annotations['Exomiser P-Value']['uid'], \
-        annotations['Exomiser Gene Combined Score']['uid'], \
-        annotations['Exomiser Gene Phenotype Score']['uid'], \
-        annotations['Exomiser Gene Variant Score']['uid'], \
-        annotations['Exomiser Variant Score']['uid'], \
-        annotations['Exomiser MOI']['uid'], \
-        annotations['Exomiser Contributing Variant']['uid'], sep = '\t', file = output_file)
+        str(annotations['Exomiser Rank']['uid']) + '@' + str(annotations['Exomiser Rank']['version']), \
+        str(annotations['Exomiser P-Value']['uid']) + '@' + str(annotations['Exomiser P-Value']['version']), \
+        str(annotations['Exomiser Gene Combined Score']['uid']) + '@' + str(annotations['Exomiser Gene Combined Score']['version']), \
+        str(annotations['Exomiser Gene Phenotype Score']['uid']) + '@' + str(annotations['Exomiser Gene Phenotype Score']['version']), \
+        str(annotations['Exomiser Gene Variant Score']['uid']) + '@' + str(annotations['Exomiser Gene Variant Score']['version']), \
+        str(annotations['Exomiser Variant Score']['uid']) + '@' + str(annotations['Exomiser Variant Score']['version']), \
+        str(annotations['Exomiser MOI']['uid']) + '@' + str(annotations['Exomiser MOI']['version']), \
+        str(annotations['Exomiser Contributing Variant']['uid']) + '@' + str(annotations['Exomiser Contributing Variant']['version']), \
+        sep = '\t', file = output_file)
 
   # Store the variants information
   variants = {}
@@ -175,27 +177,46 @@ def parseCommandLine():
   return parser.parse_args()
 
 # Check if the exomiser annotations exist and if not, create them
-def create_annotation(project, project_id, annotations, name, annotation_type):
+def create_annotation(project, project_id, date, annotations, name, annotation_type):
+  version_id = False
+
+  # If the annotation doesn't exist, create it. If it does exist and the option to keep existing annotations
+  # has been selected create a new annotation, that includes the date
   if not name in annotations:
-    data = project.post_variant_annotation(name = name, category = 'Exomiser', value_type = annotation_type, privacy_level = 'private', value_truncate_type = 'middle')
+    version_name = date
+    data = project.post_variant_annotation(name = name, category = 'Exomiser', value_type = annotation_type, privacy_level = 'private', value_truncate_type = 'middle', version = version_name)
     annotation_id = data['id']
     annotation_uid = data['uid']
 
-    # Get the annotation version if of the default annotation
+    # Get the annotation version id
     for version in data['annotation_versions']:
-      if version['version'] == 'default':
+      if version['version'] == version_name:
         version_id = version['id']
         break
 
     # Update the annotations array with the annotation id and uid
-    annotations[name] = {'id': annotation_id, 'uid': annotation_uid, 'version_id': version_id}
+    annotations[name] = {'id': annotation_id, 'uid': annotation_uid, 'version_id': version_id, 'version': version_name}
+
+  # If the annotation exists, create a new version
+  else:
+    version_name = date
+    if version_name in annotations[name]['version_ids']:
+      fail('A version with today\'s date already exists for annotation with the name ' + str(name))
+    version_id = project.post_create_annotation_version(annotations[name]['id'], version_name)['id']
+
+    # Update the annotations array with the annotation id and uid
+    annotations[name]['version_ids']['version_name'] = version_id
+    annotations[name]['version'] = version_name
+
+    # Set the latest version of the annotation to the version just created
+    project.put_variant_annotation(annotations[name]['id'], name = name, latest_version_id = version_id)
  
   # Return the updated annotations
   return annotations
 
 # If the script fails, provide an error message and exit
 def fail(message):
-  print(message, sep = '')
+  print('ERROR: ', message, sep = '')
   exit(1)
 
 # Initialise global variables

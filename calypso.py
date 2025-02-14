@@ -1908,7 +1908,7 @@ def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, pr
   print('-c $CONFIG ', sep = '', end = '', file = script)
   print('-p ', str(project_id), ' ', sep = '', end = '', file = script)
   print('-i $INPUT_TSV ', sep = '', end = '', file = script)
-  print('-o  $OUTPUT_TSV', sep = '', file = script)
+  print('-o $OUTPUT_TSV', sep = '', file = script)
   print('echo "complete"', file = script)
 
   # Apply exomiser variant filters
