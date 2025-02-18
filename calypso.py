@@ -829,27 +829,29 @@ def main():
 
   # Run Exomiser on the original vcf file and process the exomiser outputs as private annotations. Only
   # run if hpo terms are supplied
+  print('Generating exomiser scripts...', end = '')
+  application_properties(working_directory, args.tools_directory, reference)
+  no_hpo_yml = generate_yml(working_directory, proband, reference, str(working_directory) + str(filtered_vcf), args.ped, False)
+  hpo_yml = False
   if args.hpo:
-    print('Generating exomiser scripts...', end = '')
-    application_properties(working_directory, args.tools_directory, reference)
-    yaml = generate_yml(working_directory, proband, reference, str(working_directory) + str(filtered_vcf), args.ped, args.hpo)
-    exomiser_script_name, exomiser_script = generate_exomiser_script(working_directory, args.tools_directory, yaml)
-    print('complete')
+    hpo_yml = generate_yml(working_directory, proband, reference, str(working_directory) + str(filtered_vcf), args.ped, args.hpo)
+  exomiser_script_name, exomiser_script = generate_exomiser_script(working_directory, args.tools_directory, no_hpo_yml, hpo_yml)
+  print('complete')
 
-    # Check the variant filters json is set
-    if not args.exomiser_filters_json:
-      if 'exomiser_variant_filters' in mosaic_info:
-        args.exomiser_filters_json = str(args.data_directory) + str(mosaic_info['exomiser_variant_filters'])
-      else:
-        fail('No json file describing the exomiser variant filters is specified. This can be specified in the mosaic resources file or on the command line')
-    if not os.path.exists(args.exomiser_filters_json):
-      fail('ERROR: The json file describing the preset exomiser variant filters does not exist (' + str(args.exomiser_filters_json) + ')')
+  # Check the variant filters json is set
+  if not args.exomiser_filters_json:
+    if 'exomiser_variant_filters' in mosaic_info:
+      args.exomiser_filters_json = str(args.data_directory) + str(mosaic_info['exomiser_variant_filters'])
+    else:
+      fail('No json file describing the exomiser variant filters is specified. This can be specified in the mosaic resources file or on the command line')
+  if not os.path.exists(args.exomiser_filters_json):
+    fail('ERROR: The json file describing the preset exomiser variant filters does not exist (' + str(args.exomiser_filters_json) + ')')
   
-    # The exomiser script currently uses the filtered vcf, so no new variants will need to be uploaded
-    #upload_exomiser_variants(working_directory, args.api_client, args.client_config, args.project_id, proband)
-    print('Applying exomiser filters...', end = '')
-    exomiser_annotations(root_path, working_directory, args.api_client, args.client_config, args.project_id, proband, args.exomiser_filters_json)
-    print('complete')
+  # The exomiser script currently uses the filtered vcf, so no new variants will need to be uploaded
+  #upload_exomiser_variants(working_directory, args.api_client, args.client_config, args.project_id, proband)
+  print('Applying exomiser filters...', end = '')
+  exomiser_annotations(root_path, working_directory, args.api_client, args.client_config, args.project_id, proband, args.exomiser_filters_json, args.hpo)
+  print('complete')
 
   print('Calypso pipeline completed successfully')
 
@@ -1687,23 +1689,28 @@ def generate_yml(working_dir, proband, reference, vcf, ped, hpo):
     fail('Unknown reference for use with exomiser: ' + str(reference))
 
   # Generate a list of hpo terms, with the terms contained in single quotes
-  hpo = hpo.split(',') if ',' in hpo else [hpo]
-  hpo_string = '\', \''.join(hpo)
+  if hpo:
+    hpo = hpo.split(',') if ',' in hpo else [hpo]
+    hpo_string = '\', \''.join(hpo)
 
   # Open a new yaml file
-  yaml_name = 'exomiser_' + str(proband) + '.yml'
-  yaml = open(str(working_dir) + str(yaml_name), 'w')
+  if hpo:
+    yml_name = 'exomiser_' + str(proband) + '.yml'
+  else:
+    yml_name = 'exomiser_' + str(proband) + '_no_hpo.yml'
+  yml = open(str(working_dir) + str(yml_name), 'w')
 
-  # Write the information about this project to the yaml
-  print('# Exomiser analysis file for proband: ', proband, sep = '', file = yaml)
-  print(file = yaml)
-  print('analysis:', file = yaml)
-  print('  genomeAssembly: ', str(exomiser_ref), sep = '', file = yaml)
-  print('  vcf: ', vcf, sep = '', file = yaml)
-  print('  ped: ', ped, sep = '', file = yaml)
-  print('  proband: ', proband, sep = '', file = yaml)
-  print('  hpoIds: [\'', hpo_string, '\']', sep = '', file = yaml)
-  print(file = yaml)
+  # Write the information about this project to the yml
+  print('# Exomiser analysis file for proband: ', proband, sep = '', file = yml)
+  print(file = yml)
+  print('analysis:', file = yml)
+  print('  genomeAssembly: ', str(exomiser_ref), sep = '', file = yml)
+  print('  vcf: ', vcf, sep = '', file = yml)
+  print('  ped: ', ped, sep = '', file = yml)
+  print('  proband: ', proband, sep = '', file = yml)
+  if hpo:
+    print('  hpoIds: [\'', hpo_string, '\']', sep = '', file = yml)
+  print(file = yml)
 
   # Include the inheritance modes to consider
   # These are the default settings, with values representing the maximum minor allele frequency in percent (%) permitted for an
@@ -1711,102 +1718,106 @@ def generate_yml(working_dir, proband, reference, vcf, ped, hpo):
   # If you just want to analyse a sample under a single inheritance mode, delete/comment-out the others. For AUTOSOMAL_RECESSIVE
   # or X_RECESSIVE ensure *both* relevant HOM_ALT and COMP_HET modes are present.
   # In cases where you do not want any cut-offs applied an empty map should be used e.g. inheritanceModes: {}
-  print('  inheritanceModes: {', file = yaml)
-  print('    AUTOSOMAL_DOMINANT: 0.1,', file = yaml)
-  print('    AUTOSOMAL_RECESSIVE_HOM_ALT: 0.1,', file = yaml)
-  print('    AUTOSOMAL_RECESSIVE_COMP_HET: 2.0,', file = yaml)
-  print('    X_DOMINANT: 0.1,', file = yaml)
-  print('    X_RECESSIVE_HOM_ALT: 0.1,', file = yaml)
-  print('    X_RECESSIVE_COMP_HET: 2.0,', file = yaml)
-  print('    MITOCHONDRIAL: 0.2', file = yaml)
-  print('  }', file = yaml)
-  print(file = yaml)
+  print('  inheritanceModes: {', file = yml)
+  print('    AUTOSOMAL_DOMINANT: 0.1,', file = yml)
+  print('    AUTOSOMAL_RECESSIVE_HOM_ALT: 0.1,', file = yml)
+  print('    AUTOSOMAL_RECESSIVE_COMP_HET: 2.0,', file = yml)
+  print('    X_DOMINANT: 0.1,', file = yml)
+  print('    X_RECESSIVE_HOM_ALT: 0.1,', file = yml)
+  print('    X_RECESSIVE_COMP_HET: 2.0,', file = yml)
+  print('    MITOCHONDRIAL: 0.2', file = yml)
+  print('  }', file = yml)
+  print(file = yml)
 
   # Use the PASS_ONLY analysis mode
-  print('  analysisMode: PASS_ONLY', file = yaml)
-  print(file = yaml)
+  print('  analysisMode: PASS_ONLY', file = yml)
+  print(file = yml)
 
   # Define the allele frequency sources to be used
-  print('  frequencySources: [', file = yaml)
-  print('    THOUSAND_GENOMES,', file = yaml)
-  print('    TOPMED,', file = yaml)
-  print('    UK10K,', file = yaml)
-  print('    ESP_AFRICAN_AMERICAN,', file = yaml)
-  print('    ESP_EUROPEAN_AMERICAN,', file = yaml)
-  print('    ESP_ALL,', file = yaml)
-  print('    EXAC_AFRICAN_INC_AFRICAN_AMERICAN,', file = yaml)
-  print('    EXAC_AMERICAN,', file = yaml)
-  print('    EXAC_SOUTH_ASIAN,', file = yaml)
-  print('    EXAC_EAST_ASIAN,', file = yaml)
-  print('    EXAC_NON_FINNISH_EUROPEAN,', file = yaml)
-  print('    GNOMAD_E_AFR,', file = yaml)
-  print('    GNOMAD_E_AMR,', file = yaml)
-  print('    GNOMAD_E_EAS,', file = yaml)
-  print('    GNOMAD_E_FIN,', file = yaml)
-  print('    GNOMAD_E_NFE,', file = yaml)
-  print('    GNOMAD_E_SAS,', file = yaml)
-  print('    GNOMAD_E_OTH,', file = yaml)
-  print('    GNOMAD_G_AFR,', file = yaml)
-  print('    GNOMAD_G_AMR,', file = yaml)
-  print('    GNOMAD_G_EAS,', file = yaml)
-  print('    GNOMAD_G_FIN,', file = yaml)
-  print('    GNOMAD_G_NFE,', file = yaml)
-  print('    GNOMAD_G_SAS,', file = yaml)
-  print('    GNOMAD_G_OTH', file = yaml)
-  print('  ]', file = yaml)
-  print(file = yaml)
+  print('  frequencySources: [', file = yml)
+  print('    THOUSAND_GENOMES,', file = yml)
+  print('    TOPMED,', file = yml)
+  print('    UK10K,', file = yml)
+  print('    ESP_AFRICAN_AMERICAN,', file = yml)
+  print('    ESP_EUROPEAN_AMERICAN,', file = yml)
+  print('    ESP_ALL,', file = yml)
+  print('    EXAC_AFRICAN_INC_AFRICAN_AMERICAN,', file = yml)
+  print('    EXAC_AMERICAN,', file = yml)
+  print('    EXAC_SOUTH_ASIAN,', file = yml)
+  print('    EXAC_EAST_ASIAN,', file = yml)
+  print('    EXAC_NON_FINNISH_EUROPEAN,', file = yml)
+  print('    GNOMAD_E_AFR,', file = yml)
+  print('    GNOMAD_E_AMR,', file = yml)
+  print('    GNOMAD_E_EAS,', file = yml)
+  print('    GNOMAD_E_FIN,', file = yml)
+  print('    GNOMAD_E_NFE,', file = yml)
+  print('    GNOMAD_E_SAS,', file = yml)
+  print('    GNOMAD_E_OTH,', file = yml)
+  print('    GNOMAD_G_AFR,', file = yml)
+  print('    GNOMAD_G_AMR,', file = yml)
+  print('    GNOMAD_G_EAS,', file = yml)
+  print('    GNOMAD_G_FIN,', file = yml)
+  print('    GNOMAD_G_NFE,', file = yml)
+  print('    GNOMAD_G_SAS,', file = yml)
+  print('    GNOMAD_G_OTH', file = yml)
+  print('  ]', file = yml)
+  print(file = yml)
 
   # Define the resources to be used for determining pathogenicity
-  print('  pathogenicitySources: [', file = yaml)
-  print('    REVEL,', file = yaml)
-  print('    MVP,', file = yaml)
-  print('    ALPHA_MISSENSE,', file = yaml)
-  print('    SPLICE_AI', file = yaml)
-  print('  ]', file = yaml)
-  print(file = yaml)
+  print('  pathogenicitySources: [', file = yml)
+  print('    REVEL,', file = yml)
+  print('    MVP,', file = yml)
+  print('    ALPHA_MISSENSE,', file = yml)
+  print('    SPLICE_AI', file = yml)
+  print('  ]', file = yml)
+  print(file = yml)
 
   # Define the order of steps for exomiser to take
-  print('  steps: [', file = yaml)
-  print('    failedVariantFilter: { },', file = yaml)
-  print('    variantEffectFilter: {', file = yaml)
-  print('      remove: [', file = yaml)
-  print('        FIVE_PRIME_UTR_EXON_VARIANT,', file = yaml)
-  print('        FIVE_PRIME_UTR_INTRON_VARIANT,', file = yaml)
-  print('        THREE_PRIME_UTR_EXON_VARIANT,', file = yaml)
-  print('        THREE_PRIME_UTR_INTRON_VARIANT,', file = yaml)
-  print('        NON_CODING_TRANSCRIPT_EXON_VARIANT,', file = yaml)
-  print('        NON_CODING_TRANSCRIPT_INTRON_VARIANT,', file = yaml)
-  print('        CODING_TRANSCRIPT_INTRON_VARIANT,', file = yaml)
-  print('        UPSTREAM_GENE_VARIANT,', file = yaml)
-  print('        DOWNSTREAM_GENE_VARIANT,', file = yaml)
-  print('        INTERGENIC_VARIANT,', file = yaml)
-  print('        REGULATORY_REGION_VARIANT', file = yaml)
-  print('      ]', file = yaml)
-  print('    },', file = yaml)
-  print('    frequencyFilter: {maxFrequency: 2.0},', file = yaml)
-  print('    pathogenicityFilter: {keepNonPathogenic: true},', file = yaml)
-  print('    inheritanceFilter: {},', file = yaml)
-  print('    omimPrioritiser: {},', file = yaml)
-  print('    hiPhivePrioritiser: {runParams: \'human\'},', file = yaml)
-  print('  ]', file = yaml)
-  print(file = yaml)
+  print('  steps: [', file = yml)
+  print('    failedVariantFilter: { },', file = yml)
+  print('    variantEffectFilter: {', file = yml)
+  print('      remove: [', file = yml)
+  print('        FIVE_PRIME_UTR_EXON_VARIANT,', file = yml)
+  print('        FIVE_PRIME_UTR_INTRON_VARIANT,', file = yml)
+  print('        THREE_PRIME_UTR_EXON_VARIANT,', file = yml)
+  print('        THREE_PRIME_UTR_INTRON_VARIANT,', file = yml)
+  print('        NON_CODING_TRANSCRIPT_EXON_VARIANT,', file = yml)
+  print('        NON_CODING_TRANSCRIPT_INTRON_VARIANT,', file = yml)
+  print('        CODING_TRANSCRIPT_INTRON_VARIANT,', file = yml)
+  print('        UPSTREAM_GENE_VARIANT,', file = yml)
+  print('        DOWNSTREAM_GENE_VARIANT,', file = yml)
+  print('        INTERGENIC_VARIANT,', file = yml)
+  print('        REGULATORY_REGION_VARIANT', file = yml)
+  print('      ]', file = yml)
+  print('    },', file = yml)
+  print('    frequencyFilter: {maxFrequency: 2.0},', file = yml)
+  print('    pathogenicityFilter: {keepNonPathogenic: true},', file = yml)
+  print('    inheritanceFilter: {},', file = yml)
+  print('    omimPrioritiser: {},', file = yml)
+  if hpo:
+    print('    hiPhivePrioritiser: {runParams: \'human\'},', file = yml)
+  print('  ]', file = yml)
+  print(file = yml)
 
   # Define the output options
-  print('outputOptions:', file = yaml)
-  print('  outputContributingVariantsOnly: false', file = yaml)
-  print('  numGenes: 0', file = yaml)
-  print('  outputDirectory: ', str(working_dir) + 'exomiser_results', file = yaml)
-  print('  outputFileName: ', str(proband), file = yaml)
-  print('  outputFormats: [HTML, JSON, TSV_GENE, TSV_VARIANT, VCF]', file = yaml)
+  print('outputOptions:', file = yml)
+  print('  outputContributingVariantsOnly: false', file = yml)
+  print('  numGenes: 0', file = yml)
+  if not hpo:
+    print('  outputDirectory: ', str(working_dir) + 'exomiser_results_no_hpo', file = yml)
+  else:
+    print('  outputDirectory: ', str(working_dir) + 'exomiser_results', file = yml)
+  print('  outputFileName: ', str(proband), file = yml)
+  print('  outputFormats: [HTML, JSON, TSV_GENE, TSV_VARIANT, VCF]', file = yml)
 
-  # Close the yaml file
-  yaml.close()
+  # Close the yml file
+  yml.close()
 
-  # Return the path and name of the yaml file
-  return yaml_name
+  # Return the path and name of the yml file
+  return yml_name
 
 # Generate a script file to run exomiser
-def generate_exomiser_script(working_dir, tools_dir, yaml):
+def generate_exomiser_script(working_dir, tools_dir, no_hpo_yml, yml):
 
   # Create script file for running exomiser
   script_name = str(working_directory) + '04_calypso_exomiser.sh'
@@ -1823,7 +1834,9 @@ def generate_exomiser_script(working_dir, tools_dir, yaml):
 #########
 #########
   print('EXOMISER=$TOOLS_PATH/exomiser-cli-14.0.0/exomiser-cli-14.0.0.jar', file = script)
-  print('YML=$WORKINGPATH/', yaml, sep = '', file = script)
+  print('NO_HPO_YML=$WORKINGPATH/', no_hpo_yml, sep = '', file = script)
+  if yml:
+    print('YML=$WORKINGPATH/', yml, sep = '', file = script)
   print('STDOUT=', working_dir, 'exomiser.stdout', sep = '', file = script)
   print('STDERR=', working_dir, 'exomiser.stderr', sep = '', file = script)
   print(file = script)
@@ -1837,15 +1850,28 @@ def generate_exomiser_script(working_dir, tools_dir, yaml):
 
   # Include the executable for running exomiser
   print('java -jar $EXOMISER ', end = '', file = script)
-  print('--analysis $YML ', end = '', file = script)
+  print('--analysis $NO_HPO_YML ', end = '', file = script)
   print('> $STDOUT 2> $STDERR', file = script)
   print(file = script)
   print('# Write to screen if an error was encountered', file = script)
   print('if [[ $? != 0 ]];', file = script)
   print('then', file = script)
-  print('  echo "Exomiser script failed. Please check the stderr file"', file = script)
+  print('  echo "Exomiser script failed (no HPO). Please check the stderr file"', file = script)
   print('fi', file = script)
   print(file = script)
+
+  # Include the executable for running exomiser if HPO terms are present
+  if yml:
+    print('java -jar $EXOMISER ', end = '', file = script)
+    print('--analysis $YML ', end = '', file = script)
+    print('>> $STDOUT 2>> $STDERR', file = script)
+    print(file = script)
+    print('# Write to screen if an error was encountered', file = script)
+    print('if [[ $? != 0 ]];', file = script)
+    print('then', file = script)
+    print('  echo "Exomiser script failed. Please check the stderr file"', file = script)
+    print('fi', file = script)
+    print(file = script)
 
   # Close the script file and make executable
   script.close()
@@ -1879,7 +1905,7 @@ def upload_exomiser_variants(working_dir, api_client, client_config, project_id,
   make_executable = os.popen('chmod +x ' + str(filename)).read()
 
 # Create a script to update and upload the exomiser annotations
-def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, project_id, proband, filters_json):
+def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, project_id, proband, filters_json, hpo):
 
   # Open a script file
   script_name = working_dir + '05_calypso_exomiser_annotations.sh'
@@ -1888,8 +1914,7 @@ def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, pr
   except:
     fail('Could not open ' + str(script_name) + ' to write to')
 
-  # Define the name of the output vcf and tsv
-  tsv = 'exomiser.tsv'
+  # Define the name of the output vcf
   vcf = 'exomiser.vcf.gz'
 
   print(file = script)
@@ -1898,8 +1923,11 @@ def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, pr
   print('API_CLIENT=', api_client, sep = '', file = script)
   print('CONFIG=', client_config, sep = '', file = script)
   print('SCRIPT=$CALYPSO_PATH/parse_exomiser_variants.py', sep = '', file = script)
-  print('INPUT_TSV=$WORKING_PATH/exomiser_results/', str(proband), '.variants.tsv', sep = '', file = script)
-  print('OUTPUT_TSV=$WORKING_PATH/', tsv, sep = '', file = script)
+  print('INPUT_NO_HPO_TSV=$WORKING_PATH/exomiser_results_no_hpo/', str(proband), '.variants.tsv', sep = '', file = script)
+  print('OUTPUT_NO_HPO_TSV=$WORKING_PATH/exomiser_no_hpo.tsv', sep = '', file = script)
+  if hpo:
+    print('INPUT_TSV=$WORKING_PATH/exomiser_results/', str(proband), '.variants.tsv', sep = '', file = script)
+    print('OUTPUT_TSV=$WORKING_PATH/exomiser.tsv', sep = '', file = script)
   print(file = script)
   print('# Parse the resulting output file', file = script)
   print('echo -n "Creating tsv file for exomiser variants..."', file = script)
@@ -1907,9 +1935,22 @@ def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, pr
   print('-a $API_CLIENT ', sep = '', end = '', file = script)
   print('-c $CONFIG ', sep = '', end = '', file = script)
   print('-p ', str(project_id), ' ', sep = '', end = '', file = script)
-  print('-i $INPUT_TSV ', sep = '', end = '', file = script)
-  print('-o $OUTPUT_TSV', sep = '', file = script)
+  print('-v "No HPO" ', sep = '', end = '', file = script)
+  print('-i $INPUT_NO_HPO_TSV ', sep = '', end = '', file = script)
+  print('-o $OUTPUT_NO_HPO_TSV', sep = '', file = script)
   print('echo "complete"', file = script)
+
+  if hpo:
+    print(file = script)
+    print('# Parse the resulting output file', file = script)
+    print('echo -n "Creating tsv file for exomiser variants..."', file = script)
+    print('python3 $SCRIPT ', sep = '', end = '', file = script)
+    print('-a $API_CLIENT ', sep = '', end = '', file = script)
+    print('-c $CONFIG ', sep = '', end = '', file = script)
+    print('-p ', str(project_id), ' ', sep = '', end = '', file = script)
+    print('-i $INPUT_TSV ', sep = '', end = '', file = script)
+    print('-o $OUTPUT_TSV', sep = '', file = script)
+    print('echo "complete"', file = script)
 
   # Apply exomiser variant filters
   print(file = script)
@@ -1930,7 +1971,16 @@ def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, pr
   print('-a $API_CLIENT ', end = '', file = script)
   print('-c $CONFIG ', end = '', file = script)
   print('-p ', str(project_id), ' ', sep = '', end = '', file = script)
-  print('-t $OUTPUT_TSV', sep = '', file = script)
+  print('-t $OUTPUT_NO_HPO_TSV', sep = '', file = script)
+  if hpo:
+    print(file = script)
+    print('# Upload exomiser annotations', sep = '', file = script)
+    print('UPLOAD_SCRIPT=$API_CLIENT/variant_annotations/upload_annotations.py', sep = '', file = script)
+    print('python3 $UPLOAD_SCRIPT ', end = '', file = script)
+    print('-a $API_CLIENT ', end = '', file = script)
+    print('-c $CONFIG ', end = '', file = script)
+    print('-p ', str(project_id), ' ', sep = '', end = '', file = script)
+    print('-t $OUTPUT_TSV', sep = '', file = script)
 
   # Close the exomiser script and make it executable
   script.close()
