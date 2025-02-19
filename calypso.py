@@ -1215,7 +1215,7 @@ def bash_resources(use_queue, resource_info, working_directory, bash_file, vcf, 
   print(file = bash_file)
 
   # Generate the names of the intermediate and final vcf files
-  vcf_base = os.path.abspath(vcf).split('/')[-1].replace('vcf.gz', '')
+  vcf_base = os.path.abspath(vcf).split('/')[-1].replace('.vcf.gz', '')
   filtered_vcf = str(vcf_base) + '_calypso_filtered.vcf.gz'
   comphet_vcf = str(vcf_base) + '_calypso_comphet.vcf.gz'
   rare_temp_vcf = str(vcf_base) + '_calypso_rare_comphet_temp.vcf.gz'
