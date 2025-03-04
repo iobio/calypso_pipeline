@@ -592,6 +592,37 @@ def main():
     sv_output_file.close()
     make_executable = os.popen('chmod +x ' + sv_filename).read()
 
+    # Create an experiment with the filtered sv file. Start by getting the sample from the sv vcf
+    sv_samples = []
+    header = os.popen(str(resource_info['tools']['bcftools']) + ' view -h ' + str(sv_vcf)).read()
+    for line in header.split('\n'):
+      if line.startswith('#CHROM'):
+        vcf_samples = line.rstrip().split('\t')[9:]
+        break
+
+    # Loop over the samples in the vcf file and find the ones in the mosaic_samples list
+    for vcf_sample in vcf_samples:
+
+      # This is a hack for UDN where the sample name has the experiment id appended
+      vcf_sample_name = vcf_sample
+      if args.udn:
+        if '-' in vcf_sample:
+          vcf_sample = vcf_sample.split('-')[0]
+      if vcf_sample_name not in mosaic_samples:
+        fail('Sample ' + vcf_sample_name + ' in sv vcf file is not in Mosaic')
+      url = 'file://' + working_directory + filtered_sv_vcf
+      print('POST_SCRIPT=$API_CLIENT"/sample_files/post_sample_file.py"')
+      print('python3 $POST_SCRIPT -a $API_CLIENT -c $CONFIG -p ', args.project_id, ' -s ', mosaic_samples[vcf_sample_name]['id'], ' -r ', reference, sep = '')
+      print('                     -n ', filtered_sv_vcf, sep = '')
+      print('                     -t vcf.gz', sep = '')
+      print('                     -u "', url, '"', sep = '')
+
+    # Now attach the file to Mosaic and get the file ids
+
+    # POST the file to Mosaic for each sample
+    #project.post_sample_file(args.sample_id, url=args.endpoint_url, experiment_id=args.experiment_id, library_type=args.library_type, name=args.name, nickname=args.nickname, qc=args.qc, reference=args.reference, file_type=args.file_type, size=args.size, uri=args.uri, vcf_sample_name=args.vcf_sample_name)
+    exit(0)
+
   # Loop over all the resources to be uploaded to Mosaic
   tsv_files = []
   for resource in mosaic_info['resources']:
