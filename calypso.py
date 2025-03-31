@@ -1529,7 +1529,7 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf):
   print(file = sv_output_file)
   print('# Define the input files', file = sv_output_file)
   print('DATAPATH=', resource_info['path'], sep = '', file = sv_output_file)
-  print('SVAFBED=$DATAPATH/', resource_info['resources']['SVAFotate']['file'], sep = '', file = sv_output_file)
+  print('SVAFBED=$DATAPATH/', resource_info['resources']['SVAF']['file'], sep = '', file = sv_output_file)
   print(file = sv_output_file)
   print('# Define the input and output files', file = sv_output_file)
   print('FILEPATH=', working_directory, sep = '', file = sv_output_file)
