@@ -564,7 +564,14 @@ def main():
   # Generate the bash script to run the annotation pipeline
   bash_filename, bash_file = open_bash_script(working_directory)
   filtered_vcf = bash_resources(args.queue, resource_info, working_directory, bash_file, vcf, chr_format, args.ped, lua_filename, toml_filename)
-  annotate_vcf(resource_info, bash_file, chr_format, args.threads, mosaic_samples)
+
+  # If the annotation step is to be skipped, set the ANNOTATEDVCF to the input VCF
+  if args.skip_annotation:
+    print('# Annotation step has been skipped, so set the annotated file to the input file', file = bash_file)
+    print('ANNOTATEDVCF=$VCF', file = bash_file)
+    print(file = bash_file)
+  else:
+    annotate_vcf(resource_info, bash_file, chr_format, args.threads, mosaic_samples)
   filter_vcf(bash_file, mosaic_samples, proband, resource_info, args.threads, has_parents)
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
@@ -898,6 +905,9 @@ def parse_command_line():
 
   # Use the queue in Utah
   parser.add_argument('--queue', '-q', required = False, action = 'store_true', help = 'Add queue information to the 01 script')
+
+  # Skip the annotation step
+  parser.add_argument('--skip_annotation', '-sa', required = False, action = 'store_true', help = 'If the vcf file has already been annotated, start with filtering and skip the annotation step')
 
   # Version
   parser.add_argument('--version', '-v', action='version', version='Calypso annotation pipeline version: ' + str(version))
