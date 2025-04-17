@@ -588,7 +588,7 @@ def main():
     if not exists(sv_index_file):
       fail('The vcf index file for the SV vcf (' + str(sv_vcf) + ') does not exist')
     sv_filename, sv_output_file = open_sv_script(working_directory)
-    filtered_sv_vcf = filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf)
+    filtered_sv_vcf = filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, sample, args, root_path)
     sv_output_file.close()
     make_executable = os.popen('chmod +x ' + sv_filename).read()
 
@@ -873,7 +873,7 @@ def parse_command_line():
 
   # Input vcf files
   parser.add_argument('--input_vcf', '-i', required = False, metavar = 'string', help = 'The input vcf file to annotate')
-  parser.add_argument('--sv_vcf', '-sv', required = False, metavar = 'string', help = 'The input SV vcf file')
+  parser.add_argument('--sv_vcf', '-sv', required = False, metavar = 'string', help = 'The input SV or CNV vcf file')
 
   # Exomiser arguments
   parser.add_argument('--exomiser_filters_json', '-x', required = False, metavar = 'string', help = 'The json describing the exomiser filters')
@@ -1173,6 +1173,7 @@ def open_sv_script(working_directory):
   # Return the file
   return bash_filename, bash_file
 
+
 # Write all the resource file information to the bash file for the script to use
 def bash_resources(use_queue, resource_info, working_directory, bash_file, vcf, chr_format, ped, lua_filename, toml_filename):
 
@@ -1359,7 +1360,7 @@ def annotate_vcf(resource_info, bash_file, chr_format, threads, samples):
   print('  | $BCFTOOLS +fill-tags - -- -t FORMAT/VAF,HWE \\', file = bash_file)
 
   # Output the final vcf file. If the original file had the '1' format (not 'chr1') for chromosomes,
-  # ensure the final vcd file is in this format
+  # ensure the final vcf file is in this format
   if resource_info['reference'] == 'GRCh37':
     if chr_format:
       print('  | $BCFTOOLS annotate -O z -o $ANNOTATEDVCF --threads ' , threads, ' --rename-chrs $NOCHR_CHR_MAP - \\', sep = '', file = bash_file)
@@ -1514,13 +1515,37 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads, has_parents)
 ##### Deal with SV data
 #####
 
-def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf):
+def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf, samples, args, root_path):
   vcf_base = os.path.abspath(vcf).split('/')[-1].replace('.vcf.gz', '')
   annotated_vcf = str(vcf_base) + '_annotated.vcf.gz'
   filtered_vcf = str(vcf_base) + '_filtered.vcf.gz'
 
-  print('set -euo pipefail', file = sv_output_file)
-  print(file = sv_output_file)
+    # Generate scripts to upload filtered variants to Mosaic
+  upload_filename = working_directory + '07_calypso_upload_sv_variants.sh'
+  try:
+    upload_file = open(upload_filename, 'w')
+  except:
+    fail('Could not open ' + str(upload_filename) + ' to write to')
+
+  # Write the command to file to upload the filtered sv variants
+  print('# Upload sv variants to Mosaic', file = upload_file)
+  print('API_CLIENT=', args.api_client, sep = '', file = upload_file)
+  print('CONFIG=', args.client_config, sep = '', file = upload_file)
+  print('VCF=', filtered_vcf, sep = '', file = upload_file)
+  print(file = upload_file)
+  print('python3 $API_CLIENT/variants/upload_variants.py ', end = '', file = upload_file)
+  print('-a $API_CLIENT ', end = '', file = upload_file)
+  print('-c $CONFIG ', end = '', file = upload_file)
+  print('-p ', str(args.project_id) + ' ', sep = '', end = '', file = upload_file)
+  print('-m "raw" ', sep = '', end = '', file = upload_file)
+  print('-v $VCF ', file = upload_file)
+
+  # Close the file
+  upload_file.close()
+
+  # Make the annotation script executable
+  make_executable = os.popen('chmod +x ' + str(upload_filename)).read()
+
   print('# Define the tools', file = sv_output_file)
   print('TOOLPATH=', resource_info['toolsPath'], sep = '', file = sv_output_file)
   print('SVAFOTATE=$TOOLPATH/svafotate', sep = '', file = sv_output_file)
@@ -1529,7 +1554,7 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf):
   print(file = sv_output_file)
   print('# Define the input files', file = sv_output_file)
   print('DATAPATH=', resource_info['path'], sep = '', file = sv_output_file)
-  print('SVAFBED=$DATAPATH/', resource_info['resources']['SVAFotate']['file'], sep = '', file = sv_output_file)
+  print('SVAFBED=$DATAPATH/', resource_info['resources']['SVAF']['file'], sep = '', file = sv_output_file)
   print(file = sv_output_file)
   print('# Define the input and output files', file = sv_output_file)
   print('FILEPATH=', working_directory, sep = '', file = sv_output_file)
@@ -1541,6 +1566,8 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf):
   print(sep = '', file = sv_output_file)
 
   # Annotate the SV vcf file
+  print('echo "Annotating SV VCF..."', sep = '', file = sv_output_file)
+  print('$BCFTOOLS view -a -c 1 -s ', samples, ' $SV_VCF |', sep = '', file = sv_output_file)
   print('$SVAFOTATE annotate -v $SV_VCF \\', sep = '', file = sv_output_file)
   print('  -b $SVAFBED \\', sep = '', file = sv_output_file)
   print('  -f 0.8 \\', sep = '', file = sv_output_file)
@@ -1555,16 +1582,18 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf):
 #  print(sep = '', file = sv_output_file)
 
   # Filter on popmax af with slivar
+  print('echo "Filtering annotated SV VCF..."', sep = '', file = sv_output_file)
   print('$SLIVAR expr \\', file = sv_output_file)
   print('  --info "INFO.Max_AF < 0.025" \\', file = sv_output_file)
-  print('  --vcf $ANNOTATED_VCF |\\', file = sv_output_file)
-  print('  $BCFTOOLS view -O z -o $FILTERED_VCF \\', file = sv_output_file)
+  print('  --vcf $ANNOTATED_VCF |', file = sv_output_file)
+  print('sed \'s/##contig=<ID=chr/##contig=<ID=/g\' |', file = sv_output_file)
+  print('sed \'s/chr//g\' |', file = sv_output_file)
+  print('$BCFTOOLS view -O z -o $FILTERED_VCF \\', file = sv_output_file)
   print('  >> $STDOUT 2>> $STDERR', file = sv_output_file)
   print(sep = '', file = sv_output_file)
 
   # Return the name of the filtered vcf file
   return filtered_vcf
-
 
 
 
