@@ -595,7 +595,7 @@ def main():
     if not exists(sv_index_file):
       fail('The vcf index file for the SV vcf (' + str(sv_vcf) + ') does not exist')
     sv_filename, sv_output_file = open_sv_script(working_directory)
-    filtered_sv_vcf = filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, sample, args, root_path)
+    filtered_sv_vcf = filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, sample, args, root_path, reference, api_store)
     sv_output_file.close()
     make_executable = os.popen('chmod +x ' + sv_filename).read()
 
@@ -896,6 +896,7 @@ def parse_command_line():
 
   # Optional mosaic arguments
   parser.add_argument('--mosaic_json', '-m', required = False, metavar = 'string', help = 'The json file describing the Mosaic parameters')
+  parser.add_argument('--mosaic_sv_json', '-sm', required = False, metavar = 'string', help = 'The json file describing the Mosaic SV parameters')
 
   # Flag for UDN projects as they have a slightly different naming convention
   parser.add_argument('--udn', '-u', required = False, action = 'store_true', help = 'Set for UDN projects to handle the request id in the sample name')
@@ -1525,13 +1526,13 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads, has_parents)
 ##### Deal with SV data
 #####
 
-def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf, samples, args, root_path):
+def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf, samples, args, root_path, reference, api_store):
   vcf_base = os.path.abspath(vcf).split('/')[-1].replace('.vcf.gz', '')
   annotated_vcf = str(vcf_base) + '_annotated.vcf.gz'
   filtered_vcf = str(vcf_base) + '_filtered.vcf.gz'
 
     # Generate scripts to upload filtered variants to Mosaic
-  upload_filename = working_directory + '07_calypso_upload_sv_variants.sh'
+  upload_filename = working_directory + '07_calypso_sv_tsv_upload_variants.sh'
   try:
     upload_file = open(upload_filename, 'w')
   except:
@@ -1541,6 +1542,7 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf, samples
   print('# Upload sv variants to Mosaic', file = upload_file)
   print('API_CLIENT=', args.api_client, sep = '', file = upload_file)
   print('CONFIG=', args.client_config, sep = '', file = upload_file)
+  print('TOOLPATH=', resource_info['toolsPath'], sep = '', file = upload_file)
   print('VCF=', filtered_vcf, sep = '', file = upload_file)
   print(file = upload_file)
   print('python3 $API_CLIENT/variants/upload_variants.py ', end = '', file = upload_file)
@@ -1549,6 +1551,36 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf, samples
   print('-p ', str(args.project_id) + ' ', sep = '', end = '', file = upload_file)
   print('-m "raw" ', sep = '', end = '', file = upload_file)
   print('-v $VCF ', file = upload_file)
+  print(sep = '', file = upload_file)
+
+  # Generate SV TSV and upload command
+  print('echo "Generating SV TSV file"', file = upload_file)
+  print('GENERATE_TSV=', root_path, '/generate_annotation_tsv.py', sep = '', file = upload_file)
+  print('MOSAIC_SV_JSON=', args.mosaic_sv_json, sep = '', file = upload_file)
+  print(sep = '', file = upload_file)
+
+  print('python3 $GENERATE_TSV -i $VCF -o SVAF.tsv -e SVAF -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
+  print(sep = '', file = upload_file)
+
+  print('echo "Deduping TSV just in case"', file = upload_file)
+  print('head -n 1 SVAF.tsv > SVAF.dedup.tsv && tail -n+2 SVAF.tsv | sort -k1,1 -k2,2n -u >> SVAF.dedup.tsv', file = upload_file)
+  print('mv SVAF.dedup.tsv SVAF.tsv', file = upload_file)
+  print(sep = '', file = upload_file)
+
+  if reference == 'GRCh37':
+    try:
+      annotation_project_id = api_store.get('Project ids', 'annotations_grch37')
+    except:
+      fail('Config file does not contain the project id of project "annotations_grch38"')
+  elif reference == 'GRCh38':
+    try:
+      annotation_project_id = api_store.get('Project ids', 'annotations_grch38')
+    except:
+      fail('Config file does not contain the project id of project "annotations_grch38"')
+      
+  print('echo "Uploading SV TSV"', file = upload_file)
+  print('UPLOAD_SCRIPT=$API_CLIENT/variant_annotations/upload_annotations.py', file = upload_file)
+  print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t SVAF.tsv',  sep = '', file = upload_file)
 
   # Close the file
   upload_file.close()
