@@ -1549,7 +1549,7 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf, samples
   print('-a $API_CLIENT ', end = '', file = upload_file)
   print('-c $CONFIG ', end = '', file = upload_file)
   print('-p ', str(args.project_id) + ' ', sep = '', end = '', file = upload_file)
-  print('-m "raw" ', sep = '', end = '', file = upload_file)
+  print('-m "sv-no-validation" ', sep = '', end = '', file = upload_file)
   print('-v $VCF ', file = upload_file)
   print(sep = '', file = upload_file)
 
