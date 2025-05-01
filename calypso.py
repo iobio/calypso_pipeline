@@ -1539,12 +1539,13 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf, samples
     fail('Could not open ' + str(upload_filename) + ' to write to')
 
   # Write the command to file to upload the filtered sv variants
-  print('# Upload sv variants to Mosaic', file = upload_file)
+  print('# Upload SV variants to Mosaic', file = upload_file)
   print('API_CLIENT=', args.api_client, sep = '', file = upload_file)
   print('CONFIG=', args.client_config, sep = '', file = upload_file)
   print('TOOLPATH=', resource_info['toolsPath'], sep = '', file = upload_file)
   print('VCF=', filtered_vcf, sep = '', file = upload_file)
   print(file = upload_file)
+  print('echo "Uploading filtered SV VCF"', file = upload_file)
   print('python3 $API_CLIENT/variants/upload_variants.py ', end = '', file = upload_file)
   print('-a $API_CLIENT ', end = '', file = upload_file)
   print('-c $CONFIG ', end = '', file = upload_file)
@@ -1555,15 +1556,15 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf, samples
 
   # Generate SV TSV and upload command
   print('echo "Generating SV TSV file"', file = upload_file)
-  print('GENERATE_TSV=', root_path, '/generate_annotation_tsv.py', sep = '', file = upload_file)
+  print('GENERATE_TSV=', root_path, '/generate_sv_annotation_tsv.py', sep = '', file = upload_file)
   print('MOSAIC_SV_JSON=', args.mosaic_sv_json, sep = '', file = upload_file)
   print(sep = '', file = upload_file)
 
-  print('python3 $GENERATE_TSV -i $VCF -o SVAF.tsv -e SVAF -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
+  print('python3 $GENERATE_TSV -i $VCF -o SVAF.tsv -e SVAFotate -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
   print(sep = '', file = upload_file)
 
   print('echo "Deduping TSV just in case"', file = upload_file)
-  print('head -n 1 SVAF.tsv > SVAF.dedup.tsv && tail -n+2 SVAF.tsv | sort -k1,1 -k2,2n -u >> SVAF.dedup.tsv', file = upload_file)
+  print('head -n 1 SVAF.tsv | sed \'s/variant_type/ALT/g\' | cut -f 1-4,6- > SVAF.dedup.tsv && tail -n+2 SVAF.tsv | cut -f 1-4,6- | awk \'$6 != 0 && $7 != 0 && $8 != 0 && $9 != 0 && $10 != 0 && $11 != 0 && $12 != 0 && $13 != 0\' | sort -k1,1 -k2,2n -u >> SVAF.dedup.tsv', file = upload_file)
   print('mv SVAF.dedup.tsv SVAF.tsv', file = upload_file)
   print(sep = '', file = upload_file)
 
