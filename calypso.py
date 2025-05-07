@@ -22,7 +22,7 @@ def main():
   # Check the supplied parameters are as expected, then expand the path to enable scripts and api commands
   # to be accessed for Calypso
   root_path = os.path.dirname(__file__)
-  checkArguments(args, root_path)
+  check_arguments(args, root_path)
 
   # Import the api client
   path.append(args.api_client)
@@ -201,7 +201,7 @@ def main():
         for vcf_file_id in vcf_files:
           vcf_file_names.append(vcf_files[vcf_file_id]['name'])
         print()
-        fail('ERROR: Multiple vcf files for the same sample (' + sample + ', id: ' + str(sample_id) + '). Calypso requires a single multi sample vcf. The following vcf files were found:\n  ' + '\n  '.join(vcf_file_names))
+        fail('Multiple vcf files for the same sample (' + sample + ', id: ' + str(sample_id) + '). Calypso requires a single multi sample vcf. The following vcf files were found:\n  ' + '\n  '.join(vcf_file_names))
       else:
         for vcf_file in vcf_files:
           uri = vcf_files[vcf_file]['uri']
@@ -218,7 +218,7 @@ def main():
     # If there are multiple VCF files, not all samples are in a single joint-called vcf. This case
     # is not yet handled:
     if len(all_vcfs) > 1:
-      fail('ERROR: Multiple vcf files for the samples. Calypso requires a single multi sample vcf. The following vcf files were found:\n  ' + '\n  '.join(all_vcfs))
+      fail('Multiple vcf files for the samples. Calypso requires a single multi sample vcf. The following vcf files were found:\n  ' + '\n  '.join(all_vcfs))
 
     # Store the name of the vcf file
     vcf = mosaic_samples[list(mosaic_samples.keys())[0]]['vcf_file']
@@ -583,19 +583,34 @@ def main():
   print('MOSAIC_JSON=', args.mosaic_json, sep = '', file = bash_file)
 
   # If an SV vcf file was provided, annotate and filter the sv file
-  if args.sv_vcf:
-    sv_vcf = os.path.abspath(args.sv_vcf)
+  if args.sv_vcf or args.cnv_vcf:
+    sv_vcf = False
+    cnv_vcf = False
+    if args.sv_vcf:
+      sv_vcf = os.path.abspath(args.sv_vcf)
+    if args.cnv_vcf:
+      cnv_vcf = os.path.abspath(args.cnv_vcf)
 
-    # Check the file exists
-    if not exists(sv_vcf):
-      fail('Input SV vcf file (' + str(sv_vcf) + ') does not exist')
+    # Check the file(s) exists
+    if sv_vcf:
+      if not exists(sv_vcf):
+        fail('Input SV vcf file (' + str(sv_vcf) + ') does not exist')
+    if cnv_vcf:
+      if not exists(cnv_vcf):
+        fail('Input CNV vcf file (' + str(cnv_vcf) + ') does not exist')
 
     # Check that the index file also exists
     sv_index_file = sv_vcf + '.tbi'
-    if not exists(sv_index_file):
-      fail('The vcf index file for the SV vcf (' + str(sv_vcf) + ') does not exist')
-    sv_filename, sv_output_file = open_sv_script(working_directory)
-    filtered_sv_vcf = filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, sample, args, root_path, reference, api_store)
+    cnv_index_file = cnv_vcf + '.tbi'
+    if sv_vcf:
+      if not exists(sv_index_file):
+        fail('The vcf index file for the SV vcf (' + str(sv_vcf) + ') does not exist')
+    if cnv_vcf:
+      if not exists(cnv_index_file):
+        fail('The vcf index file for the CNV vcf (' + str(cnv_vcf) + ') does not exist')
+    if sv_vcf or cnv_vcf:
+      sv_filename, sv_output_file = open_sv_script(working_directory)
+    filtered_sv_vcf, filtered_cnv_vcf = filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_vcf, sample, args, root_path, reference, api_store, args.project_id, args.sv_filters_json)
     sv_output_file.close()
     make_executable = os.popen('chmod +x ' + sv_filename).read()
 
@@ -867,48 +882,60 @@ def parse_command_line():
   global version
   parser = argparse.ArgumentParser(description='Process the command line')
 
+  # Define groups for arguments to make the help easier to read
+  api_arguments = parser.add_argument_group('API Arguments')
+  mosaic_arguments = parser.add_argument_group('Mosaic Arguments')
+  resource_files = parser.add_argument_group('Resource jsons')
+  directories = parser.add_argument_group('Required Paths')
+  input_files = parser.add_argument_group('Input Files')
+  case_arguments = parser.add_argument_group('Case Arguments')
+  variant_filters = parser.add_argument_group('Variant Filters')
+  execution_arguments = parser.add_argument_group('Execution arguments')
+
   # Define the location of the api_client and the ini config file
-  parser.add_argument('--api_client', '-a', required = True, metavar = 'string', help = 'The api_client directory')
-  parser.add_argument('--client_config', '-c', required = True, metavar = 'string', help = 'The ini config file for Mosaic')
+  api_arguments.add_argument('--api_client', '-a', required = True, metavar = 'string', help = 'The api_client directory')
+  api_arguments.add_argument('--client_config', '-c', required = True, metavar = 'string', help = 'The ini config file for Mosaic')
 
   # Required arguments
-  parser.add_argument('--data_directory', '-d', required = False, metavar = 'string', help = 'The path to the directory where the resources live')
-  parser.add_argument('--tools_directory', '-s', required = False, metavar = 'string', help = 'The path to the directory where the tools to use live')
-  parser.add_argument('--ped', '-e', required = False, metavar = 'string', help = 'The pedigree file for the family. Not required for singletons')
-  parser.add_argument('--project_id', '-p', required = True, metavar = 'string', help = 'The project id that variants will be uploaded to')
-  parser.add_argument('--variant_filters', '-f', required = False, metavar = 'string', help = 'The json file describing the variant filters to apply to each project')
+  directories.add_argument('--data_directory', '-d', required = False, metavar = 'string', help = 'The path to the directory where the resources live')
+  directories.add_argument('--tools_directory', '-s', required = False, metavar = 'string', help = 'The path to the directory where the tools to use live')
+  case_arguments.add_argument('--ped', '-e', required = False, metavar = 'string', help = 'The pedigree file for the family. Not required for singletons')
+  mosaic_arguments.add_argument('--project_id', '-p', required = True, metavar = 'string', help = 'The project id that variants will be uploaded to')
 
   # Input vcf files
-  parser.add_argument('--input_vcf', '-i', required = False, metavar = 'string', help = 'The input vcf file to annotate')
-  parser.add_argument('--sv_vcf', '-sv', required = False, metavar = 'string', help = 'The input SV or CNV vcf file')
+  input_files.add_argument('--input_vcf', '-i', required = False, metavar = 'string', help = 'The input vcf file to annotate')
+  input_files.add_argument('--sv_vcf', '-sv', required = False, metavar = 'string', help = 'The input SV vcf file')
+  input_files.add_argument('--cnv_vcf', '-cnv', required = False, metavar = 'string', help = 'The input CNV vcf file')
 
-  # Exomiser arguments
-  parser.add_argument('--exomiser_filters_json', '-x', required = False, metavar = 'string', help = 'The json describing the exomiser filters')
+  # Variant filters jsons
+  variant_filters.add_argument('--variant_filters', '-f', required = False, metavar = 'string', help = 'The json file describing the variant filters to apply to each project')
+  variant_filters.add_argument('--sv_filters_json', '-svf', required = False, metavar = 'string', help = 'The json describing the filters for SVs')
+  variant_filters.add_argument('--exomiser_filters_json', '-x', required = False, metavar = 'string', help = 'The json describing the exomiser filters')
 
   # Optional pipeline arguments
-  parser.add_argument('--reference', '-r', required = False, metavar = 'string', help = 'The reference genome to use. Allowed values: ' + ', '.join(allowed_references))
-  parser.add_argument('--resource_json', '-j', required = False, metavar = 'string', help = 'The json file describing the annotation resources')
-  parser.add_argument('--no_vep', '-n', required = False, action = "store_false", help = "If set, do not run VEP annotation")
-  parser.add_argument('--threads', '-t', required = False, metavar = 'integer', help = 'The number of threads to use')
+  case_arguments.add_argument('--reference', '-r', required = False, metavar = 'string', help = 'The reference genome to use. Allowed values: ' + ', '.join(allowed_references))
+  resource_files.add_argument('--resource_json', '-j', required = False, metavar = 'string', help = 'The json file describing the annotation resources')
+  execution_arguments.add_argument('--no_vep', '-n', required = False, action = "store_false", help = "If set, do not run VEP annotation")
+  execution_arguments.add_argument('--threads', '-t', required = False, metavar = 'integer', help = 'The number of threads to use')
 
   # Optional argument to handle HPO terms
-  parser.add_argument('--hpo', '-o', required = False, metavar = "string", help = "A comma separate list of hpo ids for the proband")
+  case_arguments.add_argument('--hpo', '-o', required = False, metavar = "string", help = "A comma separate list of hpo ids for the proband")
 
   # Optional mosaic arguments
-  parser.add_argument('--mosaic_json', '-m', required = False, metavar = 'string', help = 'The json file describing the Mosaic parameters')
-  parser.add_argument('--mosaic_sv_json', '-sm', required = False, metavar = 'string', help = 'The json file describing the Mosaic SV parameters')
+  resource_files.add_argument('--mosaic_json', '-m', required = False, metavar = 'string', help = 'The json file describing the Mosaic parameters')
+  resource_files.add_argument('--mosaic_sv_json', '-sm', required = False, metavar = 'string', help = 'The json file describing the Mosaic SV parameters')
 
   # Flag for UDN projects as they have a slightly different naming convention
-  parser.add_argument('--udn', '-u', required = False, action = 'store_true', help = 'Set for UDN projects to handle the request id in the sample name')
+  execution_arguments.add_argument('--udn', '-u', required = False, action = 'store_true', help = 'Set for UDN projects to handle the request id in the sample name')
 
   # Do not check the vcf header to verify the reference genome based on chromosome length
-  parser.add_argument('--ignore_vcf_ref_check', '-g', required = False, action = 'store_true', help = 'Ignore the check on the VCF reference genome')
+  execution_arguments.add_argument('--ignore_vcf_ref_check', '-g', required = False, action = 'store_true', help = 'Ignore the check on the VCF reference genome')
 
   # Use the queue in Utah
-  parser.add_argument('--queue', '-q', required = False, action = 'store_true', help = 'Add queue information to the 01 script')
+  execution_arguments.add_argument('--queue', '-q', required = False, action = 'store_true', help = 'Add queue information to the 01 script')
 
   # Skip the annotation step
-  parser.add_argument('--skip_annotation', '-sa', required = False, action = 'store_true', help = 'If the vcf file has already been annotated, start with filtering and skip the annotation step')
+  execution_arguments.add_argument('--skip_annotation', '-sa', required = False, action = 'store_true', help = 'If the vcf file has already been annotated, start with filtering and skip the annotation step')
 
   # Version
   parser.add_argument('--version', '-v', action='version', version='Calypso annotation pipeline version: ' + str(version))
@@ -916,7 +943,7 @@ def parse_command_line():
   return parser.parse_args()
 
 # Check the supplied arguments
-def checkArguments(args, root_path):
+def check_arguments(args, root_path):
 
   # If Calypso is being run from the standard directory, the location of the data directory is
   # predictable. If the directory has not been specified on the command line, check for the
@@ -936,6 +963,11 @@ def checkArguments(args, root_path):
   # Check that the api_client directory exists
   if args.api_client[-1] != '/': args.api_client += '/'
   if not os.path.exists(args.api_client): fail('ERROR: The api client directory does not exist (' + str(args.api_client) + ')')
+
+  # If -sv is specified, -sm is also required
+  if args.sv_vcf or args.cnv_vcf:
+    if not args.mosaic_sv_json:
+      fail('The --sv_vcf (-sv) is set which requires that --mosaic_sv_json (-sm) is also set')
 
 # Create a directory where all Calypso associated files will be stored
 def set_working_directory(version):
@@ -1526,12 +1558,126 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads, has_parents)
 ##### Deal with SV data
 #####
 
-def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf, samples, args, root_path, reference, api_store):
-  vcf_base = os.path.abspath(vcf).split('/')[-1].replace('.vcf.gz', '')
-  annotated_vcf = str(vcf_base) + '_annotated.vcf.gz'
-  filtered_vcf = str(vcf_base) + '_filtered.vcf.gz'
+def filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_vcf, samples, args, root_path, reference, api_store, project_id, filters_json):
+  if sv_vcf:
+    sv_vcf_base = os.path.abspath(sv_vcf).split('/')[-1].replace('.vcf.gz', '')
+    sv_temp_vcf = str(sv_vcf_base) + '_temp.vcf'
+    sv_annotated_vcf = str(sv_vcf_base) + '_annotated.vcf'
+    sv_filtered_vcf = str(sv_vcf_base) + '_filtered.vcf.gz'
+  if cnv_vcf:
+    cnv_vcf_base = os.path.abspath(cnv_vcf).split('/')[-1].replace('.vcf.gz', '')
+    cnv_temp_vcf = str(cnv_vcf_base) + '_temp.vcf'
+    cnv_annotated_vcf = str(cnv_vcf_base) + '_annotated.vcf'
+    cnv_filtered_vcf = str(cnv_vcf_base) + '_filtered.vcf.gz'
 
-    # Generate scripts to upload filtered variants to Mosaic
+  # Annotate the SV / CNV vcf files
+  print('# Define the tools', file = sv_output_file)
+  print('TOOLPATH=', resource_info['toolsPath'], sep = '', file = sv_output_file)
+  print('SVAFOTATE=$TOOLPATH/svafotate', sep = '', file = sv_output_file)
+  print('BCFTOOLS=$TOOLPATH/bcftools/bcftools', sep = '', file = sv_output_file)
+  print('SLIVAR=$TOOLPATH/slivar', sep = '', file = sv_output_file)
+  print(file = sv_output_file)
+  print('# Define the resources', file = sv_output_file)
+  print('DATAPATH=', resource_info['path'], sep = '', file = sv_output_file)
+  print('SVAFBED=$DATAPATH/', resource_info['resources']['SVAF']['file'], sep = '', file = sv_output_file)
+  print(file = sv_output_file)
+  print('# Define the input and output files', file = sv_output_file)
+  print('FILEPATH=', working_directory, sep = '', file = sv_output_file)
+
+  # SV file
+  if sv_vcf:
+    print('SV_VCF=', sv_vcf, sep = '', file = sv_output_file)
+    print('SV_TEMP_VCF=', sv_temp_vcf, sep = '', file = sv_output_file)
+    print('SV_ANNOTATED_VCF=$FILEPATH/', sv_annotated_vcf, sep = '', file = sv_output_file)
+    print('SV_ANNOTATED_VCF_GZ=$FILEPATH/', sv_annotated_vcf, '.gz', sep = '', file = sv_output_file)
+    print('SV_FILTERED_VCF=$FILEPATH/', sv_filtered_vcf, sep = '', file = sv_output_file)
+    print('SV_STDOUT=sv_pipeline.stdout', file = sv_output_file)
+    print('SV_STDERR=sv_pipeline.stderr', file = sv_output_file)
+    print(sep = '', file = sv_output_file)
+
+    # Annotate the SV vcf file
+    print('echo "Annotating SV VCF..."', sep = '', file = sv_output_file)
+    print('$BCFTOOLS view -a -c 1 -s ', samples, ' -O z -o $SV_TEMP_VCF $SV_VCF', sep = '', file = sv_output_file)
+    print('$SVAFOTATE annotate -v $SV_TEMP_VCF \\', sep = '', file = sv_output_file)
+    print('  -b $SVAFBED \\', sep = '', file = sv_output_file)
+    print('  -f 0.8 \\', sep = '', file = sv_output_file)
+    print('  -o $SV_ANNOTATED_VCF \\', sep = '', file = sv_output_file)
+    print('  > $SV_STDOUT 2> $SV_STDERR', file = sv_output_file)
+    print(sep = '', file = sv_output_file)
+
+    # Compress and index the annotated vcf
+    print('echo "Compressing and indexing the annotated vcf..."', sep = '', file = sv_output_file)
+    print('$BCFTOOLS view -O z -o $SV_ANNOTATED_VCF_GZ $SV_ANNOTATED_VCF', file = sv_output_file)
+    print('$BCFTOOLS index -t $SV_ANNOTATED_VCF_GZ', file = sv_output_file)
+    print(sep = '', file = sv_output_file)
+
+    # Filter on popmax af with slivar
+    print('echo "Filtering annotated SV VCF..."', sep = '', file = sv_output_file)
+    print('$SLIVAR expr \\', file = sv_output_file)
+    print('  --info "INFO.Max_AF < 0.025" \\', file = sv_output_file)
+    print('  --vcf $SV_ANNOTATED_VCF_GZ |', file = sv_output_file)
+    print('sed \'s/##contig=<ID=chr/##contig=<ID=/g\' |', file = sv_output_file)
+    print('sed \'s/chr//g\' |', file = sv_output_file)
+    print('$BCFTOOLS view -O z -o $SV_FILTERED_VCF \\', file = sv_output_file)
+    print('  >> $SV_STDOUT 2>> $SV_STDERR', file = sv_output_file)
+    print('$BCFTOOLS index -t $SV_FILTERED_VCF', file = sv_output_file)
+    print(sep = '', file = sv_output_file)
+
+    # Delete intermediate files
+    print('rm -f $SV_TEMP_VCF', file = sv_output_file)
+    print('rm -f $SV_ANNOTATED_VCF', file = sv_output_file)
+    print('rm -f $SV_ANNOTATED_VCF_GZ', file = sv_output_file)
+    print('rm -f $SV_ANNOTATED_VCF_GZ', '".tbi"', sep = '', file = sv_output_file)
+    print(sep = '', file = sv_output_file)
+
+  # CNV file
+  if cnv_vcf:
+    print('CNV_VCF=', cnv_vcf, sep = '', file = sv_output_file)
+    print('CNV_TEMP_VCF=', cnv_temp_vcf, sep = '', file = sv_output_file)
+    print('CNV_ANNOTATED_VCF=$FILEPATH/', cnv_annotated_vcf, sep = '', file = sv_output_file)
+    print('CNV_ANNOTATED_VCF_GZ=$FILEPATH/', cnv_annotated_vcf, '.gz', sep = '', file = sv_output_file)
+    print('CNV_FILTERED_VCF=$FILEPATH/', cnv_filtered_vcf, sep = '', file = sv_output_file)
+    print('CNV_STDOUT=cnv_pipeline.stdout', file = sv_output_file)
+    print('CNV_STDERR=cnv_pipeline.stderr', file = sv_output_file)
+    print(sep = '', file = sv_output_file)
+
+    # Annotate the SV vcf file
+    print('echo "Annotating CNV VCF..."', sep = '', file = sv_output_file)
+    print('$BCFTOOLS view -a -c 1 -s ', samples, ' -O z -o $CNV_TEMP_VCF $CNV_VCF', sep = '', file = sv_output_file)
+    print('$SVAFOTATE annotate -v $CNV_TEMP_VCF \\', sep = '', file = sv_output_file)
+    print('  -b $SVAFBED \\', sep = '', file = sv_output_file)
+    print('  -f 0.8 \\', sep = '', file = sv_output_file)
+    print('  -a mis \\', sep = '', file = sv_output_file)
+    print('  -o $CNV_ANNOTATED_VCF \\', sep = '', file = sv_output_file)
+    print('  > $CNV_STDOUT 2> $CNV_STDERR', file = sv_output_file)
+    print(sep = '', file = sv_output_file)
+
+    # Compress and index the annotated vcf
+    print('echo "Compressing and indexing the annotated vcf..."', sep = '', file = sv_output_file)
+    print('$BCFTOOLS view -O z -o $CNV_ANNOTATED_VCF_GZ $CNV_ANNOTATED_VCF', file = sv_output_file)
+    print('$BCFTOOLS index -t $CNV_ANNOTATED_VCF_GZ', file = sv_output_file)
+    print(sep = '', file = sv_output_file)
+
+    # Filter on popmax af with slivar
+    print('echo "Filtering annotated SV VCF..."', sep = '', file = sv_output_file)
+    print('$SLIVAR expr \\', file = sv_output_file)
+    print('  --info "INFO.Max_AF < 0.025" \\', file = sv_output_file)
+    print('  --vcf $CNV_ANNOTATED_VCF_GZ |', file = sv_output_file)
+    print('sed \'s/##contig=<ID=chr/##contig=<ID=/g\' |', file = sv_output_file)
+    print('sed \'s/chr//g\' |', file = sv_output_file)
+    print('$BCFTOOLS view -O z -o $CNV_FILTERED_VCF \\', file = sv_output_file)
+    print('  >> $CNV_STDOUT 2>> $CNV_STDERR', file = sv_output_file)
+    print('$BCFTOOLS index -t $CNV_FILTERED_VCF', file = sv_output_file)
+    print(sep = '', file = sv_output_file)
+
+    # Delete intermediate files
+    print('rm -f $CNV_TEMP_VCF', file = sv_output_file)
+    print('rm -f $CNV_ANNOTATED_VCF', file = sv_output_file)
+    print('rm -f $CNV_ANNOTATED_VCF_GZ', file = sv_output_file)
+    print('rm -f $CNV_ANNOTATED_VCF_GZ', '".tbi"', sep = '', file = sv_output_file)
+    print(sep = '', file = sv_output_file)
+
+  # Generate scripts to upload filtered variants to Mosaic
   upload_filename = working_directory + '07_calypso_sv_tsv_upload_variants.sh'
   try:
     upload_file = open(upload_filename, 'w')
@@ -1539,34 +1685,56 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf, samples
     fail('Could not open ' + str(upload_filename) + ' to write to')
 
   # Write the command to file to upload the filtered sv variants
-  print('# Upload SV variants to Mosaic', file = upload_file)
+  print('# Upload SV / CNV variants to Mosaic', file = upload_file)
   print('API_CLIENT=', args.api_client, sep = '', file = upload_file)
   print('CONFIG=', args.client_config, sep = '', file = upload_file)
   print('TOOLPATH=', resource_info['toolsPath'], sep = '', file = upload_file)
-  print('VCF=', filtered_vcf, sep = '', file = upload_file)
-  print(file = upload_file)
-  print('echo "Uploading filtered SV VCF"', file = upload_file)
-  print('python3 $API_CLIENT/variants/upload_variants.py ', end = '', file = upload_file)
-  print('-a $API_CLIENT ', end = '', file = upload_file)
-  print('-c $CONFIG ', end = '', file = upload_file)
-  print('-p ', str(args.project_id) + ' ', sep = '', end = '', file = upload_file)
-  print('-m "sv-no-validation" ', sep = '', end = '', file = upload_file)
-  print('-v $VCF ', file = upload_file)
-  print(sep = '', file = upload_file)
+  if sv_vcf:
+    print(file = upload_file)
+    print('SV_VCF=', sv_filtered_vcf, sep = '', file = upload_file)
+    print('echo "Uploading filtered SV VCF"', file = upload_file)
+    print('python3 $API_CLIENT/variants/upload_variants.py ', end = '', file = upload_file)
+    print('-a $API_CLIENT ', end = '', file = upload_file)
+    print('-c $CONFIG ', end = '', file = upload_file)
+    print('-p ', str(args.project_id) + ' ', sep = '', end = '', file = upload_file)
+    print('-m "sv-no-validation" ', sep = '', end = '', file = upload_file)
+    print('-v $SV_VCF ', file = upload_file)
+    print(sep = '', file = upload_file)
+  if cnv_vcf:
+    print(file = upload_file)
+    print('CNV_VCF=', cnv_filtered_vcf, sep = '', file = upload_file)
+    print('echo "Uploading filtered CNV VCF"', file = upload_file)
+    print('python3 $API_CLIENT/variants/upload_variants.py ', end = '', file = upload_file)
+    print('-a $API_CLIENT ', end = '', file = upload_file)
+    print('-c $CONFIG ', end = '', file = upload_file)
+    print('-p ', str(args.project_id) + ' ', sep = '', end = '', file = upload_file)
+    print('-m "sv-no-validation" ', sep = '', end = '', file = upload_file)
+    print('-v $CNV_VCF ', file = upload_file)
+    print(sep = '', file = upload_file)
 
   # Generate SV TSV and upload command
-  print('echo "Generating SV TSV file"', file = upload_file)
+  print('echo "Generating SV / CNV TSV file(s)"', file = upload_file)
   print('GENERATE_TSV=', root_path, '/generate_sv_annotation_tsv.py', sep = '', file = upload_file)
   print('MOSAIC_SV_JSON=', args.mosaic_sv_json, sep = '', file = upload_file)
   print(sep = '', file = upload_file)
 
-  print('python3 $GENERATE_TSV -i $VCF -o SVAF.tsv -e SVAFotate -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
-  print(sep = '', file = upload_file)
+  if sv_vcf:
+    print('python3 $GENERATE_TSV -i $SV_VCF -o SV_SVAF -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
+    #print('python3 $GENERATE_TSV -i $SV_VCF -o SV_SVAF.tsv -e SVAFotate -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
+    print(sep = '', file = upload_file)
+    #print('echo "Deduping SV TSV just in case"', file = upload_file)
+    #print('head -n 1 SV_SVAF.tsv | sed \'s/variant_type/ALT/g\' | cut -f 1-4,6- > SVAF.dedup.tsv && tail -n+2 SVAF.tsv | cut -f 1-4,6- | awk \'$6 != 0 && $7 != 0 && $8 != 0 && $9 != 0 && $10 != 0 && $11 != 0 && $12 != 0 && $13 != 0\' | sort -k1,1 -k2,2n -u >> SV_SVAF.dedup.tsv', file = upload_file)
+    #print('mv SV_SVAF.dedup.tsv SV_SVAF.tsv', file = upload_file)
+    #print(sep = '', file = upload_file)
 
-  print('echo "Deduping TSV just in case"', file = upload_file)
-  print('head -n 1 SVAF.tsv | sed \'s/variant_type/ALT/g\' | cut -f 1-4,6- > SVAF.dedup.tsv && tail -n+2 SVAF.tsv | cut -f 1-4,6- | awk \'$6 != 0 && $7 != 0 && $8 != 0 && $9 != 0 && $10 != 0 && $11 != 0 && $12 != 0 && $13 != 0\' | sort -k1,1 -k2,2n -u >> SVAF.dedup.tsv', file = upload_file)
-  print('mv SVAF.dedup.tsv SVAF.tsv', file = upload_file)
-  print(sep = '', file = upload_file)
+  if cnv_vcf:
+    print('python3 $GENERATE_TSV -i $CNV_VCF -o CNV_SVAF -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
+    #print('python3 $GENERATE_TSV -i $CNV_VCF -o CNV_SVAF.tsv -e SVAFotate -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
+    print(sep = '', file = upload_file)
+    #print('echo "Deduping CNV TSV just in case"', file = upload_file)
+    #print('head -n 1 CNV_SVAF.tsv | sed \'s/variant_type/ALT/g\' | cut -f 1-4,6- > SVAF.dedup.tsv && tail -n+2 SVAF.tsv | cut -f 1-4,6- | awk \'$6 != 0 && $7 != 0 && $8 != 0 && $9 != 0 && $10 != 0 && $11 != 0 && $12 != 0 && $13 != 0\' | sort -k1,1 -k2,2n -u >> CNV_SVAF.dedup.tsv', file = upload_file)
+    #print('mv CNV_SVAF.dedup.tsv CNV_SVAF.tsv', file = upload_file)
+    #print(sep = '', file = upload_file)
 
   if reference == 'GRCh37':
     try:
@@ -1579,64 +1747,38 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, vcf, samples
     except:
       fail('Config file does not contain the project id of project "annotations_grch38"')
       
-  print('echo "Uploading SV TSV"', file = upload_file)
+  print('echo "Uploading SV / CNV TSV(s)"', file = upload_file)
   print('UPLOAD_SCRIPT=$API_CLIENT/variant_annotations/upload_annotations.py', file = upload_file)
-  print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t SVAF.tsv',  sep = '', file = upload_file)
+  if sv_vcf:
+    tsv_name = 'SV_SVAF_' + str(annotation_project_id) + '.tsv'
+    print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t ', tsv_name, sep = '', file = upload_file)
+    #print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t SV_SVAF.tsv',  sep = '', file = upload_file)
+  if cnv_vcf:
+    tsv_name = 'CNV_SVAF_' + str(annotation_project_id) + '.tsv'
+    print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t ', tsv_name, sep = '', file = upload_file)
+    #print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t CNV_SVAF.tsv',  sep = '', file = upload_file)
+
+  # If no variant filters json was provided, provide a warning that no filters will be created
+  if not filters_json:
+    print('WARNING: No json file provided for SV filters. No filters will be created')
+  else:
+    print(file = upload_file)
+    print('# Set SV variant filters', file = upload_file)
+    print('UPLOAD_SCRIPT=$API_CLIENT/project_setup/set_variant_filters.py', file = upload_file)
+    print('FILTERS_JSON=', filters_json, sep = '', file = upload_file)
+    print('python3 $UPLOAD_SCRIPT ', end = '', file = upload_file)
+    print('-a $API_CLIENT ', end = '', file = upload_file)
+    print('-c $CONFIG ', end = '', file = upload_file)
+    print('-p ', str(project_id), ' ', sep = '', end = '', file = upload_file)
+    print('-f $FILTERS_JSON', file = upload_file)
 
   # Close the file
   upload_file.close()
 
   # Make the annotation script executable
   make_executable = os.popen('chmod +x ' + str(upload_filename)).read()
-
-  print('# Define the tools', file = sv_output_file)
-  print('TOOLPATH=', resource_info['toolsPath'], sep = '', file = sv_output_file)
-  print('SVAFOTATE=$TOOLPATH/svafotate', sep = '', file = sv_output_file)
-  print('BCFTOOLS=$TOOLPATH/bcftools/bcftools', sep = '', file = sv_output_file)
-  print('SLIVAR=$TOOLPATH/slivar', sep = '', file = sv_output_file)
-  print(file = sv_output_file)
-  print('# Define the input files', file = sv_output_file)
-  print('DATAPATH=', resource_info['path'], sep = '', file = sv_output_file)
-  print('SVAFBED=$DATAPATH/', resource_info['resources']['SVAF']['file'], sep = '', file = sv_output_file)
-  print(file = sv_output_file)
-  print('# Define the input and output files', file = sv_output_file)
-  print('FILEPATH=', working_directory, sep = '', file = sv_output_file)
-  print('SV_VCF=', vcf, sep = '', file = sv_output_file)
-  print('ANNOTATED_VCF=$FILEPATH/', annotated_vcf, sep = '', file = sv_output_file)
-  print('FILTERED_VCF=$FILEPATH/', filtered_vcf, sep = '', file = sv_output_file)
-  print('STDOUT=sv_pipeline.stdout', file = sv_output_file)
-  print('STDERR=sv_pipeline.stderr', file = sv_output_file)
-  print(sep = '', file = sv_output_file)
-
-  # Annotate the SV vcf file
-  print('echo "Annotating SV VCF..."', sep = '', file = sv_output_file)
-  print('$BCFTOOLS view -a -c 1 -s ', samples, ' $SV_VCF |', sep = '', file = sv_output_file)
-  print('$SVAFOTATE annotate -v $SV_VCF \\', sep = '', file = sv_output_file)
-  print('  -b $SVAFBED \\', sep = '', file = sv_output_file)
-  print('  -f 0.8 \\', sep = '', file = sv_output_file)
-  print('  -o $ANNOTATED_VCF \\', sep = '', file = sv_output_file)
-  print('  > $STDOUT 2> $STDERR', file = sv_output_file)
-  print(sep = '', file = sv_output_file)
-
-#  # Filter the annotated SV vcf file
-#  print('$BCFTOOLS view \\', sep = '', file = sv_output_file)
-#  print('  -i 0.8 \\', sep = '', file = sv_output_file)
-#  print('  -o $ANNOTATED_VCF', sep = '', file = sv_output_file)
-#  print(sep = '', file = sv_output_file)
-
-  # Filter on popmax af with slivar
-  print('echo "Filtering annotated SV VCF..."', sep = '', file = sv_output_file)
-  print('$SLIVAR expr \\', file = sv_output_file)
-  print('  --info "INFO.Max_AF < 0.025" \\', file = sv_output_file)
-  print('  --vcf $ANNOTATED_VCF |', file = sv_output_file)
-  print('sed \'s/##contig=<ID=chr/##contig=<ID=/g\' |', file = sv_output_file)
-  print('sed \'s/chr//g\' |', file = sv_output_file)
-  print('$BCFTOOLS view -O z -o $FILTERED_VCF \\', file = sv_output_file)
-  print('  >> $STDOUT 2>> $STDERR', file = sv_output_file)
-  print(sep = '', file = sv_output_file)
-
   # Return the name of the filtered vcf file
-  return filtered_vcf
+  return sv_filtered_vcf, cnv_filtered_vcf
 
 
 
