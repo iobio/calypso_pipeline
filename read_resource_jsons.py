@@ -49,6 +49,12 @@ def read_resources(reference, root_path, resource_info, use_vep):
   if str(reference) != str(resource_data['reference']):
     fail("The selected reference (" + str(reference) + ") does not match the resource json reference (" + str(resource_info['reference']) + ")")
 
+  # Check if an SV json is specified
+  try:
+    resource_info['sv_json'] = resource_data['SV json']
+  except:
+    resource_info['sv_json'] = False
+
   # Check if a path to a tools directory is provided. If the path was set on the command line, use the value provided on the command line
   if not resource_info['toolsPath'] and 'tools_path' in resource_data:
     resource_info['toolsPath'] = root_path + '/' + resource_data['tools_path']

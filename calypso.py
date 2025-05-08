@@ -49,6 +49,15 @@ def main():
   print('Using resources file: ', args.resource_json, sep = '')
   resource_info = read_resources.read_resources(reference, root_path, resource_info, args.no_vep)
 
+  # Check if a mosaic SV json is present in the resources json
+  # If -sv is specified, -sm is also required
+  if args.sv_vcf or args.cnv_vcf:
+    if not args.mosaic_sv_json:
+      if not resource_info['sv_json']:
+        fail('The --sv_vcf (-sv) is set which requires that --mosaic_sv_json (-sm) is also set')
+      else:
+        args.mosaic_sv_json = resource_info['sv_json']
+
   # If threads were not set, default to 4
   args.threads = 4 if not args.threads else args.threads
 
@@ -963,11 +972,6 @@ def check_arguments(args, root_path):
   # Check that the api_client directory exists
   if args.api_client[-1] != '/': args.api_client += '/'
   if not os.path.exists(args.api_client): fail('ERROR: The api client directory does not exist (' + str(args.api_client) + ')')
-
-  # If -sv is specified, -sm is also required
-  if args.sv_vcf or args.cnv_vcf:
-    if not args.mosaic_sv_json:
-      fail('The --sv_vcf (-sv) is set which requires that --mosaic_sv_json (-sm) is also set')
 
 # Create a directory where all Calypso associated files will be stored
 def set_working_directory(version):
