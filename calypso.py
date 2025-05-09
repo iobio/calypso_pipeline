@@ -1723,7 +1723,7 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_
   print(sep = '', file = upload_file)
 
   if sv_vcf:
-    print('python3 $GENERATE_TSV -i $SV_VCF -o SV_SVAF -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
+    print('python3 $GENERATE_TSV -i $SV_VCF -o SV_SVAF.tsv -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
     #print('python3 $GENERATE_TSV -i $SV_VCF -o SV_SVAF.tsv -e SVAFotate -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
     print(sep = '', file = upload_file)
     #print('echo "Deduping SV TSV just in case"', file = upload_file)
@@ -1732,7 +1732,7 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_
     #print(sep = '', file = upload_file)
 
   if cnv_vcf:
-    print('python3 $GENERATE_TSV -i $CNV_VCF -o CNV_SVAF -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
+    print('python3 $GENERATE_TSV -i $CNV_VCF -o CNV_SVAF.tsv -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
     #print('python3 $GENERATE_TSV -i $CNV_VCF -o CNV_SVAF.tsv -e SVAFotate -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
     print(sep = '', file = upload_file)
     #print('echo "Deduping CNV TSV just in case"', file = upload_file)
@@ -1755,12 +1755,12 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_
   print('UPLOAD_SCRIPT=$API_CLIENT/variant_annotations/upload_annotations.py', file = upload_file)
   if sv_vcf:
     tsv_name = 'SV_SVAF_' + str(annotation_project_id) + '.tsv'
-    print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t ', tsv_name, sep = '', file = upload_file)
-    #print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t SV_SVAF.tsv',  sep = '', file = upload_file)
+    #print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t ', tsv_name, sep = '', file = upload_file)
+    print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t SV_SVAF.tsv',  sep = '', file = upload_file)
   if cnv_vcf:
     tsv_name = 'CNV_SVAF_' + str(annotation_project_id) + '.tsv'
-    print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t ', tsv_name, sep = '', file = upload_file)
-    #print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t CNV_SVAF.tsv',  sep = '', file = upload_file)
+    #print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t ', tsv_name, sep = '', file = upload_file)
+    print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t CNV_SVAF.tsv',  sep = '', file = upload_file)
 
   # If no variant filters json was provided, provide a warning that no filters will be created
   if not filters_json:

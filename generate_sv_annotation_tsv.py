@@ -27,33 +27,37 @@ def main():
 
   # Loop over the resources in the json file
   annotations = {}
+  annotations_no_svtype = {}
   for resource in mosaic_info['resources']:
-    project_id = mosaic_info['resources'][resource]['project_id']
-    if str(project_id) not in annotations:
-      annotations[str(project_id)] = {}
+    #project_id = mosaic_info['resources'][resource]['project_id']
+    #if str(project_id) not in annotations:
+    #  annotations[str(project_id)] = {}
 
     # Loop over the annotations that are to be uploaded to Mosaic for this resource and get the annotation name, uid and
     # type
     for annotation in mosaic_info['resources'][resource]['annotations']:
       uid = mosaic_info['resources'][resource]['annotations'][annotation]['uid']
       tag_type = mosaic_info['resources'][resource]['annotations'][annotation]['type']
-      annotations[str(project_id)][annotation] = {'uid': uid, 'type': tag_type}
+      annotations[annotation] = {'uid': uid, 'type': tag_type}
+      if annotation != 'SVTYPE':
+        annotations_no_svtype[annotation] = {'uid': uid, 'type': tag_type}
+      #annotations[str(project_id)][annotation] = {'uid': uid, 'type': tag_type}
 
   # We need to create a tsv for each project that annotations are uploaded to
-  for project_id in annotations:
-    output_file_name = args.output_tsv + '_' + str(project_id) + '.tsv'
+  #for project_id in annotations:
+  #output_file_name = args.output_tsv + '_' + str(project_id) + '.tsv'
 
-    # Open an output tsv file to write annotations to
-    output_file = open(output_file_name, 'w')
+  # Open an output tsv file to write annotations to
+  output_file = open(args.output_tsv, 'w')
 
-    # Write the header line to the tsv file
-    print('CHROM\tSTART\tEND\tREF\tALT\t', '\t'.join(str(x['uid']) for x in annotations[str(project_id)].values()), sep = '', file = output_file)
+  # Write the header line to the tsv file
+  print('CHROM\tSTART\tEND\tREF\tALT\t', '\t'.join(str(x['uid']) for x in annotations_no_svtype.values()), sep = '', file = output_file)
 
-    # Parse the vcf file, check the annotations and generate a tsv file for upload to Mosaic
-    process_vcf(bcftools, args.input_vcf, annotations[str(project_id)], output_file)
+  # Parse the vcf file, check the annotations and generate a tsv file for upload to Mosaic
+  process_vcf(bcftools, args.input_vcf, annotations, output_file)
 
-    # Close the output tsv file
-    output_file.close()
+  # Close the output tsv file
+  output_file.close()
 
 # Input options
 def parseCommandLine():
@@ -76,7 +80,7 @@ def process_vcf(bcftools, vcf, annotations, output_file):
 
   # Loop over all records in the vcf file
   command = bcftools + ' query -f \'%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%INFO/' + '\\t%INFO/'.join(annotations.keys()) + '\\n\' ' + str(vcf)
-  #print(command)
+  observed_records = []
   for record in os.popen(command).readlines():
 
     # Split the record on tabs
@@ -100,7 +104,7 @@ def process_vcf(bcftools, vcf, annotations, output_file):
 
         # If the are multiple values (e.g. there is a ',') in the value, ensure that all values are within
         # the limits (1E-37 < x < 1E37), but output all values
-        values      = fields[i].split(',') if ',' in fields[i] else [fields[i]]
+        values = fields[i].split(',') if ',' in fields[i] else [fields[i]]
         finalValues = []
         for value in values:
           if value == '.':
@@ -137,7 +141,14 @@ def process_vcf(bcftools, vcf, annotations, output_file):
 
     # Build the output record from the updated fields
     if not all_zeros:
-      print('\t'.join(fields), file = output_file)
+
+      # Replace the ALT with SVTYPE
+      fields[4] = fields[5]
+      del fields[5]
+      identifier = '_'.join(fields[0:5])
+      if identifier not in observed_records:
+        print('\t'.join(fields), file = output_file)
+      observed_records.append(identifier)
 
 # Update the chromosome and position in the tsv file
 def update_coords(chrom, pos):
