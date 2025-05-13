@@ -619,6 +619,11 @@ def main():
         fail('The vcf index file for the CNV vcf (' + str(cnv_vcf) + ') does not exist')
     if sv_vcf or cnv_vcf:
       sv_filename, sv_output_file = open_sv_script(working_directory)
+
+    # If no variant filter json is specified, check to see if the resources file had one
+    if not args.sv_filters_json:
+      if 'sv_variant_filters' in mosaic_info:
+        args.sv_filters_json = str(args.data_directory) + str(mosaic_info['sv_variant_filters'])
     filtered_sv_vcf, filtered_cnv_vcf = filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_vcf, sample, args, root_path, reference, api_store, args.project_id, args.sv_filters_json)
     sv_output_file.close()
     make_executable = os.popen('chmod +x ' + sv_filename).read()

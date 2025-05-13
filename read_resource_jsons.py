@@ -308,6 +308,11 @@ def read_mosaic_json(filename, reference):
   except:
     pass
 
+  try:
+    mosaic_info['sv_variant_filters'] = mosaic_data['sv_variant_filters']
+  except:
+    pass
+
   # Loop over all the specified resources, and get all information required to pull the annotations
   # into Mosaic
   try:
