@@ -609,12 +609,12 @@ def main():
         fail('Input CNV vcf file (' + str(cnv_vcf) + ') does not exist')
 
     # Check that the index file also exists
-    sv_index_file = sv_vcf + '.tbi'
-    cnv_index_file = cnv_vcf + '.tbi'
     if sv_vcf:
+      sv_index_file = sv_vcf + '.tbi'
       if not exists(sv_index_file):
         fail('The vcf index file for the SV vcf (' + str(sv_vcf) + ') does not exist')
     if cnv_vcf:
+      cnv_index_file = cnv_vcf + '.tbi'
       if not exists(cnv_index_file):
         fail('The vcf index file for the CNV vcf (' + str(cnv_vcf) + ') does not exist')
     if sv_vcf or cnv_vcf:
@@ -1568,6 +1568,8 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads, has_parents)
 #####
 
 def filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_vcf, samples, args, root_path, reference, api_store, project_id, filters_json):
+  sv_filtered_vcf = False
+  cnv_filtered_vcf = False
   if sv_vcf:
     sv_vcf_base = os.path.abspath(sv_vcf).split('/')[-1].replace('.vcf.gz', '')
     sv_temp_vcf = str(sv_vcf_base) + '_temp.vcf'
@@ -1786,6 +1788,7 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_
 
   # Make the annotation script executable
   make_executable = os.popen('chmod +x ' + str(upload_filename)).read()
+
   # Return the name of the filtered vcf file
   return sv_filtered_vcf, cnv_filtered_vcf
 
