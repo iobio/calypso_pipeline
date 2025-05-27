@@ -591,6 +591,32 @@ def main():
   print('GENERATE_VARIANT_QUALITY_TSV=', root_path, '/generate_variant_quality_tsv.py', sep = '', file = bash_file)
   print('MOSAIC_JSON=', args.mosaic_json, sep = '', file = bash_file)
 
+  # 
+  experiment_file_ids = []
+  for sample in project.get_samples():
+    for sample_file in project.get_sample_files(sample['id']):
+      if sample_file['name'] == vcf.split('/')[-1]:
+        experiment_file_ids.append(sample_file['id'])
+      if sample_file['name'] == index_file.split('/')[-1]:
+        experiment_file_ids.append(sample_file['id'])
+
+  # Get the cram files
+  cram_experiment_file_ids = []
+  for sample in project.get_samples():
+    for sample_file in project.get_sample_files(sample['id']):
+      if sample_file['name'].split('.')[-1] == 'cram':
+        cram_experiment_file_ids.append(sample_file['id'])
+      if sample_file['name'].split('.')[-1] == 'crai':
+        cram_experiment_file_ids.append(sample_file['id'])
+  create_experiments = True if len(cram_experiment_file_ids) == 2 else False
+  experiment_file_ids.extend(cram_experiment_file_ids)
+  has_experiment = False
+  for experiment in project.get_experiments():
+    if experiment['name'] == 'Short Variants':
+      has_experiment = True
+  if not has_experiment and create_experiments:
+    project.post_experiment(name = 'Short Variants', file_ids = experiment_file_ids)
+
   # If an SV vcf file was provided, annotate and filter the sv file
   if args.sv_vcf or args.cnv_vcf:
     sv_vcf = False
@@ -613,12 +639,46 @@ def main():
       sv_index_file = sv_vcf + '.tbi'
       if not exists(sv_index_file):
         fail('The vcf index file for the SV vcf (' + str(sv_vcf) + ') does not exist')
+
+      # Loop over all of the sample files and get the ids of the SV files for the SV experiment
+      sv_experiment_file_ids = []
+      for sample in project.get_samples():
+        for sample_file in project.get_sample_files(sample['id']):
+          if sample_file['name'] == sv_vcf.split('/')[-1]:
+            sv_experiment_file_ids.append(sample_file['id'])
+          if sample_file['name'] == sv_index_file.split('/')[-1]:
+            sv_experiment_file_ids.append(sample_file['id'])
     if cnv_vcf:
       cnv_index_file = cnv_vcf + '.tbi'
       if not exists(cnv_index_file):
         fail('The vcf index file for the CNV vcf (' + str(cnv_vcf) + ') does not exist')
+
+      # Loop over all of the sample files and get the ids of the CNV files for the CNV experiment
+      cnv_experiment_file_ids = []
+      for sample in project.get_samples():
+        for sample_file in project.get_sample_files(sample['id']):
+          if sample_file['name'] == cnv_vcf.split('/')[-1]:
+            cnv_experiment_file_ids.append(sample_file['id'])
+          if sample_file['name'] == cnv_index_file.split('/')[-1]:
+            cnv_experiment_file_ids.append(sample_file['id'])
     if sv_vcf or cnv_vcf:
       sv_filename, sv_output_file = open_sv_script(working_directory)
+
+    # Get the existing experiments so we don't duplicate
+    has_sv = False
+    has_cnv = False
+    for experiment in project.get_experiments():
+      if experiment['name'] == 'DRAGEN SV':
+        has_sv = True
+      if experiment['name'] == 'DRAGEN CNV':
+        has_cnv = True
+
+    if len(sv_experiment_file_ids) > 0 and create_experiments and not has_sv:
+      sv_experiment_file_ids.extend(cram_experiment_file_ids)
+      project.post_experiment(name = 'DRAGEN SV', file_ids = sv_experiment_file_ids)
+    if len(cnv_experiment_file_ids) > 0 and create_experiments and not has_cnv:
+      cnv_experiment_file_ids.extend(cram_experiment_file_ids)
+      project.post_experiment(name = 'DRAGEN CNV', file_ids = cnv_experiment_file_ids)
 
     # If no variant filter json is specified, check to see if the resources file had one
     if not args.sv_filters_json:
