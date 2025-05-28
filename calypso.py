@@ -591,10 +591,10 @@ def main():
   print('GENERATE_VARIANT_QUALITY_TSV=', root_path, '/generate_variant_quality_tsv.py', sep = '', file = bash_file)
   print('MOSAIC_JSON=', args.mosaic_json, sep = '', file = bash_file)
 
-  # 
+  # Set up experiments
   experiment_file_ids = []
-  for sample in project.get_samples():
-    for sample_file in project.get_sample_files(sample['id']):
+  for project_sample in project.get_samples():
+    for sample_file in project.get_sample_files(project_sample['id']):
       if sample_file['name'] == vcf.split('/')[-1]:
         experiment_file_ids.append(sample_file['id'])
       if sample_file['name'] == index_file.split('/')[-1]:
@@ -602,8 +602,8 @@ def main():
 
   # Get the cram files
   cram_experiment_file_ids = []
-  for sample in project.get_samples():
-    for sample_file in project.get_sample_files(sample['id']):
+  for project_sample in project.get_samples():
+    for sample_file in project.get_sample_files(project_sample['id']):
       if sample_file['name'].split('.')[-1] == 'cram':
         cram_experiment_file_ids.append(sample_file['id'])
       if sample_file['name'].split('.')[-1] == 'crai':
@@ -642,8 +642,8 @@ def main():
 
       # Loop over all of the sample files and get the ids of the SV files for the SV experiment
       sv_experiment_file_ids = []
-      for sample in project.get_samples():
-        for sample_file in project.get_sample_files(sample['id']):
+      for project_sample in project.get_samples():
+        for sample_file in project.get_sample_files(project_sample['id']):
           if sample_file['name'] == sv_vcf.split('/')[-1]:
             sv_experiment_file_ids.append(sample_file['id'])
           if sample_file['name'] == sv_index_file.split('/')[-1]:
@@ -655,8 +655,8 @@ def main():
 
       # Loop over all of the sample files and get the ids of the CNV files for the CNV experiment
       cnv_experiment_file_ids = []
-      for sample in project.get_samples():
-        for sample_file in project.get_sample_files(sample['id']):
+      for project_sample in project.get_samples():
+        for sample_file in project.get_sample_files(project_sample['id']):
           if sample_file['name'] == cnv_vcf.split('/')[-1]:
             cnv_experiment_file_ids.append(sample_file['id'])
           if sample_file['name'] == cnv_index_file.split('/')[-1]:
