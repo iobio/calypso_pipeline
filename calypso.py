@@ -159,6 +159,7 @@ def main():
         break
 
     # Loop over the samples in the vcf file and find the ones in the mosaic_samples list
+    missing_samples = []
     for vcf_sample in vcf_samples:
 
       # This is a hack for UDN where the sample name has the experiment id appended
@@ -166,13 +167,18 @@ def main():
       if args.udn:
         if '-' in vcf_sample:
           vcf_sample = vcf_sample.split('-')[0]
-          mosaic_samples[vcf_sample]['vcf_file'] = vcf
-          mosaic_samples[vcf_sample]['vcf_sample_name'] = vcf_sample_name
+          if vcf_sample in mosaic_samples:
+            mosaic_samples[vcf_sample]['vcf_file'] = vcf
+            mosaic_samples[vcf_sample]['vcf_sample_name'] = vcf_sample_name
+          else:
+            missing_samples.append(vcf_sample)
 
       else:
         if vcf_sample in mosaic_samples:
           mosaic_samples[vcf_sample]['vcf_file'] = vcf
           mosaic_samples[vcf_sample]['vcf_sample_name'] = vcf_sample
+        else:
+          missing_samples.append(vcf_sample)
       print('  Sample ', vcf_sample, ' appears as "', vcf_sample_name, '" in the header of vcf file: ', vcf, sep = '')
 
     # Check that all samples have been associated with a vcf file
@@ -180,8 +186,10 @@ def main():
     for sample in mosaic_samples:
       if 'vcf_file' not in mosaic_samples[sample]:
         samples_with_no_vcf.append(sample)
+    if missing_samples:
+      warning(' The following samples are in the vcf file, but not in the project:\n  ' + '\n  '.join(missing_samples))
     if samples_with_no_vcf:
-      fail('\nERROR: The following samples do not appear in the vcf header:\n  ' + '\n  '.join(samples_with_no_vcf))
+      fail(' The following samples do not appear in the vcf header:\n  ' + '\n  '.join(samples_with_no_vcf))
 
   # If the vcf wasn't specified on the command line, get it from the Mosaic project
   else:
@@ -2282,8 +2290,11 @@ def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, pr
 
 
 # If the script fails, provide an error message and exit
+def warning(message):
+  print('WARNING: ', message, sep = '')
+
 def fail(message):
-  print('ERROR:', message, sep = '')
+  print('ERROR: ', message, sep = '')
   exit(1)
 
 # Initialise global variables
