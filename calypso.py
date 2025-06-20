@@ -643,26 +643,26 @@ def main():
         fail('Input CNV vcf file (' + str(cnv_vcf) + ') does not exist')
 
     # Check that the index file also exists
+    sv_experiment_file_ids = []
     if sv_vcf:
       sv_index_file = sv_vcf + '.tbi'
       if not exists(sv_index_file):
         fail('The vcf index file for the SV vcf (' + str(sv_vcf) + ') does not exist')
 
       # Loop over all of the sample files and get the ids of the SV files for the SV experiment
-      sv_experiment_file_ids = []
       for project_sample in project.get_samples():
         for sample_file in project.get_sample_files(project_sample['id']):
           if sample_file['name'] == sv_vcf.split('/')[-1]:
             sv_experiment_file_ids.append(sample_file['id'])
           if sample_file['name'] == sv_index_file.split('/')[-1]:
             sv_experiment_file_ids.append(sample_file['id'])
+    cnv_experiment_file_ids = []
     if cnv_vcf:
       cnv_index_file = cnv_vcf + '.tbi'
       if not exists(cnv_index_file):
         fail('The vcf index file for the CNV vcf (' + str(cnv_vcf) + ') does not exist')
 
       # Loop over all of the sample files and get the ids of the CNV files for the CNV experiment
-      cnv_experiment_file_ids = []
       for project_sample in project.get_samples():
         for sample_file in project.get_sample_files(project_sample['id']):
           if sample_file['name'] == cnv_vcf.split('/')[-1]:
