@@ -65,7 +65,7 @@ def main():
   resource_info = calypso_tools(resource_info)
 
   # Define paths to be used by Calypso
-  set_working_directory(resource_info['version'])
+  set_working_directory(resource_info['version'], args.directory_prefix)
 
   # Get the samples in the Mosaic projects and determine the id of the proband, and the family structure
   mosaic_samples = {}
@@ -757,7 +757,7 @@ def main():
       tsv_files.append(generate_annotation_tsv(bash_file, resource, reference))
 
   # Close the bash script and make it executable
-  print('echo "Calypso pipeline version ', version, ' completed successfully"', sep = '', file = bash_file)
+  print('echo "Calypso pipeline completed successfully"', sep = '', file = bash_file)
   bash_file.close()
   make_executable = os.popen('chmod +x ' + bash_filename).read()
 
@@ -1016,11 +1016,11 @@ def parse_command_line():
   # Use the queue in Utah
   execution_arguments.add_argument('--queue', '-q', required = False, action = 'store_true', help = 'Add queue information to the 01 script')
 
+  # Add a prefix to the output directory
+  directories.add_argument('--directory_prefix', '-dp', required = False, metavar = 'string', help = 'Add this prefix to the output directory where the scripts are created')
+
   # Skip the annotation step
   execution_arguments.add_argument('--skip_annotation', '-sa', required = False, action = 'store_true', help = 'If the vcf file has already been annotated, start with filtering and skip the annotation step')
-
-  # Version
-  parser.add_argument('--version', '-v', action='version', version='Calypso annotation pipeline version: ' + str(version))
 
   return parser.parse_args()
 
@@ -1047,10 +1047,13 @@ def check_arguments(args, root_path):
   if not os.path.exists(args.api_client): fail('ERROR: The api client directory does not exist (' + str(args.api_client) + ')')
 
 # Create a directory where all Calypso associated files will be stored
-def set_working_directory(version):
+def set_working_directory(version, prefix):
   global working_directory
 
-  working_directory += version + "/"
+  working_directory = os.getcwd() + '/'
+  if prefix:
+    working_directory += str(prefix) + '_'
+  working_directory += 'calypso_r' + str(version) + '/'
 
   # If the directory doesn't exist, create it
   if not os.path.exists(working_directory):
@@ -2298,13 +2301,7 @@ def fail(message):
   exit(1)
 
 # Initialise global variables
-
-# Pipeline version
-version = "2.0"
 date = str(date.today())
-
-# The working directory where all created files are kept
-working_directory = os.getcwd() + "/calypso_v" + version + "r"
 
 # Store the allowed references that can be specified on the command line
 allowed_references = ['GRCh37', 'GRCh38']
