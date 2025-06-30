@@ -121,7 +121,7 @@ def main():
     elif relation == 'Father':
 
       # Only one father is allowed in the project
-      if father:
+      if has_father:
         fail('Project has multiple fathers. Ensure only one proband exists in the project')
       has_father = True
       parents += sample['name'] + ','
