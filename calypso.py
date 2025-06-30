@@ -105,12 +105,24 @@ def main():
     if not relation:
       fail('The Relation attribute is not set for sample ' + sample['name'])
     elif relation == 'Proband':
+
+      # Only one proband is allowed in the project
+      if proband:
+        fail('Project has multiple probands. Ensure only one proband exists in the project')
       proband = sample['name']
     elif relation == 'Mother':
+
+      # Only one proband is allowed in the project
+      if has_mother:
+        fail('Project has multiple mother. Ensure only one proband exists in the project')
       has_mother = True
       parents += sample['name'] + ','
       family += sample['name'] + ','
     elif relation == 'Father':
+
+      # Only one father is allowed in the project
+      if father:
+        fail('Project has multiple fathers. Ensure only one proband exists in the project')
       has_father = True
       parents += sample['name'] + ','
       family += sample['name'] + ','
@@ -183,6 +195,7 @@ def main():
 
     # Check that all samples have been associated with a vcf file
     samples_with_no_vcf = []
+    print(mosaic_samples); exit(0)
     for sample in mosaic_samples:
       if 'vcf_file' not in mosaic_samples[sample]:
         samples_with_no_vcf.append(sample)
