@@ -195,7 +195,6 @@ def main():
 
     # Check that all samples have been associated with a vcf file
     samples_with_no_vcf = []
-    print(mosaic_samples); exit(0)
     for sample in mosaic_samples:
       if 'vcf_file' not in mosaic_samples[sample]:
         samples_with_no_vcf.append(sample)
