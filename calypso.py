@@ -13,11 +13,13 @@ from sys import path
 import read_resource_jsons as read_resources
 
 def main():
-  print()
-  print('Starting the Calypso pipeline')
 
   # Parse the command line
   args = parse_command_line()
+
+  if args.verbose_output:
+    print()
+    print('Starting the Calypso pipeline')
 
   # Check the supplied parameters are as expected, then expand the path to enable scripts and api commands
   # to be accessed for Calypso
@@ -38,7 +40,8 @@ def main():
   reference = project_settings['reference']
   if reference not in allowed_references:
     fail('The specified reference (' + str(reference) + ') is not recognised. Allowed values are: ' + str(', '.join(allowed_references)))
-  print('Using the reference: ', reference, sep = '')
+  if args.verbose_output:
+    print('Using the reference: ', reference, sep = '')
 
   # Read the resources json file to identify all the resources that will be used in the annotation pipeline
   if args.resource_json:
@@ -46,7 +49,8 @@ def main():
   else:
     args.resource_json = str(args.data_directory) + 'resources_' + str(reference) + '.json'
     resource_info = check_resources(reference, args.data_directory, args.tools_directory, args.resource_json)
-  print('Using resources file: ', args.resource_json, sep = '')
+  if args.verbose_output:
+    print('Using resources file: ', args.resource_json, sep = '')
   resource_info = read_resources.read_resources(reference, root_path, resource_info, args.no_vep)
 
   # Check if a mosaic SV json is present in the resources json
@@ -62,7 +66,7 @@ def main():
   args.threads = 4 if not args.threads else args.threads
 
   # Define the tools to be used by Calypso
-  resource_info = calypso_tools(resource_info)
+  resource_info = calypso_tools(resource_info, args.verbose_output)
 
   # Define paths to be used by Calypso
   set_working_directory(resource_info['version'], args.directory_prefix)
@@ -191,7 +195,8 @@ def main():
           mosaic_samples[vcf_sample]['vcf_sample_name'] = vcf_sample
         else:
           missing_samples.append(vcf_sample)
-      print('  Sample ', vcf_sample, ' appears as "', vcf_sample_name, '" in the header of vcf file: ', vcf, sep = '')
+      if args.verbose_output:
+        print('  Sample ', vcf_sample, ' appears as "', vcf_sample_name, '" in the header of vcf file: ', vcf, sep = '')
 
     # Check that all samples have been associated with a vcf file
     samples_with_no_vcf = []
@@ -229,7 +234,8 @@ def main():
         vcf_file_names = []
         for vcf_file_id in vcf_files:
           vcf_file_names.append(vcf_files[vcf_file_id]['name'])
-        print()
+        if args.verbose_output:
+          print()
         fail('Multiple vcf files for the same sample (' + sample + ', id: ' + str(sample_id) + '). Calypso requires a single multi sample vcf. The following vcf files were found:\n  ' + '\n  '.join(vcf_file_names))
       else:
         for vcf_file in vcf_files:
@@ -242,7 +248,8 @@ def main():
             all_vcfs.append(final_uri)
         mosaic_samples[sample]['vcf_file'] = final_uri
         mosaic_samples[sample]['vcf_sample_name'] = vcf_name
-        print('Sample ', sample, ' appears as "', vcf_name, '" in the header of vcf file: ', final_uri, sep = '')
+        if args.verbose_output:
+          print('Sample ', sample, ' appears as "', vcf_name, '" in the header of vcf file: ', final_uri, sep = '')
   
     # If there are multiple VCF files, not all samples are in a single joint-called vcf. This case
     # is not yet handled:
@@ -337,7 +344,8 @@ def main():
         is_correct = True
   
     if is_correct:
-      print('The vcf file matches the reference genome of the project (', str(reference), ')', sep = '')
+      if args.verbose_output:
+        print('The vcf file matches the reference genome of the project (', str(reference), ')', sep = '')
     else:
       print('The vcf file DOES NOT match the reference genome of the project (', str(reference), ')', sep = '')
       print('Please verify the reference genome in Mosaic and ensure these match')
@@ -401,10 +409,11 @@ def main():
       if hpo_term['hpo_id'] not in hpo_terms:
         hpo_terms.append(hpo_term['hpo_id'])
     args.hpo = ','.join(hpo_terms)
-  if args.hpo:
-    print('Using the HPO terms: ', args.hpo, sep = '')
-  else:
-    print('Using the HPO terms: No terms available')
+  if args.verbose_output:
+    if args.hpo:
+      print('Using the HPO terms: ', args.hpo, sep = '')
+    else:
+      print('Using the HPO terms: No terms available')
 
   # Get all the project attributes in the target Mosaic project
 
@@ -425,7 +434,8 @@ def main():
   # Read the Mosaic json and validate its contents
   if not args.mosaic_json:
     args.mosaic_json = args.data_directory + 'resources_mosaic_' + reference + '.json'
-  print('Using Mosaic resources file: ', args.mosaic_json, sep = '')
+  if args.verbose_output:
+    print('Using Mosaic resources file: ', args.mosaic_json, sep = '')
   mosaic_info = read_resources.read_mosaic_json(args.mosaic_json, reference)
 
   # Check that the Mosaic resource file does not include resources that are not defined in the resources json
@@ -769,7 +779,8 @@ def main():
       tsv_files.append(generate_annotation_tsv(bash_file, resource, reference))
 
   # Close the bash script and make it executable
-  print('echo "Calypso pipeline completed successfully"', sep = '', file = bash_file)
+  if args.verbose_output:
+    print('echo "Calypso pipeline completed successfully"', sep = '', file = bash_file)
   bash_file.close()
   make_executable = os.popen('chmod +x ' + bash_filename).read()
 
@@ -951,7 +962,7 @@ def main():
   hpo_yml = False
   if args.hpo:
     hpo_yml = generate_yml(working_directory, proband, reference, str(working_directory) + str(filtered_vcf), args.ped, args.hpo)
-  exomiser_script_name, exomiser_script = generate_exomiser_script(working_directory, args.tools_directory, no_hpo_yml, hpo_yml)
+  exomiser_script_name, exomiser_script = generate_exomiser_script(working_directory, args.tools_directory, no_hpo_yml, hpo_yml, args.queue)
   print('complete')
 
   # Check the variant filters json is set
@@ -1033,6 +1044,7 @@ def parse_command_line():
 
   # Skip the annotation step
   execution_arguments.add_argument('--skip_annotation', '-sa', required = False, action = 'store_true', help = 'If the vcf file has already been annotated, start with filtering and skip the annotation step')
+  execution_arguments.add_argument('--verbose_output', '-v', required = False, action = 'store_true', help = 'Provide a verbose output')
 
   return parser.parse_args()
 
@@ -1100,7 +1112,7 @@ def check_resources(reference, data_directory, tools_directory, filename):
   return resource_info
 
 # Define all of the tools to be used in Calypso, check they exist and output their versions
-def calypso_tools(resource_info):
+def calypso_tools(resource_info, verbose):
 
   # Define the tools. If no path to the tools is provided, assume the tools are available in the system and don't need a path.
   # The preference is to use the parh to the Calypso tools directory
@@ -1115,24 +1127,29 @@ def calypso_tools(resource_info):
     resource_info['tools']['vcfanno'] = 'vcfanno'
     resource_info['tools']['slivar'] = 'slivar'
     resource_info['tools']['vep'] = 'vep'
-  print('Using the following tools:')
+  if verbose:
+    print('Using the following tools:')
 
   # Bcftools
   bcftoolsVersion = os.popen(resource_info['tools']['bcftools'] +  ' -v').readlines()[0].rstrip()
-  print('    ', bcftoolsVersion, sep = '')
+  if verbose:
+    print('    ', bcftoolsVersion, sep = '')
 
   # vcfanno
   proc = Popen(resource_info['tools']['vcfanno'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-  print('    ', proc.stderr.readlines()[2].decode().rstrip(), sep = '')
+  if verbose:
+    print('    ', proc.stderr.readlines()[2].decode().rstrip(), sep = '')
 
   # slivar
   proc = Popen(resource_info['tools']['slivar'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-  print('    ', proc.stderr.readlines()[0].decode().rstrip()[2:], sep = '')
+  if verbose:
+    print('    ', proc.stderr.readlines()[0].decode().rstrip()[2:], sep = '')
 
   # vep
   vepInfo = os.popen(resource_info['tools']['vep']).readlines()
-  print('    vep versions:')
-  for i in range(5, 9, 1): print('    ', vepInfo[i].rstrip(), sep = '')
+  if verbose:
+    print('    vep versions:')
+    for i in range(5, 9, 1): print('    ', vepInfo[i].rstrip(), sep = '')
 
   # Return the updated resource_info
   return resource_info
@@ -2128,11 +2145,24 @@ def generate_yml(working_dir, proband, reference, vcf, ped, hpo):
   return yml_name
 
 # Generate a script file to run exomiser
-def generate_exomiser_script(working_dir, tools_dir, no_hpo_yml, yml):
+def generate_exomiser_script(working_dir, tools_dir, no_hpo_yml, yml, use_queue):
 
   # Create script file for running exomiser
   script_name = str(working_directory) + '04_calypso_exomiser.sh'
   script = open(script_name, 'w')
+
+  # Add the queue information if requested
+  if use_queue:
+    print('#! /bin/bash', file = bash_file)
+    print('#SBATCH --time=72:00:00', file = bash_file)
+    print('#SBATCH --mem=8G', file = bash_file)
+    print('#SBATCH --cpus-per-task=4', file = bash_file)
+    print('#SBATCH --account=marth-rw', file = bash_file)
+    print('#SBATCH --partition=marth-shared-rw', file = bash_file)
+    print('#SBATCH -o calypso_batch.out', file = bash_file)
+    print('#SBATCH -e calypso_batch.err', file = bash_file)
+    print(file = bash_file)
+
   print('set -eou pipefail', file = script)
   print(file = script)
 
