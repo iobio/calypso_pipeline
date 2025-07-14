@@ -958,10 +958,16 @@ def main():
   # run if hpo terms are supplied
   print('Generating exomiser scripts...', end = '')
   application_properties(working_directory, args.tools_directory, reference)
-  no_hpo_yml = generate_yml(working_directory, proband, reference, str(working_directory) + str(filtered_vcf), args.ped, False)
+
+  # Get the UDN id of the proband if necessary
+  exomiser_proband = proband
+  if args.udn:
+    exomiser_proband = mosaic_samples[proband]['vcf_sample_name']
+  
+  no_hpo_yml = generate_yml(working_directory, exomiser_proband, reference, str(working_directory) + str(filtered_vcf), args.ped, False)
   hpo_yml = False
   if args.hpo:
-    hpo_yml = generate_yml(working_directory, proband, reference, str(working_directory) + str(filtered_vcf), args.ped, args.hpo)
+    hpo_yml = generate_yml(working_directory, exomiser_proband, reference, str(working_directory) + str(filtered_vcf), args.ped, args.hpo)
   exomiser_script_name, exomiser_script = generate_exomiser_script(working_directory, args.tools_directory, no_hpo_yml, hpo_yml, args.queue)
   print('complete')
 
