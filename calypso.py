@@ -2154,9 +2154,9 @@ def generate_exomiser_script(working_dir, tools_dir, no_hpo_yml, yml, use_queue)
   # Add the queue information if requested
   if use_queue:
     print('#! /bin/bash', file = script)
-    print('#SBATCH --time=72:00:00', file = script)
+    print('#SBATCH --time=10:00:00', file = script)
     print('#SBATCH --mem=8G', file = script)
-    print('#SBATCH --cpus-per-task=4', file = script)
+    print('#SBATCH --cpus-per-task=1', file = script)
     print('#SBATCH --account=marth-rw', file = script)
     print('#SBATCH --partition=marth-shared-rw', file = script)
     print('#SBATCH -o calypso_batch.out', file = script)
