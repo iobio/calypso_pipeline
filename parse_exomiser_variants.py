@@ -50,14 +50,14 @@ def main():
   # Exomiser variant score
   # Exomiser mode of inheritance
   version_name = args.version_name if args.version_name else False
-  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Rank', 'float', version_name)
-  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Contributing Variant', 'float', version_name)
-  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser P-Value', 'float', version_name)
-  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Gene Combined Score', 'float', version_name)
-  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Gene Phenotype Score', 'float', version_name)
-  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Gene Variant Score', 'float', version_name)
-  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Variant Score', 'float', version_name)
-  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser MOI', 'string', version_name)
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Rank', 'float', version_name, args.overwrite_versions)
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Contributing Variant', 'float', version_name, args.overwrite_versions)
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser P-Value', 'float', version_name, args.overwrite_versions)
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Gene Combined Score', 'float', version_name, args.overwrite_versions)
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Gene Phenotype Score', 'float', version_name, args.overwrite_versions)
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Gene Variant Score', 'float', version_name, args.overwrite_versions)
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser Variant Score', 'float', version_name, args.overwrite_versions)
+  annotations = create_annotation(project, args.project_id, date, annotations, 'Exomiser MOI', 'string', version_name, args.overwrite_versions)
 
   # Open the output file
   output_file = open(args.output, 'w')
@@ -177,11 +177,12 @@ def parseCommandLine():
 
   # Optional arguments
   parser.add_argument('--version_name', '-v', required = False, metavar = 'string', help = 'Optionally supply the name of the annotation version')
+  parser.add_argument('--overwrite_versions', '-ov', required = False, action = 'store_true', help = 'If set, existing annotation versions with the same name will be overwritten')
 
   return parser.parse_args()
 
 # Check if the exomiser annotations exist and if not, create them
-def create_annotation(project, project_id, date, annotations, name, annotation_type, version_name):
+def create_annotation(project, project_id, date, annotations, name, annotation_type, version_name, overwrite):
   version_id = False
 
   # If the annotation doesn't exist, create it. If it does exist and the option to keep existing annotations
@@ -200,7 +201,18 @@ def create_annotation(project, project_id, date, annotations, name, annotation_t
   else:
     version_name = str(date) if not version_name else version_name
     if version_name in annotations[name]['version_ids']:
-      fail('A version with today\'s date already exists for annotation with the name ' + str(name))
+
+      # If the version can be overwritten, delete the existing annotation version, so a new one with this
+      # name can be created
+      if overwrite:
+        try:
+          project.delete_variant_annotation_version(annotations[name]['id'], annotations[name]['version_ids'][version_name])
+        except Exception as e:
+          fail('Couldn\'t delete annotation version in. Error is: ' + str(e))
+
+      # Otherwise fail, as the version already exists
+      else:
+        fail('A version with today\'s date already exists for annotation with the name ' + str(name))
     version_id = project.post_create_annotation_version(annotations[name]['id'], version_name)['id']
 
     # Update the annotations array with the annotation id and uid
