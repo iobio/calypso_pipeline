@@ -983,7 +983,7 @@ def main():
   # The exomiser script currently uses the filtered vcf, so no new variants will need to be uploaded
   #upload_exomiser_variants(working_directory, args.api_client, args.client_config, args.project_id, proband)
   print('Applying exomiser filters...', end = '')
-  exomiser_annotations(root_path, working_directory, args.api_client, args.client_config, args.project_id, proband, args.exomiser_filters_json, args.hpo)
+  exomiser_annotations(root_path, working_directory, args.api_client, args.client_config, args.project_id, exomiser_proband, args.exomiser_filters_json, args.hpo)
   print('complete')
 
   print('Calypso pipeline completed successfully')
