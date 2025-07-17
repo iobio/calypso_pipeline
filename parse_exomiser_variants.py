@@ -189,7 +189,10 @@ def create_annotation(project, project_id, date, annotations, name, annotation_t
   # has been selected create a new annotation, that includes the date
   if not name in annotations:
     version_name = str(date) if not version_name else version_name
-    data = project.post_variant_annotation(name = name, category = 'Exomiser', value_type = annotation_type, privacy_level = 'private', value_truncate_type = 'middle')
+    try:
+      project.post_variant_annotation(name = name, category = 'Exomiser', value_type = annotation_type, privacy_level = 'private', value_truncate_type = 'middle')
+    except Exception as e:
+      fail('Failed to create annotation. Error is: ' + str(e))
     annotation_id = data['id']
     annotation_uid = data['uid']
     version_id = project.post_create_annotation_version(annotation_id, version_name)['id']
@@ -208,7 +211,7 @@ def create_annotation(project, project_id, date, annotations, name, annotation_t
         try:
           project.delete_variant_annotation_version(annotations[name]['id'], annotations[name]['version_ids'][version_name])
         except Exception as e:
-          fail('Couldn\'t delete annotation version in. Error is: ' + str(e))
+          fail('Couldn\'t delete annotation version. Error is: ' + str(e))
 
       # Otherwise fail, as the version already exists
       else:
@@ -219,8 +222,11 @@ def create_annotation(project, project_id, date, annotations, name, annotation_t
     annotations[name]['version_ids']['version_name'] = version_id
     annotations[name]['version'] = version_name
 
-    # Set the latest version of the annotation to the version just created
+  # Set the latest version of the annotation to the version just created
+  try:
     project.put_variant_annotation(annotations[name]['id'], name = name, latest_version_id = version_id)
+  except Exception as e:
+    fail('Couldn\'t set latest annotation version. Error is: ' + str(e))
  
   # Return the updated annotations
   return annotations
