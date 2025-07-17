@@ -190,7 +190,7 @@ def create_annotation(project, project_id, date, annotations, name, annotation_t
   if not name in annotations:
     version_name = str(date) if not version_name else version_name
     try:
-      project.post_variant_annotation(name = name, category = 'Exomiser', value_type = annotation_type, privacy_level = 'private', value_truncate_type = 'middle')
+      data = project.post_variant_annotation(name = name, category = 'Exomiser', value_type = annotation_type, privacy_level = 'private', value_truncate_type = 'middle')
     except Exception as e:
       fail('Failed to create annotation. Error is: ' + str(e))
     annotation_id = data['id']
