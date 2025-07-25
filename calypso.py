@@ -1999,14 +1999,14 @@ def application_properties(working_dir, tools_dir, reference):
   properties_file = open(str(working_dir) + 'application.properties', 'w')
 
   # Write the data versions to the file
-  print('exomiser.data-directory=', tools_dir, 'exomiser-cli-14.0.0/data', sep = '', file = properties_file)
+  print('exomiser.data-directory=', tools_dir, 'exomiser-cli-14.1.0/data', sep = '', file = properties_file)
   print('remm.version=0.3.1.post1', file = properties_file)
   print('cadd.version=1.7', file = properties_file)
   if reference == 'GRCh37':
-    print('exomiser.hg19.data-version=2406', file = properties_file)
+    print('exomiser.hg19.data-version=2502', file = properties_file)
   elif reference == 'GRCh38':
-    print('exomiser.hg38.data-version=2406', file = properties_file)
-  print('exomiser.phenotype.data-version=2406', file = properties_file)
+    print('exomiser.hg38.data-version=2502', file = properties_file)
+  print('exomiser.phenotype.data-version=2502', file = properties_file)
 
   # Close the application properties file
   properties_file.close()
@@ -2180,7 +2180,7 @@ def generate_exomiser_script(working_dir, tools_dir, no_hpo_yml, yml, use_queue)
 ######### Update with version from resources json
 #########
 #########
-  print('EXOMISER=$TOOLS_PATH/exomiser-cli-14.0.0/exomiser-cli-14.0.0.jar', file = script)
+  print('EXOMISER=$TOOLS_PATH/exomiser-cli-14.1.0/exomiser-cli-14.1.0.jar', file = script)
   print('NO_HPO_YML=$WORKINGPATH/', no_hpo_yml, sep = '', file = script)
   if yml:
     print('YML=$WORKINGPATH/', yml, sep = '', file = script)
