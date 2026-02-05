@@ -964,6 +964,8 @@ def main():
   if args.udn:
     exomiser_proband = mosaic_samples[proband]['vcf_sample_name']
   
+  print('CHANGE EXOMISER TO FULL VCF. LINE 968')
+  exit(1)
   no_hpo_yml = generate_yml(working_directory, exomiser_proband, reference, str(working_directory) + str(filtered_vcf), args.ped, False)
   hpo_yml = False
   if args.hpo:
@@ -2164,7 +2166,7 @@ def generate_exomiser_script(working_dir, tools_dir, no_hpo_yml, yml, use_queue)
     print('#SBATCH --mem=8G', file = script)
     print('#SBATCH --cpus-per-task=1', file = script)
     print('#SBATCH --account=marth-rw', file = script)
-    print('#SBATCH --partition=marth-shared-rw', file = script)
+    print('#SBATCH --partition=marth-rw', file = script)
     print('#SBATCH -o calypso_batch.out', file = script)
     print('#SBATCH -e calypso_batch.err', file = script)
     print(file = script)
