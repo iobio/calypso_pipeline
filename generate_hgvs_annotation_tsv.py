@@ -24,6 +24,22 @@ def main():
   # Read the mosaicJson file to get information on how to process different annotations
   mosaic_info = read_resources.read_mosaic_json(args.mosaic_json, args.reference)
 
+  # Open the toml file and get the path to the toml file
+  mane_file = False
+  try:
+    with open(args.toml, 'r') as file:
+      for line in file:
+        if line.rstrip().startswith('[[mane]]'):
+
+          # The path is the next line after the title
+          info = file.readline().rstrip().split('=')
+          mane_file = info[1].rstrip('"').strip('"')
+          break
+  except FileNotFoundError:
+    fail('The file ' + str(args.toml) + ' was not found')
+  if not mane_file:
+    fail('The toml file did not contain the expected path to the MANE file')
+
   # Open an output tsv file to write annotations to
   outputFile = open('hgvs.tsv', 'w')
 
@@ -47,8 +63,10 @@ def main():
     fail('The delimiter field is not provided for resource ' + str(resource) + ' and so its annotation cannot be processed.')
 
   # Get all the MANE transcript ids
-  mane_file = '/scratch/ucgd/lustre-core/UCGD_Research/marth_NIH/Calypso/data/GRCh38/reference/MANE.GRCh38.v1.3.ensembl.transcript_ids.txt'
-  mane = open(mane_file, 'r')
+  try:
+    mane = open(mane_file, 'r')
+  except FileNotFoundError:
+    fail('Failed to open Mane file from toml file')
   maneIds = []
   for record in mane.readlines():
     maneIds.append(record.rstrip())
@@ -183,6 +201,7 @@ def parse_command_line():
   parser.add_argument('--reference', '-r', required = True, metavar = 'string', help = 'The genome reference file used')
   parser.add_argument('--tools_directory', '-s', required = True, metavar = 'string', help = 'The path to the directory where the tools live')
   parser.add_argument('--mosaic_json', '-m', required = True, metavar = 'string', help = 'The json file describing the Mosaic parameters')
+  parser.add_argument('--toml', '-t', required = True, metavar = 'string', help = 'The toml file pointing to required files')
 
   return parser.parse_args()
 
@@ -210,7 +229,7 @@ def updateFields(fields, value):
 
 # If the script fails, provide an error message and exit
 def fail(message):
-  print(message, sep = "")
+  print(message, sep = '')
   exit(1)
 
 # Initialise global variables

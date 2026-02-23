@@ -620,6 +620,7 @@ def main():
   print('GENERATE_COMP_HET_TSV=', root_path, '/generate_comphet_tsv.py', sep = '', file = bash_file)
   print('GENERATE_VARIANT_QUALITY_TSV=', root_path, '/generate_variant_quality_tsv.py', sep = '', file = bash_file)
   print('MOSAIC_JSON=', args.mosaic_json, sep = '', file = bash_file)
+  print('INPUT_TOML=', args.toml, sep = '', file = bash_file)
 
   # Set up experiments
   experiment_file_ids = []
@@ -1037,6 +1038,9 @@ def parse_command_line():
   # Optional mosaic arguments
   resource_files.add_argument('--mosaic_json', '-m', required = False, metavar = 'string', help = 'The json file describing the Mosaic parameters')
   resource_files.add_argument('--mosaic_sv_json', '-sm', required = False, metavar = 'string', help = 'The json file describing the Mosaic SV parameters')
+
+  # Static toml file with file names
+  resource_files.add_argument('--toml', '-to', required = True, metavar = 'string', help = 'A static toml file with file paths')
 
   # Flag for UDN projects as they have a slightly different naming convention
   execution_arguments.add_argument('--udn', '-u', required = False, action = 'store_true', help = 'Set for UDN projects to handle the request id in the sample name')
@@ -1917,7 +1921,8 @@ def generate_hgvs_tsv(bash_file, reference):
   print('-i $FILTEREDVCF ', end = '', file = bash_file)
   print('-r "', reference, '" ', sep = '', end = '', file = bash_file)
   print('-m $MOSAIC_JSON ', end = '', file = bash_file)
-  print('-s $TOOLPATH ', file = bash_file)
+  print('-s $TOOLPATH ', end = '', file = bash_file)
+  print('-t $INPUT_TOML ', file = bash_file)
   print('echo "complete"', file = bash_file)
 
 # Call the command line to extract compound hets
