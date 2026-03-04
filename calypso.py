@@ -966,7 +966,6 @@ def main():
     exomiser_proband = mosaic_samples[proband]['vcf_sample_name']
   
   print('CHANGE EXOMISER TO FULL VCF. LINE 968')
-  exit(1)
   no_hpo_yml = generate_yml(working_directory, exomiser_proband, reference, str(working_directory) + str(filtered_vcf), args.ped, False)
   hpo_yml = False
   if args.hpo:
