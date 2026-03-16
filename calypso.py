@@ -1347,7 +1347,7 @@ def bash_resources(use_queue, resource_info, working_directory, bash_file, vcf, 
     print('#SBATCH --mem=8G', file = bash_file)
     print('#SBATCH --cpus-per-task=4', file = bash_file)
     print('#SBATCH --account=marth-rw', file = bash_file)
-    print('#SBATCH --partition=marth-shared-rw', file = bash_file)
+    print('#SBATCH --partition=marth-rw', file = bash_file)
     print('#SBATCH -o calypso_batch.out', file = bash_file)
     print('#SBATCH -e calypso_batch.err', file = bash_file)
     print(file = bash_file)
