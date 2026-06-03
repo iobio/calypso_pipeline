@@ -1553,7 +1553,7 @@ def annotate_vcf(resource_info, bash_file, chr_format, threads, samples):
 
 # Filter the final vcf file to only include variants present in the proband, and based on some
 # basic annotations
-def filter_vcf(args, ash_file, samples, proband, resource_info, threads, has_parents):
+def filter_vcf(args, bash_file, samples, proband, resource_info, threads, has_parents):
 
   # Create a file containing the name of the proband for use in the filter. Note that there can be multiple probands, e.g.
   # if the family is two affected siblings
