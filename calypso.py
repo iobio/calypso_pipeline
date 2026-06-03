@@ -258,6 +258,7 @@ def main():
 
     # Store the name of the vcf file
     vcf = mosaic_samples[list(mosaic_samples.keys())[0]]['vcf_file']
+    index_file = vcf + '.tbi'
 
   # If the ped file has not been defined, generate a bed file from pedigree information in Mosaic
   if not args.ped:
@@ -602,7 +603,7 @@ def main():
 
   # Generate the bash script to run the annotation pipeline
   bash_filename, bash_file = open_bash_script(working_directory)
-  filtered_vcf = bash_resources(args.queue, resource_info, working_directory, bash_file, vcf, chr_format, args.ped, lua_filename, toml_filename)
+  annotated_vcf, filtered_vcf = bash_resources(args.queue, resource_info, working_directory, bash_file, vcf, chr_format, args.ped, lua_filename, toml_filename)
 
   # If the annotation step is to be skipped, set the ANNOTATEDVCF to the input VCF
   if args.skip_annotation:
@@ -965,11 +966,12 @@ def main():
   if args.udn:
     exomiser_proband = mosaic_samples[proband]['vcf_sample_name']
   
-  print('CHANGE EXOMISER TO FULL VCF. LINE 968')
-  no_hpo_yml = generate_yml(working_directory, exomiser_proband, reference, str(working_directory) + str(filtered_vcf), args.ped, False)
+  # Exomiser can use the full vcf (default) or the filtered vcf. Ensure the correct vcf is passed to the yml
+  exomiser_vcf = filtered_vcf if args.exomiser_filtered_vcf else annotated_vcf
+  no_hpo_yml = generate_yml(working_directory, exomiser_proband, reference, str(working_directory) + str(exomiser_vcf), args.ped, False)
   hpo_yml = False
   if args.hpo:
-    hpo_yml = generate_yml(working_directory, exomiser_proband, reference, str(working_directory) + str(filtered_vcf), args.ped, args.hpo)
+    hpo_yml = generate_yml(working_directory, exomiser_proband, reference, str(working_directory) + str(exomiser_vcf), args.ped, args.hpo)
   exomiser_script_name, exomiser_script = generate_exomiser_script(working_directory, args.tools_directory, no_hpo_yml, hpo_yml, args.queue)
   print('complete')
 
@@ -1002,8 +1004,10 @@ def parse_command_line():
   directories = parser.add_argument_group('Required Paths')
   input_files = parser.add_argument_group('Input Files')
   case_arguments = parser.add_argument_group('Case Arguments')
+  annotation_arguments = parser.add_argument_group('Annotation Arguments')
   variant_filters = parser.add_argument_group('Variant Filters')
   execution_arguments = parser.add_argument_group('Execution arguments')
+  exomiser_arguments = parser.add_argument_group('Exomiser arguments')
 
   # Define the location of the api_client and the ini config file
   api_arguments.add_argument('--api_client', '-a', required = True, metavar = 'string', help = 'The api_client directory')
@@ -1034,6 +1038,9 @@ def parse_command_line():
   # Optional argument to handle HPO terms
   case_arguments.add_argument('--hpo', '-o', required = False, metavar = "string", help = "A comma separate list of hpo ids for the proband")
 
+  # Choose which annotations to filter with
+  annotation_arguments.add_argument('--gnomad_4_1', '-g41', required = False, action = "store_true", help = 'Use gnomAD 4.1 in filtering')
+
   # Optional mosaic arguments
   resource_files.add_argument('--mosaic_json', '-m', required = False, metavar = 'string', help = 'The json file describing the Mosaic parameters')
   resource_files.add_argument('--mosaic_sv_json', '-sm', required = False, metavar = 'string', help = 'The json file describing the Mosaic SV parameters')
@@ -1046,6 +1053,9 @@ def parse_command_line():
 
   # Do not check the vcf header to verify the reference genome based on chromosome length
   execution_arguments.add_argument('--ignore_vcf_ref_check', '-g', required = False, action = 'store_true', help = 'Ignore the check on the VCF reference genome')
+
+  # Options for exomiser
+  exomiser_arguments.add_argument('--exomiser_filtered_vcf', '-ef', required = False, action = 'store_true', help = 'By default, exomiser will use the full vcf, but if this flag is set, it will use the filtered vcf')
 
   # Use the queue in Utah
   execution_arguments.add_argument('--queue', '-q', required = False, action = 'store_true', help = 'Add queue information to the 01 script')
@@ -1380,12 +1390,13 @@ def bash_resources(use_queue, resource_info, working_directory, bash_file, vcf, 
 
   # Generate the names of the intermediate and final vcf files
   vcf_base = os.path.abspath(vcf).split('/')[-1].replace('.vcf.gz', '')
+  annotated_vcf = str(vcf_base) + '_annotated.vcf.gz'
   filtered_vcf = str(vcf_base) + '_calypso_filtered.vcf.gz'
   comphet_vcf = str(vcf_base) + '_calypso_comphet.vcf.gz'
   rare_temp_vcf = str(vcf_base) + '_calypso_rare_comphet_temp.vcf.gz'
   rare_comphet_vcf = str(vcf_base) + '_calypso_rare_comphet.vcf.gz'
   print('FILEPATH=', working_directory, sep = '', file = bash_file)
-  print('ANNOTATEDVCF=$FILEPATH/' + str(vcf_base) + '_annotated.vcf.gz', sep = '', file = bash_file)
+  print('ANNOTATEDVCF=$FILEPATH/' + str(annotated_vcf), sep = '', file = bash_file)
   print('FILTEREDVCF=$FILEPATH/' + str(filtered_vcf), sep = '', file = bash_file)
   print('COMPHET_VCF=$FILEPATH/' + str(comphet_vcf), sep = '', file = bash_file)
   print('TEMP_RARE_VCF=$FILEPATH/' + str(rare_temp_vcf), sep = '', file = bash_file)
@@ -1425,7 +1436,7 @@ def bash_resources(use_queue, resource_info, working_directory, bash_file, vcf, 
   print(file = bash_file)
 
   # Return the name of the filtered vcf file
-  return filtered_vcf
+  return annotated_vcf, filtered_vcf
 
 # Annotate the vcf file using bcftools, vcfanno, and VEP
 def annotate_vcf(resource_info, bash_file, chr_format, threads, samples):
@@ -1575,7 +1586,10 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads, has_parents)
     print('            (  !("gg2_1_1_AF_popmax" in INFO) || ("gg2_1_1_AF_popmax" in INFO && INFO.gg2_1_1_AF_popmax < 0.01)) ) ||', file = bash_file)
   elif str(resource_info['reference']) == 'GRCh38':
     print('  --info \'( ( (!("ge4_0_0_AF" in INFO) || ("ge4_0_0_AF" in INFO && INFO.ge4_0_0_AF < 0.01)) && ', file = bash_file)
-    print('            (  !("gg4_0_0_AF" in INFO) || ("gg4_0_0_AF" in INFO && INFO.gg4_0_0_AF < 0.01)) ) ||', file = bash_file)
+    if args.gnomad_4_1:
+      print('            (  !("gg4_1_AF" in INFO) || ("gg4_1_AF" in INFO && INFO.gg4_1_AF < 0.01)) ) ||', file = bash_file)
+    else:
+      print('            (  !("gg4_0_0_AF" in INFO) || ("gg4_0_0_AF" in INFO && INFO.gg4_0_0_AF < 0.01)) ) ||', file = bash_file)
 
   # ...or that the variant is present in ClinVar...
   print('  ("CLNSIG" in INFO) ||', file = bash_file)
@@ -1645,7 +1659,10 @@ def filter_vcf(bash_file, samples, proband, resource_info, threads, has_parents)
     print('echo -n "Find rare compound hets..."', file = bash_file)
     print('$BCFTOOLS annotate -x INFO/comphet_side,INFO/slivar_comphet $COMPHET_VCF \\', file = bash_file)
     print('  | $SLIVAR expr --vcf - -p $PED --js $JS \\', file = bash_file)
-    print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && (!("gg4_0_0_nhomalt" in INFO) || ("gg4_0_0_nhomalt" in INFO && INFO.gg4_0_0_nhomalt < 5))\' \\', file = bash_file)
+    if args.gnomad_4_1:
+      print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && (!("gg4_1_nhomalt" in INFO) || ("gg4_1_nhomalt" in INFO && INFO.gg4_1_nhomalt < 5))\' \\', file = bash_file)
+    else:
+      print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && (!("gg4_0_0_nhomalt" in INFO) || ("gg4_0_0_nhomalt" in INFO && INFO.gg4_0_0_nhomalt < 5))\' \\', file = bash_file)
     print('  --pass-only \\', file = bash_file)
     print('  2>> $STDERR \\', file = bash_file)
     print('  | $BCFTOOLS view -O z -o $TEMP_RARE_VCF --threads ', threads, ' - \\', sep = '', file = bash_file)
