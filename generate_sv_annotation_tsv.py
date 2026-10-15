@@ -109,7 +109,7 @@ def process_vcf(bcftools, vcf, annotations, records):
 
   # Stream the records rather than reading the whole output into memory
   query_format = '%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%INFO/' + SVTYPE + ''.join('\\t%INFO/' + x for x in present) + '\\n'
-  process = subprocess.Popen([bcftools, 'query', '-f', query_format, vcf], stdout = subprocess.PIPE, text = True)
+  process = subprocess.Popen([bcftools, 'query', '-f', query_format, vcf], stdout = subprocess.PIPE, universal_newlines = True)
   duplicates = 0
   for record in process.stdout:
     fields = record.rstrip('\n').split('\t')
@@ -134,7 +134,7 @@ def process_vcf(bcftools, vcf, annotations, records):
       svtype = CNV_ALTS.get(alt, svtype)
 
     # Mosaic does not use the "chr" prefix and the end position is exclusive
-    identifier = (chrom.removeprefix('chr'), start, str(int(end) + 1), ref, svtype)
+    identifier = (chrom[3:] if chrom.startswith('chr') else chrom, start, str(int(end) + 1), ref, svtype)
     if identifier in records:
       duplicates += 1
     else:
@@ -149,7 +149,7 @@ def process_vcf(bcftools, vcf, annotations, records):
 # Get the ids of all INFO fields in the vcf header
 def get_info_fields(bcftools, vcf):
   try:
-    result = subprocess.run([bcftools, 'view', '-h', vcf], capture_output = True, text = True)
+    result = subprocess.run([bcftools, 'view', '-h', vcf], stdout = subprocess.PIPE, stderr = subprocess.PIPE, universal_newlines = True)
   except FileNotFoundError:
     fail('bcftools could not be found at ' + str(bcftools))
   if result.returncode != 0:
