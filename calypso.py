@@ -1851,51 +1851,35 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_
     print('-v $CNV_VCF ', file = upload_file)
     print(sep = '', file = upload_file)
 
-  # Generate SV TSV and upload command
-  print('echo "Generating SV / CNV TSV file(s)"', file = upload_file)
+  # Generate a single SV / CNV TSV. No TSV is generated if there are no annotations, so only upload it if it exists
+  print('echo "Generating SV / CNV TSV file"', file = upload_file)
   print('GENERATE_TSV=', root_path, '/generate_sv_annotation_tsv.py', sep = '', file = upload_file)
   print('MOSAIC_SV_JSON=', args.mosaic_sv_json, sep = '', file = upload_file)
-  print(sep = '', file = upload_file)
-
+  print('SV_TSV=SV_SVAF.tsv', file = upload_file)
+  print('python3 $GENERATE_TSV ', end = '', file = upload_file)
   if sv_vcf:
-    print('python3 $GENERATE_TSV -i $SV_VCF -o SV_SVAF.tsv -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
-    #print('python3 $GENERATE_TSV -i $SV_VCF -o SV_SVAF.tsv -e SVAFotate -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
-    print(sep = '', file = upload_file)
-    #print('echo "Deduping SV TSV just in case"', file = upload_file)
-    #print('head -n 1 SV_SVAF.tsv | sed \'s/variant_type/ALT/g\' | cut -f 1-4,6- > SVAF.dedup.tsv && tail -n+2 SVAF.tsv | cut -f 1-4,6- | awk \'$6 != 0 && $7 != 0 && $8 != 0 && $9 != 0 && $10 != 0 && $11 != 0 && $12 != 0 && $13 != 0\' | sort -k1,1 -k2,2n -u >> SV_SVAF.dedup.tsv', file = upload_file)
-    #print('mv SV_SVAF.dedup.tsv SV_SVAF.tsv', file = upload_file)
-    #print(sep = '', file = upload_file)
-
+    print('-v $SV_VCF ', end = '', file = upload_file)
   if cnv_vcf:
-    print('python3 $GENERATE_TSV -i $CNV_VCF -o CNV_SVAF.tsv -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
-    #print('python3 $GENERATE_TSV -i $CNV_VCF -o CNV_SVAF.tsv -e SVAFotate -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH',  file = upload_file)
-    print(sep = '', file = upload_file)
-    #print('echo "Deduping CNV TSV just in case"', file = upload_file)
-    #print('head -n 1 CNV_SVAF.tsv | sed \'s/variant_type/ALT/g\' | cut -f 1-4,6- > SVAF.dedup.tsv && tail -n+2 SVAF.tsv | cut -f 1-4,6- | awk \'$6 != 0 && $7 != 0 && $8 != 0 && $9 != 0 && $10 != 0 && $11 != 0 && $12 != 0 && $13 != 0\' | sort -k1,1 -k2,2n -u >> CNV_SVAF.dedup.tsv', file = upload_file)
-    #print('mv CNV_SVAF.dedup.tsv CNV_SVAF.tsv', file = upload_file)
-    #print(sep = '', file = upload_file)
+    print('-c $CNV_VCF ', end = '', file = upload_file)
+  print('-o $SV_TSV -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH', sep = '', file = upload_file)
+  print(file = upload_file)
 
   if reference == 'GRCh37':
     try:
       annotation_project_id = api_store.get('Project ids', 'annotations_grch37')
     except:
-      fail('Config file does not contain the project id of project "annotations_grch38"')
+      fail('Config file does not contain the project id of project "annotations_grch37"')
   elif reference == 'GRCh38':
     try:
       annotation_project_id = api_store.get('Project ids', 'annotations_grch38')
     except:
       fail('Config file does not contain the project id of project "annotations_grch38"')
-      
-  print('echo "Uploading SV / CNV TSV(s)"', file = upload_file)
-  print('UPLOAD_SCRIPT=$API_CLIENT/variant_annotations/upload_annotations.py', file = upload_file)
-  if sv_vcf:
-    tsv_name = 'SV_SVAF_' + str(annotation_project_id) + '.tsv'
-    #print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t ', tsv_name, sep = '', file = upload_file)
-    print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t SV_SVAF.tsv',  sep = '', file = upload_file)
-  if cnv_vcf:
-    tsv_name = 'CNV_SVAF_' + str(annotation_project_id) + '.tsv'
-    #print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t ', tsv_name, sep = '', file = upload_file)
-    print('python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t CNV_SVAF.tsv',  sep = '', file = upload_file)
+
+  print('if [[ -f $SV_TSV ]]; then', file = upload_file)
+  print('  echo "Uploading SV / CNV TSV"', file = upload_file)
+  print('  UPLOAD_SCRIPT=$API_CLIENT/variant_annotations/upload_annotations.py', file = upload_file)
+  print('  python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t $SV_TSV', sep = '', file = upload_file)
+  print('fi', file = upload_file)
 
   # If no variant filters json was provided, provide a warning that no filters will be created
   if not filters_json:
