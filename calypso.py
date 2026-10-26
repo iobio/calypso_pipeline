@@ -79,8 +79,6 @@ def main():
   has_mother = False
   has_father = False
   has_other_relations = False
-  parents = ''
-  family = ''
   for sample in project.get_samples():
     relation = False
     sex = False
@@ -121,19 +119,14 @@ def main():
       if has_mother:
         fail('Project has multiple mother. Ensure only one proband exists in the project')
       has_mother = True
-      parents += sample['name'] + ','
-      family += sample['name'] + ','
     elif relation == 'Father':
 
       # Only one father is allowed in the project
       if has_father:
         fail('Project has multiple fathers. Ensure only one proband exists in the project')
       has_father = True
-      parents += sample['name'] + ','
-      family += sample['name'] + ','
     else:
       has_other_relations = True
-      family += sample['name'] + ','
     if not sex:
       fail('The Sex attribute is not set for sample ' + sample['name'])
     if not affected_status:
@@ -146,11 +139,6 @@ def main():
   # Fail if no proband is defined
   if not proband:
     fail('Could not find a proband for this project')
-
-  # Set the parents and family members for quality measures
-  has_parents = True if has_mother and has_father else False
-  parents = parents.rstrip(',')
-  family = family.rstrip(',')
 
   # Get the vcf file for each sample. Currently, Calypso only works for projects with a single multi-sample vcf.
   # Determine the name of this vcf file, then determine if this file has chromosomes listed as e.g. '1' or 'chr1'.
@@ -464,112 +452,11 @@ def main():
   for annotation in project.get_variant_annotations_to_import():
     public_annotations[annotation['uid']] = {'name': annotation['name'], 'id': annotation['id'], 'type': annotation['value_type']}
 
-  # Create all the required private annotations
-  private_annotations = {}
-
-  # Get the names (not the uids) of all the annotations in the project
-  existing_annotations = []
-  for annotation in project_annotations:
-    if annotation == 'variant_quality_grch37':
-      continue
-    elif annotation == 'variant_quality_grch38':
-      continue
-    existing_annotations.append(project_annotations[annotation]['name'])
-
-###############3
-###############3
-################ Hard code the addition of a couple of annotations (trio quality and family quality). These are only
-################ added depending on the samples in the project
-################
-################
-  if has_father and has_mother:
-    resource = 'variant_quality'
-    annotation = 'Trio Quality'
-    value_type = 'string'
-    mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': annotation, \
-                                                                     'type': value_type, \
-                                                                     'id': False, \
-                                                                     'fields': False, \
-                                                                     'isSample': False, \
-                                                                     'operation': False, \
-                                                                     'position': False, \
-                                                                     'positions': False, \
-                                                                     'category': 'Quality', \
-                                                                     'severity': {'Pass': 8, 'Dummy': 3, 'Dummy2': 4, 'Fail': 1}, \
-                                                                     'display_type': 'badge'}
-  if has_other_relations:
-    resource = 'variant_quality'
-    annotation = 'Family Quality'
-    value_type = 'string'
-    mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': annotation, \
-                                                                     'type': value_type, \
-                                                                     'id': False, \
-                                                                     'fields': False, \
-                                                                     'isSample': False, \
-                                                                     'operation': False, \
-                                                                     'position': False, \
-                                                                     'positions': False, \
-                                                                     'category': 'Quality', \
-                                                                     'severity': {'Pass': 8, 'Dummy': 3, 'Dummy2': 4, 'Fail': 1}, \
-                                                                     'display_type': 'badge'}
-
-  # Loop over each resource in the Mosaic resources file
-  for resource in mosaic_info['resources']:
-    annotations = {}
-
-    # Loop over all annotations for this resource
-    if mosaic_info['resources'][resource]['annotation_type'] == 'private':
-
-      # The project id for these annotations is the target project as these annotations will be created there. Update
-      # mosaic_info to reflect this.
-      mosaic_info['resources'][resource]['project_id'] = args.project_id
-
-      # Loop over all annotations for this resource
-      for annotation in mosaic_info['resources'][resource]['annotations']:
-        value_type = mosaic_info['resources'][resource]['annotations'][annotation]['type']
-
-        # If the annotation has "isSample" set, there needs to be an annotation for every sample in the vcf file for the 
-        # project (some projects include samples that were not sequenced and so these will not have annotations). Append the
-        # the samples relationship to the proband to the annotation name. 
-        if mosaic_info['resources'][resource]['annotations'][annotation]['isSample']:
-          for sample in mosaic_samples:
-
-            # Include the sample name in the annotation, otherwise non-unique names could result. For example, if the proband
-            # has 2 brothers, the generated annotation name for the 2 brothers will be identical
-            if mosaic_samples[sample]['vcf_sample_name']:
-              annotations[str(annotation) + ' ' + str(mosaic_samples[sample]['relation']) + ' ' + str(sample)] = value_type
-        else:
-          annotations[annotation] = value_type
-
-        # Reset this annotation in the resources dictionary. It will be replaced below with the new annotations with the
-        # corresponding uids
-        category = mosaic_info['resources'][resource]['annotations'][annotation]['category']
-        severity = mosaic_info['resources'][resource]['annotations'][annotation]['severity']
-        display_type = mosaic_info['resources'][resource]['annotations'][annotation]['display_type']
-        mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': False, 'type': False, 'id': False, 'category': category, 'severity': severity, 'display_type': display_type}
-    
-    # Loop over the annotations to be created, check that there doesn't already exist an annotation of that name in the
-    # project, and if not, create a new, private annotation
-    for annotation in annotations:
-      value_type = annotations[annotation]
-
-      # If the annotation already exists, get the uid of the annotation, otherwise create the annotation.
-      if annotation in existing_annotations:
-        for existing_annotation in project_annotations:
-          if str(project_annotations[existing_annotation]['name']) == annotation:
-            private_annotations[existing_annotation] = {'name': annotation, 'id': project_annotations[existing_annotation]['id']}
-            mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': existing_annotation, 'type': value_type, 'id': project_annotations[existing_annotation]['id']}
-            break
-      else:
-        severity = mosaic_info['resources'][resource]['annotations'][annotation]['severity']
-        display_type = mosaic_info['resources'][resource]['annotations'][annotation]['display_type']
-        category = mosaic_info['resources'][resource]['annotations'][annotation]['category']
-        data = project.post_variant_annotation(name = annotation, value_type = value_type, privacy_level = 'private', category = category, severity = severity, display_type = display_type)
-        private_annotations[data['uid']] = {'name': annotation, 'id': data['id']}
-        mosaic_info['resources'][resource]['annotations'][annotation] = {'uid': data['uid'], 'type': value_type, 'id': data['id']}
-
-        # Add the created private annotation to the project_annotations dictionary
-        project_annotations[data['uid']] = {'id': data['id'], 'name': annotation, 'type': value_type}
+  # Calypso no longer creates private annotations. Resources in the Mosaic resources file with the annotation_type
+  # "private" are skipped
+  private_resources = [resource for resource in mosaic_info['resources'] if mosaic_info['resources'][resource]['annotation_type'] == 'private' and resource != 'variant_quality']
+  if private_resources:
+    warning('Private annotations are no longer created, so the following resources will be skipped: ' + ', '.join(private_resources))
 
   # Loop over all of the public annotations defined in the Mosaic resources json file and check that they exist
   # in Mosaic and can be imported
@@ -613,13 +500,12 @@ def main():
     print(file = bash_file)
   else:
     annotate_vcf(resource_info, bash_file, chr_format, args.threads, mosaic_samples)
-  filter_vcf(args, bash_file, mosaic_samples, proband, resource_info, args.threads, has_parents)
+  filter_vcf(args, bash_file, mosaic_samples, proband, resource_info, args.threads)
 
   # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
   print('# Generate tsv files to upload annotations to Mosaic', file = bash_file)
   print('GENERATE_TSV=', root_path, '/generate_annotation_tsv.py', sep = '', file = bash_file)
   print('GENERATE_HGVS_TSV=', root_path, '/generate_hgvs_annotation_tsv.py', sep = '', file = bash_file)
-  print('GENERATE_COMP_HET_TSV=', root_path, '/generate_comphet_tsv.py', sep = '', file = bash_file)
   print('GENERATE_VARIANT_QUALITY_TSV=', root_path, '/generate_variant_quality_tsv.py', sep = '', file = bash_file)
   print('MOSAIC_JSON=', args.mosaic_json, sep = '', file = bash_file)
   print('INPUT_TOML=', args.toml, sep = '', file = bash_file)
@@ -735,47 +621,14 @@ def main():
       generate_hgvs_tsv(bash_file, reference)
       tsv_files.append('hgvs.tsv')
 
-    # Extract compound hets
-    elif resource == 'compound_heterozygotes':
-      if has_parents:
-        uid = False
-        for annotation in private_annotations:
-          if private_annotations[annotation]['name'] == 'Compound Heterozygotes':
-            uid = annotation
-            break
-        if not uid:
-          fail('No private annotation with the name Compound Heterozygotes defined in the resources')
-        output_tsv = "comp_het.tsv"
-        generate_comp_het_tsv(bash_file, "COMPHET_VCF", output_tsv, uid, proband)
-        tsv_files.append(output_tsv)
-    elif resource == 'compound_heterozygotes_rare':
-      if has_parents:
-        uid = False
-        for annotation in private_annotations:
-          if private_annotations[annotation]['name'] == 'Rare Compound Heterozygotes':
-            uid = annotation
-            break
-        if not uid:
-          fail('No private annotation with the name Rare Compound Heterozygotes defined in the resources')
-        output_tsv = "comp_het_rare.tsv"
-        generate_comp_het_tsv(bash_file, "COMPHET_RARE_VCF", output_tsv, uid, proband)
-        tsv_files.append(output_tsv)
-
-    # Extract the Variant Quality scores after getting the uid of this annotation
+    # Extract the Variant Quality values for the semi-public variant_quality annotation
     elif resource == 'variant_quality':
-      trio_uid = False
-      family_uid = False
-      for annotation in private_annotations:
-        if private_annotations[annotation]['name'] == 'Variant Quality':
-          uid = annotation
-        if private_annotations[annotation]['name'] == 'Trio Quality':
-          trio_uid = annotation
-          tsv_files.append('trio_quality.tsv')
-        if private_annotations[annotation]['name'] == 'Family Quality':
-          family_uid = annotation
-          tsv_files.append('family_quality.tsv')
-      generate_variant_quality_tsv(bash_file, uid, proband, trio_uid, parents, family_uid, family)
+      generate_variant_quality_tsv(bash_file, 'variant_quality', mosaic_samples[proband]['vcf_sample_name'])
       tsv_files.append('variant_quality.tsv')
+
+    # Private annotations are no longer created, so these resources are skipped
+    elif resource in private_resources:
+      pass
 
     # Annotations to ignore
     elif resource == 'GQ':
@@ -852,6 +705,13 @@ def main():
         project.post_import_annotation(public_annotations[uid]['id'])
         project_annotations[uid] = {'id': public_annotations[uid]['id'], 'name': public_annotations[uid]['name'], 'type': public_annotations[uid]['type']}
 
+  # Variant quality is written to the semi-public annotation with the uid variant_quality. Import it into the project
+  if 'variant_quality' in mosaic_info['resources'] and 'variant_quality' not in project_annotations:
+    if 'variant_quality' not in public_annotations:
+      fail('The annotation with uid variant_quality is not available for import into the project')
+    project.post_import_annotation(public_annotations['variant_quality']['id'])
+    project_annotations['variant_quality'] = {'id': public_annotations['variant_quality']['id'], 'name': public_annotations['variant_quality']['name'], 'type': public_annotations['variant_quality']['type']}
+
   # Set the projects default annotations. The default annotations are what a new user will see in the table by default
   # and all users will have the option to reset the annotations table to show only the default annotations
   default_annotation_ids = []
@@ -865,17 +725,9 @@ def main():
       project_annotations[uid] = {'id': public_annotations[annotation]['id'], 'name': public_annotations[annotation]['name'], 'type': public_annotations[annotation]['type']}
       default_annotation_ids.append(public_annotations[annotation]['id'])
 
-    # Check if the annotation is a private annotation. In this case, the supplied annotation will not be the uid as
-    # this is not known, but will be the annotation name
+    # Otherwise, the annotation is not available (e.g. it was a private annotation, which are no longer created)
     else:
-      private_annotation_id = False
-      for private_annotation in private_annotations:
-        if str(private_annotations[private_annotation]['name']) == str(annotation):
-          private_annotation_id = private_annotations[private_annotation]['id']
-      if private_annotation_id:
-        default_annotation_ids.append(private_annotation_id)
-      else:
-        fail('Default annotation ' + str(annotation) + ' has not been imported or created in the project')
+      warning('Default annotation ' + str(annotation) + ' is not available in the project and will not be set as a default')
 
   # Set the default annotations in the Mosaic project. This requires the annotation version ids, not the
   # annotation ids. Use the latest version. If latest isn't set, use default
@@ -946,13 +798,10 @@ def main():
     print('-a $API_CLIENT ', end = '', file = upload_file)
     print('-c $CONFIG ', end = '', file = upload_file)
 
-    # Public annotations are posted to the annotation project, private annotations are posted to the
-    # case project
-    if tsv == 'variant_quality.tsv' or \
-       tsv == 'trio_quality.tsv' or \
-       tsv == 'family_quality.tsv' or \
-       tsv == 'comp_het.tsv' or \
-       tsv == 'comp_het_rare.tsv':
+
+    # Semi-public annotations (variant quality) are posted to the case project, all others are posted to the
+    # annotation project
+    if tsv == 'variant_quality.tsv':
       print('-p ', args.project_id, ' ', sep = '', end = '', file = upload_file)
     else:
       print('-p ', annotation_project_id, ' ', sep = '', end = '', file = upload_file)
@@ -1429,15 +1278,9 @@ def bash_resources(use_queue, resource_info, working_directory, bash_file, vcf, 
   vcf_base = os.path.abspath(vcf).split('/')[-1].replace('.vcf.gz', '')
   annotated_vcf = str(vcf_base) + '_annotated.vcf.gz'
   filtered_vcf = str(vcf_base) + '_calypso_filtered.vcf.gz'
-  comphet_vcf = str(vcf_base) + '_calypso_comphet.vcf.gz'
-  rare_temp_vcf = str(vcf_base) + '_calypso_rare_comphet_temp.vcf.gz'
-  rare_comphet_vcf = str(vcf_base) + '_calypso_rare_comphet.vcf.gz'
   print('FILEPATH=', working_directory, sep = '', file = bash_file)
   print('ANNOTATEDVCF=$FILEPATH/' + str(annotated_vcf), sep = '', file = bash_file)
   print('FILTEREDVCF=$FILEPATH/' + str(filtered_vcf), sep = '', file = bash_file)
-  print('COMPHET_VCF=$FILEPATH/' + str(comphet_vcf), sep = '', file = bash_file)
-  print('TEMP_RARE_VCF=$FILEPATH/' + str(rare_temp_vcf), sep = '', file = bash_file)
-  print('COMPHET_RARE_VCF=$FILEPATH/' + str(rare_comphet_vcf), sep = '', file = bash_file)
   print('STDOUT=calypso_annotation_pipeline.stdout', file = bash_file)
   print('STDERR=calypso_annotation_pipeline.stderr', file = bash_file)
 
@@ -1590,7 +1433,7 @@ def annotate_vcf(resource_info, bash_file, chr_format, threads, samples):
 
 # Filter the final vcf file to only include variants present in the proband, and based on some
 # basic annotations
-def filter_vcf(args, bash_file, samples, proband, resource_info, threads, has_parents):
+def filter_vcf(args, bash_file, samples, proband, resource_info, threads):
 
   # Create a file containing the name of the proband for use in the filter. Note that there can be multiple probands, e.g.
   # if the family is two affected siblings
@@ -1662,10 +1505,6 @@ def filter_vcf(args, bash_file, samples, proband, resource_info, threads, has_pa
   # Include an additional filter 
   print('  --sample-expr \"fam_geno: sample.GQ > 8\" \\', file = bash_file)
 
-  # ...and include trio information for comp hets if both parents are present
-  if has_parents:
-    print('  --trio \"comphet_side:comphet_side(kid, mom, dad)" \\', file = bash_file)
-
   # And final compression
   print('  --pass-only \\', file = bash_file)
   print('  2>> $STDERR \\', file = bash_file)
@@ -1675,51 +1514,6 @@ def filter_vcf(args, bash_file, samples, proband, resource_info, threads, has_pa
   print('$BCFTOOLS index -t $FILTEREDVCF', file = bash_file)
   print(file = bash_file)
 
-  # Extract all comp hets if parents are present
-  if has_parents:
-    print('# Extract compound hets', file = bash_file)
-    print('echo -n "Extracting compound hets..."', file = bash_file)
-    print('$SLIVAR compound-hets -v $FILTEREDVCF \\', file = bash_file)
-    print('  --sample-field comphet_side \\', file = bash_file)
-    print('  --sample-field denovo -p $PED \\', file = bash_file)
-    print('  2>> $STDERR \\', file = bash_file)
-    print('  | $BCFTOOLS view -O z -o $COMPHET_VCF', file = bash_file)
-    print('$BCFTOOLS index -t $COMPHET_VCF', file = bash_file)
-    print('>> $STDOUT 2>> $STDERR \\', file = bash_file)
-    print('echo "complete"', file = bash_file)
-    print(file = bash_file)
-  
-    # Now perform a more stringent filter on the comp het list to pull out "rare" comp hets. First remove
-    # the original comp het annotations, then filter the variants that form comp hets to those with gnomAD
-    # hom alts < 5
-    print('# Find rare compound hets', file = bash_file)
-    print('echo -n "Find rare compound hets..."', file = bash_file)
-    print('$BCFTOOLS annotate -x INFO/comphet_side,INFO/slivar_comphet $COMPHET_VCF \\', file = bash_file)
-    print('  | $SLIVAR expr --vcf - -p $PED --js $JS \\', file = bash_file)
-    if args.gnomad_4_1:
-      print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && (!("gg4_1_nhomalt" in INFO) || ("gg4_1_nhomalt" in INFO && INFO.gg4_1_nhomalt < 5))\' \\', file = bash_file)
-    else:
-      print('  --trio \'comphet_side:comphet_side(kid, mom, dad) && (!("gg4_0_0_nhomalt" in INFO) || ("gg4_0_0_nhomalt" in INFO && INFO.gg4_0_0_nhomalt < 5))\' \\', file = bash_file)
-    print('  --pass-only \\', file = bash_file)
-    print('  2>> $STDERR \\', file = bash_file)
-    print('  | $BCFTOOLS view -O z -o $TEMP_RARE_VCF --threads ', threads, ' - \\', sep = '', file = bash_file)
-    print('  >> $STDOUT 2>> $STDERR', file = bash_file)
-    print('$BCFTOOLS index -t $TEMP_RARE_VCF', file = bash_file)
-    print('echo "complete"', file = bash_file)
-    print(file = bash_file)
-  
-    # Extract all comp hets
-    print('# Extract rare compound hets', file = bash_file)
-    print('echo -n "Extracting rare compound hets..."', file = bash_file)
-    print('$SLIVAR compound-hets -v $TEMP_RARE_VCF \\', file = bash_file)
-    print('  --sample-field comphet_side \\', file = bash_file)
-    print('  --sample-field denovo -p $PED \\', file = bash_file)
-    print('  2>> $STDERR \\', file = bash_file)
-    print('  | $BCFTOOLS view -O z -o $COMPHET_RARE_VCF', file = bash_file)
-    print('  >> $STDOUT 2>> $STDERR', file = bash_file)
-    print('$BCFTOOLS index -t $COMPHET_RARE_VCF', file = bash_file)
-    print('echo "complete"', file = bash_file)
-    print(file = bash_file)
 
 
 
@@ -1962,20 +1756,8 @@ def generate_hgvs_tsv(bash_file, reference):
   print('-t $INPUT_TOML ', file = bash_file)
   print('echo "complete"', file = bash_file)
 
-# Call the command line to extract compound hets
-def generate_comp_het_tsv(bash_file, filename, output, uid, proband):
-  print(file = bash_file)
-  print('# Resource: Comp Hets', sep = '', file = bash_file)
-  print('echo -n "Creating tsv file for Comp Hets..."', sep = '', file = bash_file)
-  print('python3 $GENERATE_COMP_HET_TSV ', end = '', file = bash_file)
-  print('-i $', str(filename), ' ', sep = '', end = '', file = bash_file)
-  print('-s $TOOLPATH ', end = '', file = bash_file)
-  print('-o "', str(output), '" ', sep = '', end = '', file = bash_file)
-  print('-u "', uid, '"', sep = '', file = bash_file)
-  print('echo "complete"', file = bash_file)
-
 # Call the command to extract the variant quality values
-def generate_variant_quality_tsv(bash_file, uid, proband, trio_uid, parents, family_uid, family):
+def generate_variant_quality_tsv(bash_file, uid, proband):
   print(file = bash_file)
   print('# Resource: Variant Quality', sep = '', file = bash_file)
   print('echo -n "Creating tsv file for Variant Quality..."', sep = '', file = bash_file)
@@ -1983,18 +1765,7 @@ def generate_variant_quality_tsv(bash_file, uid, proband, trio_uid, parents, fam
   print('-i $FILTEREDVCF ', end = '', file = bash_file)
   print('-t $TOOLPATH ', end = '', file = bash_file)
   print('-p "', proband, '" ', sep = '', end = '', file = bash_file)
-  print('-u "', uid, '" ', sep = '', end = '', file = bash_file)
-
-  # If trio quality data is to be generated
-  if trio_uid:
-    print('-d "', trio_uid, '" ', sep = '', end = '', file = bash_file)
-    print('-a "', parents, '" ', sep = '', end = '', file = bash_file)
-
-  # If there are additional family members, the family quality data is to be generated
-  if family_uid:
-    print('-m "', family_uid, '" ', sep = '', end = '', file = bash_file)
-    print('-f "', family, '" ', sep = '', end = '', file = bash_file)
-  print(file = bash_file)
+  print('-u "', uid, '"', sep = '', file = bash_file)
   print('echo "complete"', file = bash_file)
 
 # Generate the command to process general annotations

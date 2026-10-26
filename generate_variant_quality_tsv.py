@@ -23,7 +23,7 @@ def main():
 
   # Open output tsv files to write annotations to
   vq_output_file = open('variant_quality.tsv', 'w')
-  print('CHROM\tSTART\tEND\tREF\tALT\t', args.uid, file = vq_output_file)
+  print('CHROM\tSTART\tEND\tREF\tALT\t', args.uid, sep = '', file = vq_output_file)
 
   # Store the samples that must have the minimum GQ value
   if args.parents:
