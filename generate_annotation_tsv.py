@@ -31,8 +31,13 @@ def main():
   # type
   annotations = {}
   uids        = []
+  skip_uids   = args.skip_uids.split(',') if args.skip_uids else []
   for annotation in mosaicInfo['resources'][args.resource]['annotations']:
     uid     = mosaicInfo['resources'][args.resource]['annotations'][annotation]['uid']
+
+    # Skip annotations that are not available in Mosaic
+    if uid in skip_uids:
+      continue
     tagType = mosaicInfo['resources'][args.resource]['annotations'][annotation]['type']
     annotations[annotation] = {'uid': uid, 'type': tagType}
 
@@ -57,6 +62,9 @@ def parseCommandLine():
   parser.add_argument('--reference', '-r', required = True, metavar = 'string', help = 'The genome reference file used')
   parser.add_argument('--tools_directory', '-s', required = True, metavar = 'string', help = 'The path to the directory where the tools live')
   parser.add_argument('--mosaic_json', '-m', required = True, metavar = 'string', help = 'The json file describing the Mosaic parameters')
+
+  # Optional arguments
+  parser.add_argument('--skip_uids', '-k', required = False, metavar = 'string', help = 'A comma separated list of annotation uids to exclude from the tsv')
 
   return parser.parse_args()
 

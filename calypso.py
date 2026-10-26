@@ -459,7 +459,8 @@ def main():
     warning('Private annotations are no longer created, so the following resources will be skipped: ' + ', '.join(private_resources))
 
   # Loop over all of the public annotations defined in the Mosaic resources json file and check that they exist
-  # in Mosaic and can be imported
+  # in Mosaic and can be imported. Missing annotations are recorded by resource if they are to be skipped
+  missing_uids = {}
   for resource in mosaic_info['resources']:
     if mosaic_info['resources'][resource]['annotation_type'] == 'public':
 
@@ -470,7 +471,18 @@ def main():
         # If the annotation uid is not in the publicAnnotations dictionary, then this annotation does not exist for
         # import. Fail and indicate that the resource file may contain errors
         if uid not in public_annotations:
-          fail('Annotation with uid ' + str(uid) + ', for resource ' + str(resource) + ', is not available for import. Check that the uid in the Mosaic resources file is correct')
+          missing_annotation(args, 'Annotation with uid ' + str(uid) + ', for resource ' + str(resource) + ', is not available for import. Check that the uid in the Mosaic resources file is correct')
+          missing_uids.setdefault(resource, []).append(uid)
+
+  # Variant quality is written to the semi-public annotation with the uid variant_quality. Import it into the project
+  has_variant_quality = 'variant_quality' in mosaic_info['resources']
+  if has_variant_quality and 'variant_quality' not in project_annotations:
+    if 'variant_quality' not in public_annotations:
+      missing_annotation(args, 'The annotation with uid variant_quality is not available for import into the project')
+      has_variant_quality = False
+    else:
+      project.post_import_annotation(public_annotations['variant_quality']['id'])
+      project_annotations['variant_quality'] = {'id': public_annotations['variant_quality']['id'], 'name': public_annotations['variant_quality']['name'], 'type': public_annotations['variant_quality']['type']}
 
   # Build the toml file for vcfanno. This defines all of the annotations that vcfanno needs to use
   # with the path to the required files. The build the lua file that vcfanno uses to grab lua functions
@@ -618,13 +630,19 @@ def main():
     # The HGVS annotations require additional processing to identify the codes corresponding to the MANE transcript
     # and strip the transcript information from the annotation
     if resource == 'HGVS':
-      generate_hgvs_tsv(bash_file, reference)
-      tsv_files.append('hgvs.tsv')
+
+      # The HGVS tsv requires all of its annotations, so it is skipped if any are missing
+      if resource in missing_uids:
+        warning('Skipping resource HGVS as annotations are missing')
+      else:
+        generate_hgvs_tsv(bash_file, reference)
+        tsv_files.append('hgvs.tsv')
 
     # Extract the Variant Quality values for the semi-public variant_quality annotation
     elif resource == 'variant_quality':
-      generate_variant_quality_tsv(bash_file, 'variant_quality', mosaic_samples[proband]['vcf_sample_name'])
-      tsv_files.append('variant_quality.tsv')
+      if has_variant_quality:
+        generate_variant_quality_tsv(bash_file, 'variant_quality', mosaic_samples[proband]['vcf_sample_name'])
+        tsv_files.append('variant_quality.tsv')
 
     # Private annotations are no longer created, so these resources are skipped
     elif resource in private_resources:
@@ -634,9 +652,13 @@ def main():
     elif resource == 'GQ':
       pass
 
-    # Remaining resources
+    # Remaining resources. Missing annotations are excluded from the tsv, and if all are missing, the resource is skipped
     else:
-      tsv_files.append(generate_annotation_tsv(bash_file, resource, reference))
+      skip_uids = missing_uids.get(resource, [])
+      if len(skip_uids) == len(mosaic_info['resources'][resource]['annotations']):
+        warning('Skipping resource ' + str(resource) + ' as all of its annotations are missing')
+      else:
+        tsv_files.append(generate_annotation_tsv(bash_file, resource, reference, skip_uids))
 
   # Close the bash script and make it executable
   if args.verbose_output:
@@ -667,7 +689,9 @@ def main():
         uid = mosaic_info['resources'][resource]['annotations'][annotation]['uid']
 
         # Check if the annotation is already in the target project. If not, import the annotation and update the
-        # projectAnnotations dictionary
+        # projectAnnotations dictionary. Skip annotations that are not available
+        if uid in missing_uids.get(resource, []):
+          continue
         if uid not in project_annotations:
           project.post_import_annotation(public_annotations[uid]['id'])
           project_annotations[uid] = {'id': public_annotations[uid]['id'], 'name': public_annotations[uid]['name'], 'type': public_annotations[uid]['type']}
@@ -694,23 +718,26 @@ def main():
     if args.hpo:
       exomiser_runs.append({'suffix': '_snv_indel_sv', 'merged': True, 'hpo': args.hpo, 'description': 'SNVs / Indels / SVs'})
   import_suffixes = ['_snv_indel_no_hpo', '_snv_indel'] + [run['suffix'] for run in exomiser_runs if run['merged']]
-  for run in exomiser_runs:
-    run['tsv'] = 'exomiser' + str(run['suffix']) + '.tsv'
+  missing_exomiser_fields = {}
   for suffix in import_suffixes:
     for field in exomiser.exomiser_fields:
       uid = str(field) + str(suffix)
       if uid not in project_annotations:
         if uid not in public_annotations:
-          fail('Exomiser annotation with uid ' + str(uid) + ' is not available for import into the project')
+          missing_annotation(args, 'Exomiser annotation with uid ' + str(uid) + ' is not available for import into the project')
+          missing_exomiser_fields.setdefault(suffix, []).append(field)
+          continue
         project.post_import_annotation(public_annotations[uid]['id'])
         project_annotations[uid] = {'id': public_annotations[uid]['id'], 'name': public_annotations[uid]['name'], 'type': public_annotations[uid]['type']}
 
-  # Variant quality is written to the semi-public annotation with the uid variant_quality. Import it into the project
-  if 'variant_quality' in mosaic_info['resources'] and 'variant_quality' not in project_annotations:
-    if 'variant_quality' not in public_annotations:
-      fail('The annotation with uid variant_quality is not available for import into the project')
-    project.post_import_annotation(public_annotations['variant_quality']['id'])
-    project_annotations['variant_quality'] = {'id': public_annotations['variant_quality']['id'], 'name': public_annotations['variant_quality']['name'], 'type': public_annotations['variant_quality']['type']}
+  # Missing exomiser annotations are excluded from the tsv for their run, and if all are missing, the run's results are
+  # not parsed or uploaded
+  for run in exomiser_runs:
+    run['tsv'] = 'exomiser' + str(run['suffix']) + '.tsv'
+    run['skip_fields'] = missing_exomiser_fields.get(run['suffix'], [])
+    run['upload'] = len(run['skip_fields']) < len(exomiser.exomiser_fields)
+    if not run['upload']:
+      warning('The results of exomiser (' + str(run['description']) + ') will not be uploaded as all of its annotations are missing')
 
   # Set the projects default annotations. The default annotations are what a new user will see in the table by default
   # and all users will have the option to reset the annotations table to show only the default annotations
@@ -951,6 +978,7 @@ def parse_command_line():
 
   # Skip the annotation step
   execution_arguments.add_argument('--skip_annotation', '-sa', required = False, action = 'store_true', help = 'If the vcf file has already been annotated, start with filtering and skip the annotation step')
+  execution_arguments.add_argument('--ignore_missing_annotations', '-im', required = False, action = 'store_true', help = 'If annotations are not available in Mosaic, skip them with a warning instead of failing')
   execution_arguments.add_argument('--verbose_output', '-v', required = False, action = 'store_true', help = 'Provide a verbose output')
 
   return parser.parse_args()
@@ -1769,7 +1797,7 @@ def generate_variant_quality_tsv(bash_file, uid, proband):
   print('echo "complete"', file = bash_file)
 
 # Generate the command to process general annotations
-def generate_annotation_tsv(bash_file, resource, reference):
+def generate_annotation_tsv(bash_file, resource, reference, skip_uids):
   output_tsv = str(resource) + '.tsv'
 
   print(file = bash_file)
@@ -1781,6 +1809,8 @@ def generate_annotation_tsv(bash_file, resource, reference):
   print('-e ', resource, ' ', sep = '', end = '', file = bash_file)
   print('-r ', reference, ' ', sep = '', end = '', file = bash_file)
   print('-m $MOSAIC_JSON ', end = '', file = bash_file)
+  if skip_uids:
+    print('-k ', ','.join(skip_uids), ' ', sep = '', end = '', file = bash_file)
   print('-s $TOOLPATH', file = bash_file)
   print('echo "complete"', file = bash_file)
 
@@ -2131,6 +2161,7 @@ def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, pr
   print('VERSION=', exomiser_annotation_version, sep = '', file = script)
 
   # Parse the output file of each exomiser run into its own tsv
+  runs = [run for run in runs if run['upload']]
   for run in runs:
     print(file = script)
     print('# Parse the exomiser output: ', run['description'], sep = '', file = script)
@@ -2139,6 +2170,8 @@ def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, pr
     print('-i $WORKING_PATH/exomiser_results', run['suffix'], '/', str(proband), '.variants.tsv ', sep = '', end = '', file = script)
     print('-o $WORKING_PATH/', run['tsv'], ' ', sep = '', end = '', file = script)
     print('-s ', run['suffix'], ' ', sep = '', end = '', file = script)
+    if run['skip_fields']:
+      print('-k ', ','.join(run['skip_fields']), ' ', sep = '', end = '', file = script)
     print('-v $VERSION', sep = '', file = script)
     print('echo "complete"', file = script)
 
@@ -2168,6 +2201,13 @@ def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, pr
   # Close the exomiser script and make it executable
   script.close()
   make_executable = os.popen('chmod +x ' + script_name).read()
+
+# Handle an annotation that is not available in Mosaic. Fail unless missing annotations are to be ignored
+def missing_annotation(args, message):
+  if args.ignore_missing_annotations:
+    warning(message + '. This annotation will be skipped')
+  else:
+    fail(message + '. Use --ignore_missing_annotations (-im) to skip missing annotations')
 
 # If the script fails, provide an error message and exit
 def warning(message):

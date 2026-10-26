@@ -12,6 +12,13 @@ def main():
   # Parse the command line
   args = parse_command_line()
 
+  # Remove any annotations that are to be excluded from the tsv
+  if args.skip_fields:
+    for field in args.skip_fields.split(','):
+      if field not in exomiser_fields:
+        fail('Unknown exomiser annotation to skip: ' + str(field))
+      del exomiser_fields[field]
+
   # Check that the exomiser output file exists
   if not exists(args.input):
     fail('The file ' + str(args.input) + ' was not found')
@@ -50,12 +57,13 @@ def main():
           variants[variant]['moi'].append(moi)
 
   # Write the variants to the output tsv. The header uses the uid for this exomiser run and the version
-  moi_index = list(exomiser_fields.keys()).index('moi')
+  moi_index = list(exomiser_fields.keys()).index('moi') if 'moi' in exomiser_fields else False
   with open(args.output, 'w') as output_file:
     print('CHROM', 'START', 'END', 'REF', 'ALT', '\t'.join(str(uid) + str(args.uid_suffix) + '@' + str(args.version) for uid in exomiser_fields), sep = '\t', file = output_file)
     for variant in variants:
       values = variants[variant]['values']
-      values[moi_index] = ','.join(variants[variant]['moi'])
+      if moi_index is not False:
+        values[moi_index] = ','.join(variants[variant]['moi'])
       print('\t'.join(variant), '\t'.join(values), sep = '\t', file = output_file)
 
 # Input options
@@ -68,6 +76,7 @@ def parse_command_line():
   parser.add_argument('--uid_suffix', '-s', required = True, metavar = 'string', choices = allowed_suffixes, help = 'The suffix of the Mosaic annotation uids for this exomiser run. Allowed values: ' + ', '.join(allowed_suffixes))
 
   # Optional arguments
+  parser.add_argument('--skip_fields', '-k', required = False, metavar = 'string', help = 'A comma separated list of annotations (uids without the suffix) to exclude from the tsv')
   parser.add_argument('--version', '-v', required = False, metavar = 'string', default = 'v15.1.0_data-2602_v1', help = 'The Mosaic annotation version to upload to')
 
   return parser.parse_args()
