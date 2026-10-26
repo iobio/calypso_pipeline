@@ -10,6 +10,7 @@ from pprint import pprint
 from subprocess import Popen
 from sys import path
 
+import parse_exomiser_variants as exomiser
 import read_resource_jsons as read_resources
 
 def main():
@@ -650,6 +651,8 @@ def main():
     project.post_experiment(name = 'Short Variants', file_ids = experiment_file_ids)
 
   # If an SV vcf file was provided, annotate and filter the sv file
+  filtered_sv_vcf = False
+  filtered_cnv_vcf = False
   if args.sv_vcf or args.cnv_vcf:
     sv_vcf = False
     cnv_vcf = False
@@ -716,7 +719,9 @@ def main():
     if not args.sv_filters_json:
       if 'sv_variant_filters' in mosaic_info:
         args.sv_filters_json = str(args.data_directory) + str(mosaic_info['sv_variant_filters'])
-    filtered_sv_vcf, filtered_cnv_vcf = filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_vcf, sample, args, root_path, reference, api_store, args.project_id, args.sv_filters_json)
+    # Subset the SV / CNV vcfs to the samples used from the SNV / Indel vcf
+    vcf_sample_names = ','.join(mosaic_samples[x]['vcf_sample_name'] for x in mosaic_samples if mosaic_samples[x]['vcf_sample_name'])
+    filtered_sv_vcf, filtered_cnv_vcf = filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_vcf, vcf_sample_names, args, root_path, reference, api_store, args.project_id, args.sv_filters_json)
     sv_output_file.close()
     make_executable = os.popen('chmod +x ' + sv_filename).read()
 
@@ -823,6 +828,29 @@ def main():
         else:
           project.post_import_annotation(public_annotations[uid]['id'])
           project_annotations[uid] = {'id': public_annotations[uid]['id'], 'name': public_annotations[uid]['name'], 'type': public_annotations[uid]['type']}
+
+  # Exomiser is run on the SNV / Indel vcf and, if SV and / or CNV vcfs are supplied, on the filtered SNV / Indel vcf merged
+  # with the filtered SV / CNV vcfs. Each is run with and without HPO terms (if the proband has any). The results of each run
+  # are uploaded to their own set of semi-public annotations, whose uids carry the suffix naming the run. Import these
+  # annotations into the project. Both SNV / Indel sets are always imported, as the exomiser variant filters use them
+  exomiser_runs = [{'suffix': '_snv_indel_no_hpo', 'merged': False, 'hpo': False, 'description': 'SNVs / Indels, no HPO terms'}]
+  if args.hpo:
+    exomiser_runs.append({'suffix': '_snv_indel', 'merged': False, 'hpo': args.hpo, 'description': 'SNVs / Indels'})
+  if args.sv_vcf or args.cnv_vcf:
+    exomiser_runs.append({'suffix': '_snv_indel_sv_no_hpo', 'merged': True, 'hpo': False, 'description': 'SNVs / Indels / SVs, no HPO terms'})
+    if args.hpo:
+      exomiser_runs.append({'suffix': '_snv_indel_sv', 'merged': True, 'hpo': args.hpo, 'description': 'SNVs / Indels / SVs'})
+  import_suffixes = ['_snv_indel_no_hpo', '_snv_indel'] + [run['suffix'] for run in exomiser_runs if run['merged']]
+  for run in exomiser_runs:
+    run['tsv'] = 'exomiser' + str(run['suffix']) + '.tsv'
+  for suffix in import_suffixes:
+    for field in exomiser.exomiser_fields:
+      uid = str(field) + str(suffix)
+      if uid not in project_annotations:
+        if uid not in public_annotations:
+          fail('Exomiser annotation with uid ' + str(uid) + ' is not available for import into the project')
+        project.post_import_annotation(public_annotations[uid]['id'])
+        project_annotations[uid] = {'id': public_annotations[uid]['id'], 'name': public_annotations[uid]['name'], 'type': public_annotations[uid]['type']}
 
   # Set the projects default annotations. The default annotations are what a new user will see in the table by default
   # and all users will have the option to reset the annotations table to show only the default annotations
@@ -956,8 +984,7 @@ def main():
   #res.calypsoSummary(working_directory, version, resource_info, reference)
   #print('Calypso pipeline version ', version, ' completed successfully', sep = '')
 
-  # Run Exomiser on the original vcf file and process the exomiser outputs as private annotations. Only
-  # run if hpo terms are supplied
+  # Run Exomiser and process the exomiser outputs into tsv files for the semi-public exomiser annotations
   print('Generating exomiser scripts...', end = '')
   application_properties(working_directory, args.tools_directory, reference)
 
@@ -966,13 +993,23 @@ def main():
   if args.udn:
     exomiser_proband = mosaic_samples[proband]['vcf_sample_name']
   
-  # Exomiser can use the full vcf (default) or the filtered vcf. Ensure the correct vcf is passed to the yml
+  # Exomiser can use the full vcf (default) or the filtered vcf for the SNV / Indel runs. Ensure the correct vcf is passed
+  # to the yml. The runs including SVs use the filtered SNV / Indel vcf merged with the filtered SV / CNV vcfs
   exomiser_vcf = filtered_vcf if args.exomiser_filtered_vcf else annotated_vcf
-  no_hpo_yml = generate_yml(working_directory, exomiser_proband, reference, str(working_directory) + str(exomiser_vcf), args.ped, False)
-  hpo_yml = False
-  if args.hpo:
-    hpo_yml = generate_yml(working_directory, exomiser_proband, reference, str(working_directory) + str(exomiser_vcf), args.ped, args.hpo)
-  exomiser_script_name, exomiser_script = generate_exomiser_script(working_directory, args.tools_directory, no_hpo_yml, hpo_yml, args.queue)
+  merge_info = False
+  if filtered_sv_vcf or filtered_cnv_vcf:
+    merge_info = {'bcftools': resource_info['tools']['bcftools'],
+                  'snv_vcf': str(working_directory) + str(filtered_vcf),
+                  'sv_vcf': str(working_directory) + str(filtered_sv_vcf) if filtered_sv_vcf else False,
+                  'cnv_vcf': str(working_directory) + str(filtered_cnv_vcf) if filtered_cnv_vcf else False,
+                  'merged_vcf': str(working_directory) + str(exomiser_proband) + '_snv_indel_sv_exomiser.vcf.gz',
+                  'chr_format': chr_format,
+                  'nochr_chr_map': str(resource_info['path']) + '/nochr_chr_map.txt',
+                  'proband': exomiser_proband}
+  for run in exomiser_runs:
+    run_vcf = merge_info['merged_vcf'] if run['merged'] else str(working_directory) + str(exomiser_vcf)
+    run['yml'] = generate_yml(working_directory, exomiser_proband, reference, run_vcf, args.ped, run['hpo'], run['suffix'])
+  exomiser_script_name, exomiser_script = generate_exomiser_script(working_directory, args.tools_directory, exomiser_runs, merge_info, args.queue)
   print('complete')
 
   # Check the variant filters json is set
@@ -987,7 +1024,7 @@ def main():
   # The exomiser script currently uses the filtered vcf, so no new variants will need to be uploaded
   #upload_exomiser_variants(working_directory, args.api_client, args.client_config, args.project_id, proband)
   print('Applying exomiser filters...', end = '')
-  exomiser_annotations(root_path, working_directory, args.api_client, args.client_config, args.project_id, exomiser_proband, args.exomiser_filters_json, args.hpo)
+  exomiser_annotations(root_path, working_directory, args.api_client, args.client_config, args.project_id, exomiser_proband, args.exomiser_filters_json, exomiser_runs)
   print('complete')
 
   print('Calypso pipeline completed successfully')
@@ -1736,7 +1773,7 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_
 
     # Annotate the SV vcf file
     print('echo "Annotating SV VCF..."', sep = '', file = sv_output_file)
-    print('$BCFTOOLS view -a -c 1 -s ', samples, ' -O z -o $SV_TEMP_VCF $SV_VCF', sep = '', file = sv_output_file)
+    print('$BCFTOOLS view -a -c 1 --force-samples -s ', samples, ' -O z -o $SV_TEMP_VCF $SV_VCF', sep = '', file = sv_output_file)
     print('$SVAFOTATE annotate -v $SV_TEMP_VCF \\', sep = '', file = sv_output_file)
     print('  -b $SVAFBED \\', sep = '', file = sv_output_file)
     print('  -f 0.8 \\', sep = '', file = sv_output_file)
@@ -1782,7 +1819,7 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_
 
     # Annotate the SV vcf file
     print('echo "Annotating CNV VCF..."', sep = '', file = sv_output_file)
-    print('$BCFTOOLS view -a -c 1 -s ', samples, ' -O z -o $CNV_TEMP_VCF $CNV_VCF', sep = '', file = sv_output_file)
+    print('$BCFTOOLS view -a -c 1 --force-samples -s ', samples, ' -O z -o $CNV_TEMP_VCF $CNV_VCF', sep = '', file = sv_output_file)
     print('$SVAFOTATE annotate -v $CNV_TEMP_VCF \\', sep = '', file = sv_output_file)
     print('  -b $SVAFBED \\', sep = '', file = sv_output_file)
     print('  -f 0.8 \\', sep = '', file = sv_output_file)
@@ -2006,20 +2043,20 @@ def application_properties(working_dir, tools_dir, reference):
   properties_file = open(str(working_dir) + 'application.properties', 'w')
 
   # Write the data versions to the file
-  print('exomiser.data-directory=', tools_dir, 'exomiser-cli-14.1.0/data', sep = '', file = properties_file)
+  print('exomiser.data-directory=', tools_dir, 'exomiser-cli-', exomiser_version, '/data', sep = '', file = properties_file)
   print('remm.version=0.3.1.post1', file = properties_file)
   print('cadd.version=1.7', file = properties_file)
   if reference == 'GRCh37':
-    print('exomiser.hg19.data-version=2502', file = properties_file)
+    print('exomiser.hg19.data-version=', exomiser_data_version, sep = '', file = properties_file)
   elif reference == 'GRCh38':
-    print('exomiser.hg38.data-version=2502', file = properties_file)
-  print('exomiser.phenotype.data-version=2502', file = properties_file)
+    print('exomiser.hg38.data-version=', exomiser_data_version, sep = '', file = properties_file)
+  print('exomiser.phenotype.data-version=', exomiser_data_version, sep = '', file = properties_file)
 
   # Close the application properties file
   properties_file.close()
 
-# Generate the yml file for running exomiser
-def generate_yml(working_dir, proband, reference, vcf, ped, hpo):
+# Generate the yml file for running exomiser. The run is named by the suffix of its Mosaic annotation uids
+def generate_yml(working_dir, proband, reference, vcf, ped, hpo, suffix):
 
   # Determine if exomiser should use resources for hg19 or hg38
   if reference == 'GRCh37':
@@ -2035,10 +2072,7 @@ def generate_yml(working_dir, proband, reference, vcf, ped, hpo):
     hpo_string = '\', \''.join(hpo)
 
   # Open a new yaml file
-  if hpo:
-    yml_name = 'exomiser_' + str(proband) + '.yml'
-  else:
-    yml_name = 'exomiser_' + str(proband) + '_no_hpo.yml'
+  yml_name = 'exomiser_' + str(proband) + str(suffix) + '.yml'
   yml = open(str(working_dir) + str(yml_name), 'w')
 
   # Write the information about this project to the yml
@@ -2144,10 +2178,7 @@ def generate_yml(working_dir, proband, reference, vcf, ped, hpo):
   print('outputOptions:', file = yml)
   print('  outputContributingVariantsOnly: false', file = yml)
   print('  numGenes: 0', file = yml)
-  if not hpo:
-    print('  outputDirectory: ', str(working_dir) + 'exomiser_results_no_hpo', file = yml)
-  else:
-    print('  outputDirectory: ', str(working_dir) + 'exomiser_results', file = yml)
+  print('  outputDirectory: ', str(working_dir) + 'exomiser_results' + str(suffix), file = yml)
   print('  outputFileName: ', str(proband), file = yml)
   print('  outputFormats: [HTML, JSON, TSV_GENE, TSV_VARIANT, VCF]', file = yml)
 
@@ -2157,8 +2188,9 @@ def generate_yml(working_dir, proband, reference, vcf, ped, hpo):
   # Return the path and name of the yml file
   return yml_name
 
-# Generate a script file to run exomiser
-def generate_exomiser_script(working_dir, tools_dir, no_hpo_yml, yml, use_queue):
+# Generate a script file to run exomiser. Each run is a dictionary with the yml file and the suffix naming the run. If
+# merge_info is set, the filtered SNV / Indel vcf is first merged with the filtered SV and CNV vcfs for the SV runs
+def generate_exomiser_script(working_dir, tools_dir, runs, merge_info, use_queue):
 
   # Create script file for running exomiser
   script_name = str(working_directory) + '04_calypso_exomiser.sh'
@@ -2182,49 +2214,31 @@ def generate_exomiser_script(working_dir, tools_dir, no_hpo_yml, yml, use_queue)
   # Create variables for paths
   print('TOOLS_PATH=', tools_dir, sep = '', file = script)
   print('WORKINGPATH=', working_dir, sep = '', file = script)
-#########
-#########
-######### Update with version from resources json
-#########
-#########
-  print('EXOMISER=$TOOLS_PATH/exomiser-cli-14.1.0/exomiser-cli-14.1.0.jar', file = script)
-  print('NO_HPO_YML=$WORKINGPATH/', no_hpo_yml, sep = '', file = script)
-  if yml:
-    print('YML=$WORKINGPATH/', yml, sep = '', file = script)
+  print('EXOMISER=$TOOLS_PATH/exomiser-cli-', exomiser_version, '/exomiser-cli-', exomiser_version, '.jar', sep = '', file = script)
   print('STDOUT=', working_dir, 'exomiser.stdout', sep = '', file = script)
   print('STDERR=', working_dir, 'exomiser.stderr', sep = '', file = script)
   print(file = script)
+
+  # Merge the filtered SNV / Indel vcf with the filtered SV and CNV vcfs
+  if merge_info:
+    generate_exomiser_merged_vcf(script, merge_info)
 
 #####
 ##### UTAH SPECIFIC REQUIREMENT
 #####
   print('# Module requirement for Utah environment', file = script)
-  print('module load openjdk/17.0.1', file = script)
+  print('module load openjdk/23.0.1', file = script)
   print(file = script)
 
-  # Include the executable for running exomiser
-  print('java -jar $EXOMISER ', end = '', file = script)
-  print('--analysis $NO_HPO_YML ', end = '', file = script)
-  print('> $STDOUT 2> $STDERR', file = script)
-  print(file = script)
-  print('# Write to screen if an error was encountered', file = script)
-  print('if [[ $? != 0 ]];', file = script)
-  print('then', file = script)
-  print('  echo "Exomiser script failed (no HPO). Please check the stderr file"', file = script)
-  print('fi', file = script)
-  print(file = script)
-
-  # Include the executable for running exomiser if HPO terms are present
-  if yml:
-    print('java -jar $EXOMISER ', end = '', file = script)
-    print('--analysis $YML ', end = '', file = script)
-    print('>> $STDOUT 2>> $STDERR', file = script)
-    print(file = script)
-    print('# Write to screen if an error was encountered', file = script)
-    print('if [[ $? != 0 ]];', file = script)
-    print('then', file = script)
-    print('  echo "Exomiser script failed. Please check the stderr file"', file = script)
+  # Include the executable for running exomiser for each run
+  for run in runs:
+    print('# Run exomiser: ', run['description'], sep = '', file = script)
+    print('echo -n "Running exomiser (', run['description'], ')..."', sep = '', file = script)
+    print('if ! java -jar $EXOMISER --analysis $WORKINGPATH/', run['yml'], ' >> $STDOUT 2>> $STDERR; then', sep = '', file = script)
+    print('  echo "Exomiser script failed (', run['description'], '). Please check the stderr file"', sep = '', file = script)
+    print('  exit 1', file = script)
     print('fi', file = script)
+    print('echo "complete"', file = script)
     print(file = script)
 
   # Close the script file and make executable
@@ -2233,6 +2247,74 @@ def generate_exomiser_script(working_dir, tools_dir, no_hpo_yml, yml, use_queue)
 
   # Return the script
   return script_name, script
+
+# Write the commands to merge the filtered SNV / Indel vcf with the filtered SV and / or CNV vcfs for exomiser. bcftools
+# concat requires the same samples in the same order, so all files are subset to the samples (in the order of the SNV /
+# Indel vcf) that appear in all files. The SV / CNV pipeline removes the "chr" prefix, so if the SNV / Indel vcf uses
+# it, the prefix is restored
+def generate_exomiser_merged_vcf(script, merge_info):
+  print('# Merge the filtered SNV / Indel, SV, and CNV vcf files for exomiser', file = script)
+  print('BCFTOOLS=', merge_info['bcftools'], sep = '', file = script)
+  print('SNV_VCF=', merge_info['snv_vcf'], sep = '', file = script)
+  sv_variables = []
+  if merge_info['sv_vcf']:
+    print('SV_VCF=', merge_info['sv_vcf'], sep = '', file = script)
+    sv_variables.append('SV')
+  if merge_info['cnv_vcf']:
+    print('CNV_VCF=', merge_info['cnv_vcf'], sep = '', file = script)
+    sv_variables.append('CNV')
+  if merge_info['chr_format']:
+    print('NOCHR_CHR_MAP=', merge_info['nochr_chr_map'], sep = '', file = script)
+  print('MERGED_VCF=', merge_info['merged_vcf'], sep = '', file = script)
+  print('MERGE_SAMPLES=$WORKINGPATH/exomiser_merge_samples.txt', file = script)
+  print(file = script)
+
+  # Check all the input files exist. The SV / CNV vcfs are created by the SV pipeline
+  print('echo -n "Merging SNV / Indel and SV / CNV vcf files for exomiser..."', file = script)
+  print('for MERGE_INPUT in $SNV_VCF', ''.join(' $' + x + '_VCF' for x in sv_variables), '; do', sep = '', file = script)
+  print('  if [[ ! -f $MERGE_INPUT ]]; then', file = script)
+  print('    echo "ERROR: $MERGE_INPUT does not exist. Run 01_calypso_annotation_pipeline.sh and 06_calypso_sv_annotation_pipeline.sh before this script"', file = script)
+  print('    exit 1', file = script)
+  print('  fi', file = script)
+  print('done', file = script)
+  print(file = script)
+
+  # Find the samples common to all files and check the proband is one of them
+  print('$BCFTOOLS query -l $SNV_VCF > $MERGE_SAMPLES', file = script)
+  for variable in sv_variables:
+    print('$BCFTOOLS query -l $', variable, '_VCF > $MERGE_SAMPLES.', variable.lower(), sep = '', file = script)
+    print('grep -Fxf $MERGE_SAMPLES.', variable.lower(), ' $MERGE_SAMPLES > $MERGE_SAMPLES.tmp || true', sep = '', file = script)
+    print('mv $MERGE_SAMPLES.tmp $MERGE_SAMPLES', file = script)
+    print('rm -f $MERGE_SAMPLES.', variable.lower(), sep = '', file = script)
+  print('if ! grep -Fxq "', merge_info['proband'], '" $MERGE_SAMPLES; then', sep = '', file = script)
+  print('  echo "ERROR: The proband (', merge_info['proband'], ') does not appear in all of the SNV / Indel, SV, and CNV vcf files"', sep = '', file = script)
+  print('  exit 1', file = script)
+  print('fi', file = script)
+  print(file = script)
+
+  # Subset each file to the common samples
+  print('$BCFTOOLS view -S $MERGE_SAMPLES -O z -o $WORKINGPATH/exomiser_merge_snv.vcf.gz $SNV_VCF', file = script)
+  print('$BCFTOOLS index -t $WORKINGPATH/exomiser_merge_snv.vcf.gz', file = script)
+  merge_files = ['$WORKINGPATH/exomiser_merge_snv.vcf.gz']
+  for variable in sv_variables:
+    merge_file = '$WORKINGPATH/exomiser_merge_' + variable.lower() + '.vcf.gz'
+    if merge_info['chr_format']:
+      print('$BCFTOOLS view -S $MERGE_SAMPLES $', variable, '_VCF | $BCFTOOLS annotate --rename-chrs $NOCHR_CHR_MAP -O z -o ', merge_file, sep = '', file = script)
+    else:
+      print('$BCFTOOLS view -S $MERGE_SAMPLES -O z -o ', merge_file, ' $', variable, '_VCF', sep = '', file = script)
+    print('$BCFTOOLS index -t ', merge_file, sep = '', file = script)
+    merge_files.append(merge_file)
+
+  # Concatenate the files, allowing overlapping records
+  print('$BCFTOOLS concat -a -O z -o $MERGED_VCF ', ' '.join(merge_files), sep = '', file = script)
+  print('$BCFTOOLS index -t $MERGED_VCF', file = script)
+
+  # Delete intermediate files
+  for merge_file in merge_files:
+    print('rm -f ', merge_file, ' ', merge_file, '.tbi', sep = '', file = script)
+  print('rm -f $MERGE_SAMPLES', file = script)
+  print('echo "complete"', file = script)
+  print(file = script)
 
 # Create an upload variants script to upload the exomiser variants
 def upload_exomiser_variants(working_dir, api_client, client_config, project_id, proband):
@@ -2258,8 +2340,9 @@ def upload_exomiser_variants(working_dir, api_client, client_config, project_id,
   # Make the annotation script executable
   make_executable = os.popen('chmod +x ' + str(filename)).read()
 
-# Create a script to update and upload the exomiser annotations
-def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, project_id, proband, filters_json, hpo):
+# Create a script to parse the exomiser outputs into tsv files and upload them to Mosaic. The exomiser annotations are
+# semi-public, so their values are specific to, and are uploaded to, the case project
+def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, project_id, proband, filters_json, runs):
 
   # Open a script file
   script_name = working_dir + '05_calypso_exomiser_annotations.sh'
@@ -2268,42 +2351,24 @@ def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, pr
   except:
     fail('Could not open ' + str(script_name) + ' to write to')
 
-  # Define the name of the output vcf
-  vcf = 'exomiser.vcf.gz'
-
   print(file = script)
   print('CALYPSO_PATH=', calypso_dir, sep = '', file = script)
   print('WORKING_PATH=', working_dir, sep = '', file = script)
   print('API_CLIENT=', api_client, sep = '', file = script)
   print('CONFIG=', client_config, sep = '', file = script)
   print('SCRIPT=$CALYPSO_PATH/parse_exomiser_variants.py', sep = '', file = script)
-  print('INPUT_NO_HPO_TSV=$WORKING_PATH/exomiser_results_no_hpo/', str(proband), '.variants.tsv', sep = '', file = script)
-  print('OUTPUT_NO_HPO_TSV=$WORKING_PATH/exomiser_no_hpo.tsv', sep = '', file = script)
-  if hpo:
-    print('INPUT_TSV=$WORKING_PATH/exomiser_results/', str(proband), '.variants.tsv', sep = '', file = script)
-    print('OUTPUT_TSV=$WORKING_PATH/exomiser.tsv', sep = '', file = script)
-  print(file = script)
-  print('# Parse the resulting output file', file = script)
-  print('echo -n "Creating tsv file for exomiser variants..."', file = script)
-  print('python3 $SCRIPT ', sep = '', end = '', file = script)
-  print('-a $API_CLIENT ', sep = '', end = '', file = script)
-  print('-c $CONFIG ', sep = '', end = '', file = script)
-  print('-p ', str(project_id), ' ', sep = '', end = '', file = script)
-  print('-v "No HPO" ', sep = '', end = '', file = script)
-  print('-i $INPUT_NO_HPO_TSV ', sep = '', end = '', file = script)
-  print('-o $OUTPUT_NO_HPO_TSV', sep = '', file = script)
-  print('echo "complete"', file = script)
+  print('VERSION=', exomiser_annotation_version, sep = '', file = script)
 
-  if hpo:
+  # Parse the output file of each exomiser run into its own tsv
+  for run in runs:
     print(file = script)
-    print('# Parse the resulting output file', file = script)
-    print('echo -n "Creating tsv file for exomiser variants..."', file = script)
+    print('# Parse the exomiser output: ', run['description'], sep = '', file = script)
+    print('echo -n "Creating tsv file for exomiser variants (', run['description'], ')..."', sep = '', file = script)
     print('python3 $SCRIPT ', sep = '', end = '', file = script)
-    print('-a $API_CLIENT ', sep = '', end = '', file = script)
-    print('-c $CONFIG ', sep = '', end = '', file = script)
-    print('-p ', str(project_id), ' ', sep = '', end = '', file = script)
-    print('-i $INPUT_TSV ', sep = '', end = '', file = script)
-    print('-o $OUTPUT_TSV', sep = '', file = script)
+    print('-i $WORKING_PATH/exomiser_results', run['suffix'], '/', str(proband), '.variants.tsv ', sep = '', end = '', file = script)
+    print('-o $WORKING_PATH/', run['tsv'], ' ', sep = '', end = '', file = script)
+    print('-s ', run['suffix'], ' ', sep = '', end = '', file = script)
+    print('-v $VERSION', sep = '', file = script)
     print('echo "complete"', file = script)
 
   # Apply exomiser variant filters
@@ -2317,35 +2382,21 @@ def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, pr
   print('-p ', str(project_id), ' ', sep = '', end = '', file = script)
   print('-f $FILTERS_JSON', file = script)
 
-  # If the parsing completed successfully, upload the annotations to mosaic
+  # Upload the exomiser annotations to the case project
   print(file = script)
-  print('# Upload exomiser annotations', sep = '', file = script)
   print('UPLOAD_SCRIPT=$API_CLIENT/variant_annotations/upload_annotations.py', sep = '', file = script)
-  print('python3 $UPLOAD_SCRIPT ', end = '', file = script)
-  print('-a $API_CLIENT ', end = '', file = script)
-  print('-c $CONFIG ', end = '', file = script)
-  print('-p ', str(project_id), ' ', sep = '', end = '', file = script)
-  print('-t $OUTPUT_NO_HPO_TSV', sep = '', file = script)
-  if hpo:
+  for run in runs:
     print(file = script)
-    print('# Upload exomiser annotations', sep = '', file = script)
-    print('UPLOAD_SCRIPT=$API_CLIENT/variant_annotations/upload_annotations.py', sep = '', file = script)
+    print('# Upload exomiser annotations: ', run['description'], sep = '', file = script)
     print('python3 $UPLOAD_SCRIPT ', end = '', file = script)
     print('-a $API_CLIENT ', end = '', file = script)
     print('-c $CONFIG ', end = '', file = script)
     print('-p ', str(project_id), ' ', sep = '', end = '', file = script)
-    print('-t $OUTPUT_TSV', sep = '', file = script)
+    print('-t $WORKING_PATH/', run['tsv'], sep = '', file = script)
 
   # Close the exomiser script and make it executable
   script.close()
   make_executable = os.popen('chmod +x ' + script_name).read()
-
-
-
-
-
-
-
 
 # If the script fails, provide an error message and exit
 def warning(message):
@@ -2360,6 +2411,12 @@ date = str(date.today())
 
 # Store the allowed references that can be specified on the command line
 allowed_references = ['GRCh37', 'GRCh38']
+
+# The version of exomiser and the exomiser data release to use, and the Mosaic annotation version the exomiser
+# results are uploaded to
+exomiser_version = '15.1.0'
+exomiser_data_version = '2602'
+exomiser_annotation_version = 'v15.1.0_data-2602_v1'
 
 if __name__ == "__main__":
   main()
