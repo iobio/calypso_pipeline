@@ -502,7 +502,7 @@ def main():
 #  has_parents = True if has_mother and has_father else False
 
   # Generate the bash script to run the annotation pipeline
-  bash_filename, bash_file = open_bash_script(working_directory)
+  bash_filename, bash_file = open_script(working_directory, '01_calypso_annotation_pipeline.sh')
   annotated_vcf, filtered_vcf = bash_resources(args.queue, resource_info, working_directory, bash_file, vcf, chr_format, args.ped, lua_filename, toml_filename)
 
   # If the annotation step is to be skipped, set the ANNOTATEDVCF to the input VCF
@@ -514,13 +514,11 @@ def main():
     annotate_vcf(resource_info, bash_file, chr_format, args.threads, mosaic_samples)
   filter_vcf(args, bash_file, mosaic_samples, proband, resource_info, args.threads)
 
-  # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic
-  print('# Generate tsv files to upload annotations to Mosaic', file = bash_file)
-  print('GENERATE_TSV=', root_path, '/generate_annotation_tsv.py', sep = '', file = bash_file)
-  print('GENERATE_HGVS_TSV=', root_path, '/generate_hgvs_annotation_tsv.py', sep = '', file = bash_file)
-  print('GENERATE_VARIANT_QUALITY_TSV=', root_path, '/generate_variant_quality_tsv.py', sep = '', file = bash_file)
-  print('MOSAIC_JSON=', args.mosaic_json, sep = '', file = bash_file)
-  print('INPUT_TOML=', args.toml, sep = '', file = bash_file)
+  # Close the bash script and make it executable
+  if args.verbose_output:
+    print('echo "SNV / Indel annotation and filtering completed successfully"', sep = '', file = bash_file)
+  bash_file.close()
+  make_executable = os.popen('chmod +x ' + bash_filename).read()
 
   # Set up experiments
   experiment_file_ids = []
@@ -548,9 +546,8 @@ def main():
   if not has_experiment and create_experiments:
     project.post_experiment(name = 'Short Variants', file_ids = experiment_file_ids)
 
-  # If an SV vcf file was provided, annotate and filter the sv file
+  # If SV and / or CNV vcf files were provided, merge, annotate, and filter them
   filtered_sv_vcf = False
-  filtered_cnv_vcf = False
   if args.sv_vcf or args.cnv_vcf:
     sv_vcf = False
     cnv_vcf = False
@@ -594,8 +591,6 @@ def main():
             cnv_experiment_file_ids.append(sample_file['id'])
           if sample_file['name'] == cnv_index_file.split('/')[-1]:
             cnv_experiment_file_ids.append(sample_file['id'])
-    if sv_vcf or cnv_vcf:
-      sv_filename, sv_output_file = open_sv_script(working_directory)
 
     # Get the existing experiments so we don't duplicate
     has_sv = False
@@ -619,9 +614,63 @@ def main():
         args.sv_filters_json = str(args.data_directory) + str(mosaic_info['sv_variant_filters'])
     # Subset the SV / CNV vcfs to the samples used from the SNV / Indel vcf
     vcf_sample_names = ','.join(mosaic_samples[x]['vcf_sample_name'] for x in mosaic_samples if mosaic_samples[x]['vcf_sample_name'])
-    filtered_sv_vcf, filtered_cnv_vcf = filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_vcf, vcf_sample_names, args, root_path, reference, api_store, args.project_id, args.sv_filters_json)
+    sv_filename, sv_output_file = open_script(working_directory, '02_calypso_sv_annotation_pipeline.sh')
+    filtered_sv_vcf = filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_vcf, vcf_sample_names, mosaic_samples[proband]['vcf_sample_name'], args.queue)
     sv_output_file.close()
     make_executable = os.popen('chmod +x ' + sv_filename).read()
+
+  # Exomiser identifies the proband by its UDN id if necessary
+  exomiser_proband = proband
+  if args.udn:
+    exomiser_proband = mosaic_samples[proband]['vcf_sample_name']
+
+  # Generate the script to merge the filtered SNV / Indel vcf with the filtered SV / CNV vcf, and to generate the tsv
+  # files for all annotations
+  tsv_filename, tsv_file = open_script(working_directory, '03_calypso_merge_and_generate_tsvs.sh')
+  if args.queue:
+    queue_header(tsv_file, '24:00:00', 4)
+  print('set -eou pipefail', file = tsv_file)
+  print(file = tsv_file)
+  if resource_info['toolsPath']:
+    print('TOOLPATH=', resource_info['toolsPath'], sep = '', file = tsv_file)
+    print('BCFTOOLS=$TOOLPATH/bcftools/bcftools', sep = '', file = tsv_file)
+  else:
+    print('BCFTOOLS=bcftools', file = tsv_file)
+  print('WORKINGPATH=', working_directory, sep = '', file = tsv_file)
+  print('FILTEREDVCF=$WORKINGPATH/', filtered_vcf, sep = '', file = tsv_file)
+  print(file = tsv_file)
+
+  # Merge the filtered SNV / Indel and SV / CNV vcfs for exomiser. The SV / CNV pipeline removes the "chr" prefix, so if
+  # the SNV / Indel vcf uses it, the prefix is restored. If a variant appears in both, the SNV / Indel record is retained
+  merged_vcf = False
+  if filtered_sv_vcf:
+    merged_vcf = str(working_directory) + str(exomiser_proband) + '_snv_indel_sv_merged.vcf.gz'
+    print('SV_FILTERED_VCF=$WORKINGPATH/', filtered_sv_vcf, sep = '', file = tsv_file)
+    print('MERGED_VCF=', merged_vcf, sep = '', file = tsv_file)
+    sv_input = {'variable': 'SV_FILTERED_VCF', 'name': 'sv'}
+    if chr_format:
+      print('NOCHR_CHR_MAP=', resource_info['path'], '/nochr_chr_map.txt', sep = '', file = tsv_file)
+      sv_input['rename'] = '$NOCHR_CHR_MAP'
+    print(file = tsv_file)
+    print('# Check the filtered vcf files exist', file = tsv_file)
+    print('for MERGE_INPUT in $FILTEREDVCF $SV_FILTERED_VCF; do', file = tsv_file)
+    print('  if [[ ! -f $MERGE_INPUT ]]; then', file = tsv_file)
+    print('    echo "ERROR: $MERGE_INPUT does not exist. Run 01_calypso_annotation_pipeline.sh and 02_calypso_sv_annotation_pipeline.sh before this script"', file = tsv_file)
+    print('    exit 1', file = tsv_file)
+    print('  fi', file = tsv_file)
+    print('done', file = tsv_file)
+    print(file = tsv_file)
+    write_vcf_merge(tsv_file, 'filtered SNV / Indel and SV / CNV', [{'variable': 'FILTEREDVCF', 'name': 'snv'}, sv_input], 'MERGED_VCF', mosaic_samples[proband]['vcf_sample_name'], 'the filtered SNV / Indel and SV / CNV vcf files')
+
+  # Process the filtered vcf file to extract the annotations to be uploaded to Mosaic. The tsv files are written to the
+  # current directory, so run from the working directory, where the upload script expects them
+  print('# Generate tsv files to upload annotations to Mosaic', file = tsv_file)
+  print('cd $WORKINGPATH', file = tsv_file)
+  print('GENERATE_TSV=', root_path, '/generate_annotation_tsv.py', sep = '', file = tsv_file)
+  print('GENERATE_HGVS_TSV=', root_path, '/generate_hgvs_annotation_tsv.py', sep = '', file = tsv_file)
+  print('GENERATE_VARIANT_QUALITY_TSV=', root_path, '/generate_variant_quality_tsv.py', sep = '', file = tsv_file)
+  print('MOSAIC_JSON=', args.mosaic_json, sep = '', file = tsv_file)
+  print('INPUT_TOML=', args.toml, sep = '', file = tsv_file)
 
   # Loop over all the resources to be uploaded to Mosaic
   tsv_files = []
@@ -635,13 +684,13 @@ def main():
       if resource in missing_uids:
         warning('Skipping resource HGVS as annotations are missing')
       else:
-        generate_hgvs_tsv(bash_file, reference)
+        generate_hgvs_tsv(tsv_file, reference)
         tsv_files.append('hgvs.tsv')
 
     # Extract the Variant Quality values for the semi-public variant_quality annotation
     elif resource == 'variant_quality':
       if has_variant_quality:
-        generate_variant_quality_tsv(bash_file, 'variant_quality', mosaic_samples[proband]['vcf_sample_name'])
+        generate_variant_quality_tsv(tsv_file, 'variant_quality', mosaic_samples[proband]['vcf_sample_name'])
         tsv_files.append('variant_quality.tsv')
 
     # Private annotations are no longer created, so these resources are skipped
@@ -658,13 +707,26 @@ def main():
       if len(skip_uids) == len(mosaic_info['resources'][resource]['annotations']):
         warning('Skipping resource ' + str(resource) + ' as all of its annotations are missing')
       else:
-        tsv_files.append(generate_annotation_tsv(bash_file, resource, reference, skip_uids))
+        tsv_files.append(generate_annotation_tsv(tsv_file, resource, reference, skip_uids))
 
-  # Close the bash script and make it executable
-  if args.verbose_output:
-    print('echo "Calypso pipeline completed successfully"', sep = '', file = bash_file)
-  bash_file.close()
-  make_executable = os.popen('chmod +x ' + bash_filename).read()
+  # Generate a single SV / CNV tsv. No tsv is generated if there are no annotations, so it is only uploaded if it exists
+  sv_tsv = 'SV_SVAF.tsv'
+  if filtered_sv_vcf:
+    print(file = tsv_file)
+    print('# Resource: SV / CNV', file = tsv_file)
+    print('echo "Creating tsv file for SV / CNV..."', file = tsv_file)
+    print('GENERATE_SV_TSV=', root_path, '/generate_sv_annotation_tsv.py', sep = '', file = tsv_file)
+    print('MOSAIC_SV_JSON=', args.mosaic_sv_json, sep = '', file = tsv_file)
+    print('python3 $GENERATE_SV_TSV ', end = '', file = tsv_file)
+    print('-v $SV_FILTERED_VCF ', end = '', file = tsv_file)
+    print('-o $WORKINGPATH/', sv_tsv, ' ', sep = '', end = '', file = tsv_file)
+    print('-r ', reference, ' ', sep = '', end = '', file = tsv_file)
+    print('-m $MOSAIC_SV_JSON', end = '', file = tsv_file)
+    print(' -s $TOOLPATH' if resource_info['toolsPath'] else '', file = tsv_file)
+
+  # Close the tsv script and make it executable
+  tsv_file.close()
+  make_executable = os.popen('chmod +x ' + tsv_filename).read()
 
   # Prepare the target project. This includes:
   # 1. Remove any unnecessary annotations from the project
@@ -770,45 +832,13 @@ def main():
         annotation_version_ids.append(latest_annotation_version_id)
   project.put_project_settings(selected_variant_annotation_version_ids = annotation_version_ids)
 
-  # Generate scripts to upload filtered variants to Mosaic
-  upload_filename = working_directory + '02_calypso_upload_variants.sh'
-  try:
-    upload_file = open(upload_filename, 'w')
-  except:
-    fail('Could not open ' + str(upload_filename) + ' to write to')
-
-  # Write the command to file to upload the filtered variants
-  print('# Upload variants to Mosaic', file = upload_file)
-  print('API_CLIENT=', args.api_client, sep = '', file = upload_file)
-  print('CONFIG=', args.client_config, sep = '', file = upload_file)
-  print('VCF=', filtered_vcf, sep = '', file = upload_file)
-  print(file = upload_file)
-  print('python3 $API_CLIENT/variants/upload_variants.py ', end = '', file = upload_file)
-  print('-a $API_CLIENT ', end = '', file = upload_file)
-  print('-c $CONFIG ', end = '', file = upload_file)
-  print('-p ', str(args.project_id) + ' ', sep = '', end = '', file = upload_file)
-  print('-m "no-validation" ', sep = '', end = '', file = upload_file)
-  print('-v $VCF ', file = upload_file)
-  print(file = upload_file)
-
-  # Close the file
-  upload_file.close()
-
-  # Make the annotation script executable
-  make_executable = os.popen('chmod +x ' + str(upload_filename)).read()
-
-  # Open a file with the commands to upload all the annotations
-  upload_filename = working_directory + '03_calypso_upload_annotations.sh'
-  try:
-    upload_file = open(upload_filename, 'w')
-  except:
-    fail('Could not open ' + str(upload_filename) + ' to write to')
-
+  # Generate the script to upload the filtered SNV / Indel and SV / CNV variants, and all the annotation tsvs, to Mosaic
+  upload_filename, upload_file = open_script(working_directory, '04_calypso_upload_variants_and_annotations.sh')
   if reference == 'GRCh37':
     try:
       annotation_project_id = api_store.get('Project ids', 'annotations_grch37')
     except:
-      fail('Config file does not contain the project id of project "annotations_grch38"')
+      fail('Config file does not contain the project id of project "annotations_grch37"')
   elif reference == 'GRCh38':
     try:
       annotation_project_id = api_store.get('Project ids', 'annotations_grch38')
@@ -816,15 +846,43 @@ def main():
       fail('Config file does not contain the project id of project "annotations_grch38"')
   print('API_CLIENT=', args.api_client, sep = '', file = upload_file)
   print('CONFIG=', args.client_config, sep = '', file = upload_file)
+  print('WORKINGPATH=', working_directory, sep = '', file = upload_file)
+
+  # Upload the filtered SNV / Indel variants
+  print(file = upload_file)
+  print('# Upload SNV / Indel variants to Mosaic', file = upload_file)
+  print('echo "Uploading filtered SNV / Indel VCF"', file = upload_file)
+  print('VCF=$WORKINGPATH/', filtered_vcf, sep = '', file = upload_file)
+  print('python3 $API_CLIENT/variants/upload_variants.py ', end = '', file = upload_file)
+  print('-a $API_CLIENT ', end = '', file = upload_file)
+  print('-c $CONFIG ', end = '', file = upload_file)
+  print('-p ', str(args.project_id) + ' ', sep = '', end = '', file = upload_file)
+  print('-m "no-validation" ', sep = '', end = '', file = upload_file)
+  print('-v $VCF ', file = upload_file)
+
+  # Upload the filtered SV / CNV variants
+  if filtered_sv_vcf:
+    print(file = upload_file)
+    print('# Upload SV / CNV variants to Mosaic', file = upload_file)
+    print('echo "Uploading filtered SV / CNV VCF"', file = upload_file)
+    print('SV_VCF=$WORKINGPATH/', filtered_sv_vcf, sep = '', file = upload_file)
+    print('python3 $API_CLIENT/variants/upload_variants.py ', end = '', file = upload_file)
+    print('-a $API_CLIENT ', end = '', file = upload_file)
+    print('-c $CONFIG ', end = '', file = upload_file)
+    print('-p ', str(args.project_id) + ' ', sep = '', end = '', file = upload_file)
+    print('-m "sv-no-validation" ', sep = '', end = '', file = upload_file)
+    print('-v $SV_VCF ', file = upload_file)
+
+  # Upload the annotation tsvs
+  print(file = upload_file)
   print('UPLOAD_SCRIPT=$API_CLIENT/variant_annotations/upload_annotations.py', sep = '', file = upload_file)
   for tsv in tsv_files:
     print(file = upload_file)
     print('# Upload ', tsv, ' annotations', sep = '', file = upload_file)
-    print('TSV=', working_directory, tsv, sep = '', file = upload_file)
+    print('TSV=$WORKINGPATH/', tsv, sep = '', file = upload_file)
     print('python3 $UPLOAD_SCRIPT ', end = '', file = upload_file)
     print('-a $API_CLIENT ', end = '', file = upload_file)
     print('-c $CONFIG ', end = '', file = upload_file)
-
 
     # Semi-public annotations (variant quality) are posted to the case project, all others are posted to the
     # annotation project
@@ -834,10 +892,30 @@ def main():
       print('-p ', annotation_project_id, ' ', sep = '', end = '', file = upload_file)
     print('-t $TSV', sep = '', file = upload_file)
 
-  # Close the upload file
-  upload_file.close()
+  # Upload the SV / CNV tsv, if one was generated, and set the SV variant filters
+  if filtered_sv_vcf:
+    print(file = upload_file)
+    print('# Upload SV / CNV annotations', file = upload_file)
+    print('SV_TSV=$WORKINGPATH/', sv_tsv, sep = '', file = upload_file)
+    print('if [[ -f $SV_TSV ]]; then', file = upload_file)
+    print('  python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t $SV_TSV', sep = '', file = upload_file)
+    print('fi', file = upload_file)
 
-  # Make the annotation script executable
+    # If no variant filters json was provided, provide a warning that no filters will be created
+    if not args.sv_filters_json:
+      warning('No json file provided for SV filters. No filters will be created')
+    else:
+      print(file = upload_file)
+      print('# Set SV variant filters', file = upload_file)
+      print('FILTERS_JSON=', args.sv_filters_json, sep = '', file = upload_file)
+      print('python3 $API_CLIENT/project_setup/set_variant_filters.py ', end = '', file = upload_file)
+      print('-a $API_CLIENT ', end = '', file = upload_file)
+      print('-c $CONFIG ', end = '', file = upload_file)
+      print('-p ', str(args.project_id), ' ', sep = '', end = '', file = upload_file)
+      print('-f $FILTERS_JSON', file = upload_file)
+
+  # Close the upload file and make it executable
+  upload_file.close()
   make_executable = os.popen('chmod +x ' + str(upload_filename)).read()
 
   # Determine all of the variant filters (from the calypso_mosaic_filters.json) that are to be added; remove any filters that already
@@ -864,36 +942,21 @@ def main():
   print('Generating exomiser scripts...', end = '')
   application_properties(working_directory, reference)
 
-  # Get the UDN id of the proband if necessary
-  exomiser_proband = proband
-  if args.udn:
-    exomiser_proband = mosaic_samples[proband]['vcf_sample_name']
-  
   # Exomiser can use the full vcf (default) or the filtered vcf for the SNV / Indel runs. Ensure the correct vcf is passed
-  # to the yml. The runs including SVs use the filtered SNV / Indel vcf merged with the filtered SV / CNV vcfs
+  # to the yml. The runs including SVs use the merged filtered SNV / Indel and SV / CNV vcf (generated by script 03)
   exomiser_vcf = filtered_vcf if args.exomiser_filtered_vcf else annotated_vcf
-  merge_info = False
-  if filtered_sv_vcf or filtered_cnv_vcf:
-    merge_info = {'bcftools': resource_info['tools']['bcftools'],
-                  'snv_vcf': str(working_directory) + str(filtered_vcf),
-                  'sv_vcf': str(working_directory) + str(filtered_sv_vcf) if filtered_sv_vcf else False,
-                  'cnv_vcf': str(working_directory) + str(filtered_cnv_vcf) if filtered_cnv_vcf else False,
-                  'merged_vcf': str(working_directory) + str(exomiser_proband) + '_snv_indel_sv_exomiser.vcf.gz',
-                  'chr_format': chr_format,
-                  'nochr_chr_map': str(resource_info['path']) + '/nochr_chr_map.txt',
-                  'proband': exomiser_proband}
   # Each run uses a sample, analysis, and output yml. The analysis yml only depends on whether HPO terms are used, so
   # is shared between runs
   analysis_ymls = {}
   for run in exomiser_runs:
-    run_vcf = merge_info['merged_vcf'] if run['merged'] else str(working_directory) + str(exomiser_vcf)
+    run_vcf = merged_vcf if run['merged'] else str(working_directory) + str(exomiser_vcf)
     run['sample_yml'] = generate_sample_yml(working_directory, exomiser_proband, reference, run_vcf, args.ped, run['hpo'], run['suffix'])
     has_hpo = bool(run['hpo'])
     if has_hpo not in analysis_ymls:
       analysis_ymls[has_hpo] = generate_analysis_yml(working_directory, has_hpo)
     run['analysis_yml'] = analysis_ymls[has_hpo]
     run['output_yml'] = generate_output_yml(working_directory, exomiser_proband, run['suffix'])
-  exomiser_script_name, exomiser_script = generate_exomiser_script(working_directory, args.tools_directory, exomiser_runs, merge_info, args.queue)
+  exomiser_script_name, exomiser_script = generate_exomiser_script(working_directory, args.tools_directory, exomiser_runs, merged_vcf, args.queue)
   print('complete')
 
   # Check the variant filters json is set
@@ -1242,47 +1305,23 @@ def generate_lua_file(working_directory):
   # Return the name of the lua file
   return script_base
 
-# Open a file to write the annotation pipeline script to
-def open_bash_script(working_directory):
-
-  # Create a script file
-  bash_filename = working_directory + '01_calypso_annotation_pipeline.sh'
+# Open a file to write a pipeline script to. The scripts are numbered in the order they are to be run
+def open_script(working_directory, script_name):
+  filename = working_directory + script_name
   try:
-    bash_file = open(bash_filename, "w")
+    script = open(filename, 'w')
   except:
-    fail('There was a problem opening a file (01_calypso_annotation_pipeline.sh) to write to')
+    fail('There was a problem opening a file (' + str(script_name) + ') to write to')
 
   # Return the file
-  return bash_filename, bash_file
-
-# Open a file to write the SV processing pipeline to
-def open_sv_script(working_directory):
-
-  # Create a script file
-  bash_filename = working_directory + '06_calypso_sv_annotation_pipeline.sh'
-  try:
-    bash_file = open(bash_filename, "w")
-  except:
-    fail('There was a problem opening a file (06_calypso_sv_annotation_pipeline.sh) to write to')
-
-  # Return the file
-  return bash_filename, bash_file
-
+  return filename, script
 
 # Write all the resource file information to the bash file for the script to use
 def bash_resources(use_queue, resource_info, working_directory, bash_file, vcf, chr_format, ped, lua_filename, toml_filename):
 
   # Add the queue information if requested
   if use_queue:
-    print('#! /bin/bash', file = bash_file)
-    print('#SBATCH --time=72:00:00', file = bash_file)
-    print('#SBATCH --mem=8G', file = bash_file)
-    print('#SBATCH --cpus-per-task=4', file = bash_file)
-    print('#SBATCH --account=marth-rw', file = bash_file)
-    print('#SBATCH --partition=marth-rw', file = bash_file)
-    print('#SBATCH -o calypso_batch.out', file = bash_file)
-    print('#SBATCH -e calypso_batch.err', file = bash_file)
-    print(file = bash_file)
+    queue_header(bash_file, '72:00:00', 4)
 
   # Initial information
   print('set -eou pipefail', file = bash_file)
@@ -1562,21 +1601,20 @@ def filter_vcf(args, bash_file, samples, proband, resource_info, threads):
 ##### Deal with SV data
 #####
 
-def filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_vcf, samples, args, root_path, reference, api_store, project_id, filters_json):
-  sv_filtered_vcf = False
-  cnv_filtered_vcf = False
-  if sv_vcf:
-    sv_vcf_base = os.path.abspath(sv_vcf).split('/')[-1].replace('.vcf.gz', '')
-    sv_temp_vcf = str(sv_vcf_base) + '_temp.vcf'
-    sv_annotated_vcf = str(sv_vcf_base) + '_annotated.vcf'
-    sv_filtered_vcf = str(sv_vcf_base) + '_filtered.vcf.gz'
-  if cnv_vcf:
-    cnv_vcf_base = os.path.abspath(cnv_vcf).split('/')[-1].replace('.vcf.gz', '')
-    cnv_temp_vcf = str(cnv_vcf_base) + '_temp.vcf'
-    cnv_annotated_vcf = str(cnv_vcf_base) + '_annotated.vcf'
-    cnv_filtered_vcf = str(cnv_vcf_base) + '_filtered.vcf.gz'
+# Merge the SV and CNV vcfs (removing duplicate records), then annotate and filter the merged vcf
+def filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_vcf, samples, proband, use_queue):
+  vcf_base = str(proband) + '_sv_cnv'
+  merged_vcf = vcf_base + '_merged.vcf.gz'
+  annotated_vcf = vcf_base + '_annotated.vcf'
+  filtered_vcf = vcf_base + '_filtered.vcf.gz'
 
-  # Annotate the SV / CNV vcf files
+  # Add the queue information if requested
+  if use_queue:
+    queue_header(sv_output_file, '10:00:00', 1)
+  print('set -eou pipefail', file = sv_output_file)
+  print(file = sv_output_file)
+
+  # Define the tools and resources
   print('# Define the tools', file = sv_output_file)
   print('TOOLPATH=', resource_info['toolsPath'], sep = '', file = sv_output_file)
   print('SVAFOTATE=$TOOLPATH/svafotate', sep = '', file = sv_output_file)
@@ -1588,188 +1626,124 @@ def filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_
   print('SVAFBED=$DATAPATH/', resource_info['resources']['SVAF']['file'], sep = '', file = sv_output_file)
   print(file = sv_output_file)
   print('# Define the input and output files', file = sv_output_file)
-  print('FILEPATH=', working_directory, sep = '', file = sv_output_file)
-
-  # SV file
+  print('WORKINGPATH=', working_directory, sep = '', file = sv_output_file)
+  inputs = []
   if sv_vcf:
     print('SV_VCF=', sv_vcf, sep = '', file = sv_output_file)
-    print('SV_TEMP_VCF=', sv_temp_vcf, sep = '', file = sv_output_file)
-    print('SV_ANNOTATED_VCF=$FILEPATH/', sv_annotated_vcf, sep = '', file = sv_output_file)
-    print('SV_ANNOTATED_VCF_GZ=$FILEPATH/', sv_annotated_vcf, '.gz', sep = '', file = sv_output_file)
-    print('SV_FILTERED_VCF=$FILEPATH/', sv_filtered_vcf, sep = '', file = sv_output_file)
-    print('SV_STDOUT=sv_pipeline.stdout', file = sv_output_file)
-    print('SV_STDERR=sv_pipeline.stderr', file = sv_output_file)
-    print(sep = '', file = sv_output_file)
-
-    # Annotate the SV vcf file
-    print('echo "Annotating SV VCF..."', sep = '', file = sv_output_file)
-    print('$BCFTOOLS view -a -c 1 --force-samples -s ', samples, ' -O z -o $SV_TEMP_VCF $SV_VCF', sep = '', file = sv_output_file)
-    print('$SVAFOTATE annotate -v $SV_TEMP_VCF \\', sep = '', file = sv_output_file)
-    print('  -b $SVAFBED \\', sep = '', file = sv_output_file)
-    print('  -f 0.8 \\', sep = '', file = sv_output_file)
-    print('  -o $SV_ANNOTATED_VCF \\', sep = '', file = sv_output_file)
-    print('  > $SV_STDOUT 2> $SV_STDERR', file = sv_output_file)
-    print(sep = '', file = sv_output_file)
-
-    # Compress and index the annotated vcf
-    print('echo "Compressing and indexing the annotated vcf..."', sep = '', file = sv_output_file)
-    print('$BCFTOOLS view -O z -o $SV_ANNOTATED_VCF_GZ $SV_ANNOTATED_VCF', file = sv_output_file)
-    print('$BCFTOOLS index -t $SV_ANNOTATED_VCF_GZ', file = sv_output_file)
-    print(sep = '', file = sv_output_file)
-
-    # Filter on popmax af with slivar
-    print('echo "Filtering annotated SV VCF..."', sep = '', file = sv_output_file)
-    print('$SLIVAR expr \\', file = sv_output_file)
-    print('  --info "INFO.Max_AF < 0.025" \\', file = sv_output_file)
-    print('  --vcf $SV_ANNOTATED_VCF_GZ |', file = sv_output_file)
-    print('sed \'s/##contig=<ID=chr/##contig=<ID=/g\' |', file = sv_output_file)
-    print('sed \'s/chr//g\' |', file = sv_output_file)
-    print('$BCFTOOLS view -O z -o $SV_FILTERED_VCF \\', file = sv_output_file)
-    print('  >> $SV_STDOUT 2>> $SV_STDERR', file = sv_output_file)
-    print('$BCFTOOLS index -t $SV_FILTERED_VCF', file = sv_output_file)
-    print(sep = '', file = sv_output_file)
-
-    # Delete intermediate files
-    print('rm -f $SV_TEMP_VCF', file = sv_output_file)
-    print('rm -f $SV_ANNOTATED_VCF', file = sv_output_file)
-    print('rm -f $SV_ANNOTATED_VCF_GZ', file = sv_output_file)
-    print('rm -f $SV_ANNOTATED_VCF_GZ', '".tbi"', sep = '', file = sv_output_file)
-    print(sep = '', file = sv_output_file)
-
-  # CNV file
+    inputs.append({'variable': 'SV_VCF', 'name': 'sv', 'options': '-a -c 1 '})
   if cnv_vcf:
     print('CNV_VCF=', cnv_vcf, sep = '', file = sv_output_file)
-    print('CNV_TEMP_VCF=', cnv_temp_vcf, sep = '', file = sv_output_file)
-    print('CNV_ANNOTATED_VCF=$FILEPATH/', cnv_annotated_vcf, sep = '', file = sv_output_file)
-    print('CNV_ANNOTATED_VCF_GZ=$FILEPATH/', cnv_annotated_vcf, '.gz', sep = '', file = sv_output_file)
-    print('CNV_FILTERED_VCF=$FILEPATH/', cnv_filtered_vcf, sep = '', file = sv_output_file)
-    print('CNV_STDOUT=cnv_pipeline.stdout', file = sv_output_file)
-    print('CNV_STDERR=cnv_pipeline.stderr', file = sv_output_file)
-    print(sep = '', file = sv_output_file)
+    inputs.append({'variable': 'CNV_VCF', 'name': 'cnv', 'options': '-a -c 1 '})
+  print('SV_MERGED_VCF=$WORKINGPATH/', merged_vcf, sep = '', file = sv_output_file)
+  print('SV_ANNOTATED_VCF=$WORKINGPATH/', annotated_vcf, sep = '', file = sv_output_file)
+  print('SV_ANNOTATED_VCF_GZ=$WORKINGPATH/', annotated_vcf, '.gz', sep = '', file = sv_output_file)
+  print('SV_FILTERED_VCF=$WORKINGPATH/', filtered_vcf, sep = '', file = sv_output_file)
+  print('SV_STDOUT=$WORKINGPATH/sv_pipeline.stdout', file = sv_output_file)
+  print('SV_STDERR=$WORKINGPATH/sv_pipeline.stderr', file = sv_output_file)
+  print(file = sv_output_file)
 
-    # Annotate the SV vcf file
-    print('echo "Annotating CNV VCF..."', sep = '', file = sv_output_file)
-    print('$BCFTOOLS view -a -c 1 --force-samples -s ', samples, ' -O z -o $CNV_TEMP_VCF $CNV_VCF', sep = '', file = sv_output_file)
-    print('$SVAFOTATE annotate -v $CNV_TEMP_VCF \\', sep = '', file = sv_output_file)
-    print('  -b $SVAFBED \\', sep = '', file = sv_output_file)
-    print('  -f 0.8 \\', sep = '', file = sv_output_file)
-    print('  -a mis \\', sep = '', file = sv_output_file)
-    print('  -o $CNV_ANNOTATED_VCF \\', sep = '', file = sv_output_file)
-    print('  > $CNV_STDOUT 2> $CNV_STDERR', file = sv_output_file)
-    print(sep = '', file = sv_output_file)
+  # Merge the SV and CNV vcfs, removing duplicate records, and keep only the sites present in the project samples. If only
+  # one was supplied, it is still subset to the project samples
+  write_vcf_merge(sv_output_file, 'SV and CNV', inputs, 'SV_MERGED_VCF', proband, 'the SV / CNV vcf files', samples)
 
-    # Compress and index the annotated vcf
-    print('echo "Compressing and indexing the annotated vcf..."', sep = '', file = sv_output_file)
-    print('$BCFTOOLS view -O z -o $CNV_ANNOTATED_VCF_GZ $CNV_ANNOTATED_VCF', file = sv_output_file)
-    print('$BCFTOOLS index -t $CNV_ANNOTATED_VCF_GZ', file = sv_output_file)
-    print(sep = '', file = sv_output_file)
+  # Annotate the merged vcf. The "mis" annotations (overlapping SVs with a different SV type) are required for the CNVs,
+  # whose SV type is CNV, and add extra fields for the SVs without changing their Max_AF
+  print('echo -n "Annotating merged SV / CNV VCF..."', file = sv_output_file)
+  print('$SVAFOTATE annotate -v $SV_MERGED_VCF \\', file = sv_output_file)
+  print('  -b $SVAFBED \\', file = sv_output_file)
+  print('  -f 0.8 \\', file = sv_output_file)
+  print('  -a mis \\', file = sv_output_file)
+  print('  -o $SV_ANNOTATED_VCF \\', file = sv_output_file)
+  print('  > $SV_STDOUT 2> $SV_STDERR', file = sv_output_file)
+  print('$BCFTOOLS view -O z -o $SV_ANNOTATED_VCF_GZ $SV_ANNOTATED_VCF', file = sv_output_file)
+  print('$BCFTOOLS index -t $SV_ANNOTATED_VCF_GZ', file = sv_output_file)
+  print('echo "complete"', file = sv_output_file)
+  print(file = sv_output_file)
 
-    # Filter on popmax af with slivar
-    print('echo "Filtering annotated SV VCF..."', sep = '', file = sv_output_file)
-    print('$SLIVAR expr \\', file = sv_output_file)
-    print('  --info "INFO.Max_AF < 0.025" \\', file = sv_output_file)
-    print('  --vcf $CNV_ANNOTATED_VCF_GZ |', file = sv_output_file)
-    print('sed \'s/##contig=<ID=chr/##contig=<ID=/g\' |', file = sv_output_file)
-    print('sed \'s/chr//g\' |', file = sv_output_file)
-    print('$BCFTOOLS view -O z -o $CNV_FILTERED_VCF \\', file = sv_output_file)
-    print('  >> $CNV_STDOUT 2>> $CNV_STDERR', file = sv_output_file)
-    print('$BCFTOOLS index -t $CNV_FILTERED_VCF', file = sv_output_file)
-    print(sep = '', file = sv_output_file)
+  # Filter on popmax af with slivar
+  print('echo -n "Filtering annotated SV / CNV VCF..."', file = sv_output_file)
+  print('$SLIVAR expr \\', file = sv_output_file)
+  print('  --info "INFO.Max_AF < 0.025" \\', file = sv_output_file)
+  print('  --vcf $SV_ANNOTATED_VCF_GZ 2>> $SV_STDERR |', file = sv_output_file)
+  print('sed \'s/##contig=<ID=chr/##contig=<ID=/g\' |', file = sv_output_file)
+  print('sed \'s/chr//g\' |', file = sv_output_file)
+  print('$BCFTOOLS view -O z -o $SV_FILTERED_VCF \\', file = sv_output_file)
+  print('  >> $SV_STDOUT 2>> $SV_STDERR', file = sv_output_file)
+  print('$BCFTOOLS index -t $SV_FILTERED_VCF', file = sv_output_file)
+  print('echo "complete"', file = sv_output_file)
+  print(file = sv_output_file)
 
-    # Delete intermediate files
-    print('rm -f $CNV_TEMP_VCF', file = sv_output_file)
-    print('rm -f $CNV_ANNOTATED_VCF', file = sv_output_file)
-    print('rm -f $CNV_ANNOTATED_VCF_GZ', file = sv_output_file)
-    print('rm -f $CNV_ANNOTATED_VCF_GZ', '".tbi"', sep = '', file = sv_output_file)
-    print(sep = '', file = sv_output_file)
-
-  # Generate scripts to upload filtered variants to Mosaic
-  upload_filename = working_directory + '07_calypso_sv_tsv_upload_variants.sh'
-  try:
-    upload_file = open(upload_filename, 'w')
-  except:
-    fail('Could not open ' + str(upload_filename) + ' to write to')
-
-  # Write the command to file to upload the filtered sv variants
-  print('# Upload SV / CNV variants to Mosaic', file = upload_file)
-  print('API_CLIENT=', args.api_client, sep = '', file = upload_file)
-  print('CONFIG=', args.client_config, sep = '', file = upload_file)
-  print('TOOLPATH=', resource_info['toolsPath'], sep = '', file = upload_file)
-  if sv_vcf:
-    print(file = upload_file)
-    print('SV_VCF=', sv_filtered_vcf, sep = '', file = upload_file)
-    print('echo "Uploading filtered SV VCF"', file = upload_file)
-    print('python3 $API_CLIENT/variants/upload_variants.py ', end = '', file = upload_file)
-    print('-a $API_CLIENT ', end = '', file = upload_file)
-    print('-c $CONFIG ', end = '', file = upload_file)
-    print('-p ', str(args.project_id) + ' ', sep = '', end = '', file = upload_file)
-    print('-m "sv-no-validation" ', sep = '', end = '', file = upload_file)
-    print('-v $SV_VCF ', file = upload_file)
-    print(sep = '', file = upload_file)
-  if cnv_vcf:
-    print(file = upload_file)
-    print('CNV_VCF=', cnv_filtered_vcf, sep = '', file = upload_file)
-    print('echo "Uploading filtered CNV VCF"', file = upload_file)
-    print('python3 $API_CLIENT/variants/upload_variants.py ', end = '', file = upload_file)
-    print('-a $API_CLIENT ', end = '', file = upload_file)
-    print('-c $CONFIG ', end = '', file = upload_file)
-    print('-p ', str(args.project_id) + ' ', sep = '', end = '', file = upload_file)
-    print('-m "sv-no-validation" ', sep = '', end = '', file = upload_file)
-    print('-v $CNV_VCF ', file = upload_file)
-    print(sep = '', file = upload_file)
-
-  # Generate a single SV / CNV TSV. No TSV is generated if there are no annotations, so only upload it if it exists
-  print('echo "Generating SV / CNV TSV file"', file = upload_file)
-  print('GENERATE_TSV=', root_path, '/generate_sv_annotation_tsv.py', sep = '', file = upload_file)
-  print('MOSAIC_SV_JSON=', args.mosaic_sv_json, sep = '', file = upload_file)
-  print('SV_TSV=SV_SVAF.tsv', file = upload_file)
-  print('python3 $GENERATE_TSV ', end = '', file = upload_file)
-  if sv_vcf:
-    print('-v $SV_VCF ', end = '', file = upload_file)
-  if cnv_vcf:
-    print('-c $CNV_VCF ', end = '', file = upload_file)
-  print('-o $SV_TSV -r ', reference, ' -m $MOSAIC_SV_JSON -s $TOOLPATH', sep = '', file = upload_file)
-  print(file = upload_file)
-
-  if reference == 'GRCh37':
-    try:
-      annotation_project_id = api_store.get('Project ids', 'annotations_grch37')
-    except:
-      fail('Config file does not contain the project id of project "annotations_grch37"')
-  elif reference == 'GRCh38':
-    try:
-      annotation_project_id = api_store.get('Project ids', 'annotations_grch38')
-    except:
-      fail('Config file does not contain the project id of project "annotations_grch38"')
-
-  print('if [[ -f $SV_TSV ]]; then', file = upload_file)
-  print('  echo "Uploading SV / CNV TSV"', file = upload_file)
-  print('  UPLOAD_SCRIPT=$API_CLIENT/variant_annotations/upload_annotations.py', file = upload_file)
-  print('  python3 $UPLOAD_SCRIPT -a $API_CLIENT -c $CONFIG -p ', annotation_project_id, ' -t $SV_TSV', sep = '', file = upload_file)
-  print('fi', file = upload_file)
-
-  # If no variant filters json was provided, provide a warning that no filters will be created
-  if not filters_json:
-    print('WARNING: No json file provided for SV filters. No filters will be created')
-  else:
-    print(file = upload_file)
-    print('# Set SV variant filters', file = upload_file)
-    print('UPLOAD_SCRIPT=$API_CLIENT/project_setup/set_variant_filters.py', file = upload_file)
-    print('FILTERS_JSON=', filters_json, sep = '', file = upload_file)
-    print('python3 $UPLOAD_SCRIPT ', end = '', file = upload_file)
-    print('-a $API_CLIENT ', end = '', file = upload_file)
-    print('-c $CONFIG ', end = '', file = upload_file)
-    print('-p ', str(project_id), ' ', sep = '', end = '', file = upload_file)
-    print('-f $FILTERS_JSON', file = upload_file)
-
-  # Close the file
-  upload_file.close()
-
-  # Make the annotation script executable
-  make_executable = os.popen('chmod +x ' + str(upload_filename)).read()
+  # Delete intermediate files
+  print('rm -f $SV_MERGED_VCF $SV_MERGED_VCF.tbi', file = sv_output_file)
+  print('rm -f $SV_ANNOTATED_VCF', file = sv_output_file)
+  print('rm -f $SV_ANNOTATED_VCF_GZ $SV_ANNOTATED_VCF_GZ.tbi', file = sv_output_file)
 
   # Return the name of the filtered vcf file
-  return sv_filtered_vcf, cnv_filtered_vcf
+  return filtered_vcf
+
+# Write the commands to concatenate vcf files into a single vcf, removing duplicate records. bcftools concat requires the
+# same samples in the same order, so all files are subset to the samples (in the order of the first file) that appear in
+# all files, and the proband must be one of them. Where the same variant (CHROM, POS, REF, ALT) appears in more than one
+# file, the record from the earliest file in the list is retained. Each input is a dictionary with the shell variable
+# holding the vcf, a short name for the intermediate files, and optionally additional bcftools view options and a
+# chromosome map to rename the chromosomes with. If samples (comma separated) is set, only these samples are kept. The
+# script must define $BCFTOOLS and $WORKINGPATH
+def write_vcf_merge(script, description, inputs, output_variable, proband, files_description, samples = False):
+  samples_file = '$WORKINGPATH/merge_samples.txt'
+  print('# Merge the ', description, ' vcf files', sep = '', file = script)
+  print('echo -n "Merging ', description, ' vcf files..."', sep = '', file = script)
+
+  # Find the samples common to all files and check the proband is one of them
+  print('$BCFTOOLS query -l $', inputs[0]['variable'], ' > ', samples_file, sep = '', file = script)
+  if samples:
+    print('printf "%s\\n" ', ' '.join(samples.split(',')), ' > ', samples_file, '.keep', sep = '', file = script)
+    print('grep -Fxf ', samples_file, '.keep ', samples_file, ' > ', samples_file, '.tmp || true', sep = '', file = script)
+    print('mv ', samples_file, '.tmp ', samples_file, sep = '', file = script)
+    print('rm -f ', samples_file, '.keep', sep = '', file = script)
+  for merge_input in inputs[1:]:
+    print('$BCFTOOLS query -l $', merge_input['variable'], ' > ', samples_file, '.', merge_input['name'], sep = '', file = script)
+    print('grep -Fxf ', samples_file, '.', merge_input['name'], ' ', samples_file, ' > ', samples_file, '.tmp || true', sep = '', file = script)
+    print('mv ', samples_file, '.tmp ', samples_file, sep = '', file = script)
+    print('rm -f ', samples_file, '.', merge_input['name'], sep = '', file = script)
+  print('if ! grep -Fxq "', proband, '" ', samples_file, '; then', sep = '', file = script)
+  print('  echo "ERROR: The proband (', proband, ') does not appear in all of ', files_description, '"', sep = '', file = script)
+  print('  exit 1', file = script)
+  print('fi', file = script)
+
+  # Subset each file to the common samples, renaming the chromosomes if required
+  merge_files = []
+  for merge_input in inputs:
+    merge_file = '$WORKINGPATH/merge_' + merge_input['name'] + '.vcf.gz'
+    options = merge_input.get('options', '')
+    if merge_input.get('rename'):
+      print('$BCFTOOLS view ', options, '-S ', samples_file, ' $', merge_input['variable'], ' | $BCFTOOLS annotate --rename-chrs ', merge_input['rename'], ' -O z -o ', merge_file, sep = '', file = script)
+    else:
+      print('$BCFTOOLS view ', options, '-S ', samples_file, ' -O z -o ', merge_file, ' $', merge_input['variable'], sep = '', file = script)
+    print('$BCFTOOLS index -t ', merge_file, sep = '', file = script)
+    merge_files.append(merge_file)
+
+  # Concatenate the files, allowing overlapping records and keeping only the first of any exact duplicates
+  print('$BCFTOOLS concat -a -d exact -O z -o $', output_variable, ' ', ' '.join(merge_files), sep = '', file = script)
+  print('$BCFTOOLS index -t $', output_variable, sep = '', file = script)
+
+  # Delete intermediate files
+  for merge_file in merge_files:
+    print('rm -f ', merge_file, ' ', merge_file, '.tbi', sep = '', file = script)
+  print('rm -f ', samples_file, sep = '', file = script)
+  print('echo "complete"', file = script)
+  print(file = script)
+
+# Write the slurm header for a script
+def queue_header(script, time, cpus):
+  print('#! /bin/bash', file = script)
+  print('#SBATCH --time=', time, sep = '', file = script)
+  print('#SBATCH --mem=8G', file = script)
+  print('#SBATCH --cpus-per-task=', cpus, sep = '', file = script)
+  print('#SBATCH --account=marth-rw', file = script)
+  print('#SBATCH --partition=marth-rw', file = script)
+  print('#SBATCH -o calypso_batch.out', file = script)
+  print('#SBATCH -e calypso_batch.err', file = script)
+  print(file = script)
 
 
 
@@ -2020,25 +1994,16 @@ def generate_output_yml(working_dir, proband, suffix):
   return yml_name
 
 # Generate a script file to run exomiser. Each run is a dictionary with its sample, analysis, and output yml files and
-# the suffix naming the run. If
-# merge_info is set, the filtered SNV / Indel vcf is first merged with the filtered SV and CNV vcfs for the SV runs
-def generate_exomiser_script(working_dir, tools_dir, runs, merge_info, use_queue):
+# the suffix naming the run. If merged_vcf is set, the SV runs use this merged SNV / Indel and SV / CNV vcf, which is
+# generated by script 03
+def generate_exomiser_script(working_dir, tools_dir, runs, merged_vcf, use_queue):
 
   # Create script file for running exomiser
-  script_name = str(working_directory) + '04_calypso_exomiser.sh'
-  script = open(script_name, 'w')
+  script_name, script = open_script(working_dir, '05_calypso_exomiser.sh')
 
   # Add the queue information if requested
   if use_queue:
-    print('#! /bin/bash', file = script)
-    print('#SBATCH --time=10:00:00', file = script)
-    print('#SBATCH --mem=8G', file = script)
-    print('#SBATCH --cpus-per-task=1', file = script)
-    print('#SBATCH --account=marth-rw', file = script)
-    print('#SBATCH --partition=marth-rw', file = script)
-    print('#SBATCH -o calypso_batch.out', file = script)
-    print('#SBATCH -e calypso_batch.err', file = script)
-    print(file = script)
+    queue_header(script, '10:00:00', 1)
 
   print('set -eou pipefail', file = script)
   print(file = script)
@@ -2049,9 +2014,13 @@ def generate_exomiser_script(working_dir, tools_dir, runs, merge_info, use_queue
   print('EXOMISER=$TOOLS_PATH/exomiser-cli-', exomiser_version, '/exomiser-cli-', exomiser_version, '.jar', sep = '', file = script)
   print(file = script)
 
-  # Merge the filtered SNV / Indel vcf with the filtered SV and CNV vcfs
-  if merge_info:
-    generate_exomiser_merged_vcf(script, merge_info)
+  # Check the merged vcf for the SV runs exists
+  if merged_vcf:
+    print('if [[ ! -f ', merged_vcf, ' ]]; then', sep = '', file = script)
+    print('  echo "ERROR: ', merged_vcf, ' does not exist. Run 03_calypso_merge_and_generate_tsvs.sh before this script"', sep = '', file = script)
+    print('  exit 1', file = script)
+    print('fi', file = script)
+    print(file = script)
 
 #####
 ##### UTAH SPECIFIC REQUIREMENT
@@ -2085,74 +2054,6 @@ def generate_exomiser_script(working_dir, tools_dir, runs, merge_info, use_queue
   # Return the script
   return script_name, script
 
-# Write the commands to merge the filtered SNV / Indel vcf with the filtered SV and / or CNV vcfs for exomiser. bcftools
-# concat requires the same samples in the same order, so all files are subset to the samples (in the order of the SNV /
-# Indel vcf) that appear in all files. The SV / CNV pipeline removes the "chr" prefix, so if the SNV / Indel vcf uses
-# it, the prefix is restored
-def generate_exomiser_merged_vcf(script, merge_info):
-  print('# Merge the filtered SNV / Indel, SV, and CNV vcf files for exomiser', file = script)
-  print('BCFTOOLS=', merge_info['bcftools'], sep = '', file = script)
-  print('SNV_VCF=', merge_info['snv_vcf'], sep = '', file = script)
-  sv_variables = []
-  if merge_info['sv_vcf']:
-    print('SV_VCF=', merge_info['sv_vcf'], sep = '', file = script)
-    sv_variables.append('SV')
-  if merge_info['cnv_vcf']:
-    print('CNV_VCF=', merge_info['cnv_vcf'], sep = '', file = script)
-    sv_variables.append('CNV')
-  if merge_info['chr_format']:
-    print('NOCHR_CHR_MAP=', merge_info['nochr_chr_map'], sep = '', file = script)
-  print('MERGED_VCF=', merge_info['merged_vcf'], sep = '', file = script)
-  print('MERGE_SAMPLES=$WORKINGPATH/exomiser_merge_samples.txt', file = script)
-  print(file = script)
-
-  # Check all the input files exist. The SV / CNV vcfs are created by the SV pipeline
-  print('echo -n "Merging SNV / Indel and SV / CNV vcf files for exomiser..."', file = script)
-  print('for MERGE_INPUT in $SNV_VCF', ''.join(' $' + x + '_VCF' for x in sv_variables), '; do', sep = '', file = script)
-  print('  if [[ ! -f $MERGE_INPUT ]]; then', file = script)
-  print('    echo "ERROR: $MERGE_INPUT does not exist. Run 01_calypso_annotation_pipeline.sh and 06_calypso_sv_annotation_pipeline.sh before this script"', file = script)
-  print('    exit 1', file = script)
-  print('  fi', file = script)
-  print('done', file = script)
-  print(file = script)
-
-  # Find the samples common to all files and check the proband is one of them
-  print('$BCFTOOLS query -l $SNV_VCF > $MERGE_SAMPLES', file = script)
-  for variable in sv_variables:
-    print('$BCFTOOLS query -l $', variable, '_VCF > $MERGE_SAMPLES.', variable.lower(), sep = '', file = script)
-    print('grep -Fxf $MERGE_SAMPLES.', variable.lower(), ' $MERGE_SAMPLES > $MERGE_SAMPLES.tmp || true', sep = '', file = script)
-    print('mv $MERGE_SAMPLES.tmp $MERGE_SAMPLES', file = script)
-    print('rm -f $MERGE_SAMPLES.', variable.lower(), sep = '', file = script)
-  print('if ! grep -Fxq "', merge_info['proband'], '" $MERGE_SAMPLES; then', sep = '', file = script)
-  print('  echo "ERROR: The proband (', merge_info['proband'], ') does not appear in all of the SNV / Indel, SV, and CNV vcf files"', sep = '', file = script)
-  print('  exit 1', file = script)
-  print('fi', file = script)
-  print(file = script)
-
-  # Subset each file to the common samples
-  print('$BCFTOOLS view -S $MERGE_SAMPLES -O z -o $WORKINGPATH/exomiser_merge_snv.vcf.gz $SNV_VCF', file = script)
-  print('$BCFTOOLS index -t $WORKINGPATH/exomiser_merge_snv.vcf.gz', file = script)
-  merge_files = ['$WORKINGPATH/exomiser_merge_snv.vcf.gz']
-  for variable in sv_variables:
-    merge_file = '$WORKINGPATH/exomiser_merge_' + variable.lower() + '.vcf.gz'
-    if merge_info['chr_format']:
-      print('$BCFTOOLS view -S $MERGE_SAMPLES $', variable, '_VCF | $BCFTOOLS annotate --rename-chrs $NOCHR_CHR_MAP -O z -o ', merge_file, sep = '', file = script)
-    else:
-      print('$BCFTOOLS view -S $MERGE_SAMPLES -O z -o ', merge_file, ' $', variable, '_VCF', sep = '', file = script)
-    print('$BCFTOOLS index -t ', merge_file, sep = '', file = script)
-    merge_files.append(merge_file)
-
-  # Concatenate the files, allowing overlapping records
-  print('$BCFTOOLS concat -a -O z -o $MERGED_VCF ', ' '.join(merge_files), sep = '', file = script)
-  print('$BCFTOOLS index -t $MERGED_VCF', file = script)
-
-  # Delete intermediate files
-  for merge_file in merge_files:
-    print('rm -f ', merge_file, ' ', merge_file, '.tbi', sep = '', file = script)
-  print('rm -f $MERGE_SAMPLES', file = script)
-  print('echo "complete"', file = script)
-  print(file = script)
-
 # Create an upload variants script to upload the exomiser variants
 def upload_exomiser_variants(working_dir, api_client, client_config, project_id, proband):
 
@@ -2182,7 +2083,7 @@ def upload_exomiser_variants(working_dir, api_client, client_config, project_id,
 def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, project_id, proband, filters_json, runs):
 
   # Open a script file
-  script_name = working_dir + '05_calypso_exomiser_annotations.sh'
+  script_name = working_dir + '06_calypso_exomiser_annotations.sh'
   try:
     script = open(script_name, 'w')
   except:
