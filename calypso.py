@@ -862,7 +862,7 @@ def main():
 
   # Run Exomiser and process the exomiser outputs into tsv files for the semi-public exomiser annotations
   print('Generating exomiser scripts...', end = '')
-  application_properties(working_directory, args.tools_directory, reference)
+  application_properties(working_directory, reference)
 
   # Get the UDN id of the proband if necessary
   exomiser_proband = proband
@@ -1846,13 +1846,13 @@ def generate_annotation_tsv(bash_file, resource, reference, skip_uids):
 #####
 
 # Generate the application properties file
-def application_properties(working_dir, tools_dir, reference):
+def application_properties(working_dir, reference):
 
   # Create the application.properties file
   properties_file = open(str(working_dir) + 'application.properties', 'w')
 
   # Write the data versions to the file
-  print('exomiser.data-directory=', tools_dir, 'exomiser-cli-', exomiser_version, '/data', sep = '', file = properties_file)
+  print('exomiser.data-directory=', exomiser_data_directory, sep = '', file = properties_file)
   print('remm.version=0.3.1.post1', file = properties_file)
   print('cadd.version=1.7', file = properties_file)
   if reference == 'GRCh37':
@@ -2262,6 +2262,7 @@ allowed_references = ['GRCh37', 'GRCh38']
 # The version of exomiser and the exomiser data release to use, and the Mosaic annotation version the exomiser
 # results are uploaded to
 exomiser_version = '15.1.0'
+exomiser_data_directory = '/scratch/ucgd/lustre-core/UCGD_Research/marth_NIH/Calypso/tools/exomiser_data/'
 exomiser_data_version = '2602'
 exomiser_annotation_version = 'v15.1.0_data-2602_v1'
 
