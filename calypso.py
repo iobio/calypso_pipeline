@@ -72,6 +72,10 @@ def main():
   # Define paths to be used by Calypso
   set_working_directory(resource_info['version'], args.directory_prefix)
 
+  # Samples with no sequencing data (e.g. relatives added to the pedigree only to connect other family members) can be
+  # listed on the command line. These samples are ignored when checking the vcf files and are excluded from the ped file
+  non_sequenced_samples = [x.strip() for x in args.non_sequenced_samples.split(',') if x.strip()] if args.non_sequenced_samples else []
+
   # Get the samples in the Mosaic projects and determine the id of the proband, and the family structure
   mosaic_samples = {}
   mosaic_sample_ids = {}
@@ -104,6 +108,15 @@ def main():
             affected_status = value['value']
             break
 
+    # Non-sequenced samples only serve to connect relatives in the pedigree, so the attributes required for analysis
+    # are not needed. They cannot be the proband
+    if sample['name'] in non_sequenced_samples:
+      if relation == 'Proband':
+        fail('The proband (' + sample['name'] + ') cannot be listed as a non-sequenced sample')
+      mosaic_samples[sample['name']] = {'id': sample['id'], 'relation': relation, 'sex': sex, 'affected_status': affected_status, 'sequenced': False, 'vcf_file': False, 'vcf_sample_name': False}
+      mosaic_sample_ids[sample['id']] = sample['name']
+      continue
+
     # Fail if this sample has no Relation set, and store the sample name if this is the proband
     if not relation:
       fail('The Relation attribute is not set for sample ' + sample['name'])
@@ -133,12 +146,19 @@ def main():
       fail('The Affected Status attribute is not set for sample ' + sample['name'])
 
     # Add this sample to the list of samples
-    mosaic_samples[sample['name']] = {'id': sample['id'], 'relation': relation, 'sex': sex, 'affected_status': affected_status}
+    mosaic_samples[sample['name']] = {'id': sample['id'], 'relation': relation, 'sex': sex, 'affected_status': affected_status, 'sequenced': True}
     mosaic_sample_ids[sample['id']] = sample['name']
 
   # Fail if no proband is defined
   if not proband:
     fail('Could not find a proband for this project')
+
+  # Check that all samples listed as non-sequenced are in the project
+  unknown_samples = [x for x in non_sequenced_samples if x not in mosaic_samples]
+  if unknown_samples:
+    fail('The following samples were listed as non-sequenced, but are not in the project:\n  ' + '\n  '.join(unknown_samples))
+  if non_sequenced_samples:
+    print('The following samples are not sequenced and will be ignored: ', ', '.join(non_sequenced_samples), sep = '')
 
   # Get the vcf file for each sample. Currently, Calypso only works for projects with a single multi-sample vcf.
   # Determine the name of this vcf file, then determine if this file has chromosomes listed as e.g. '1' or 'chr1'.
@@ -173,15 +193,21 @@ def main():
         if '-' in vcf_sample:
           vcf_sample = vcf_sample.split('-')[0]
           if vcf_sample in mosaic_samples:
-            mosaic_samples[vcf_sample]['vcf_file'] = vcf
-            mosaic_samples[vcf_sample]['vcf_sample_name'] = vcf_sample_name
+            if mosaic_samples[vcf_sample]['sequenced']:
+              mosaic_samples[vcf_sample]['vcf_file'] = vcf
+              mosaic_samples[vcf_sample]['vcf_sample_name'] = vcf_sample_name
+            else:
+              warning(' Sample ' + vcf_sample + ' is listed as non-sequenced, but appears in the vcf header. It will be ignored')
           else:
             missing_samples.append(vcf_sample)
 
       else:
         if vcf_sample in mosaic_samples:
-          mosaic_samples[vcf_sample]['vcf_file'] = vcf
-          mosaic_samples[vcf_sample]['vcf_sample_name'] = vcf_sample
+          if mosaic_samples[vcf_sample]['sequenced']:
+            mosaic_samples[vcf_sample]['vcf_file'] = vcf
+            mosaic_samples[vcf_sample]['vcf_sample_name'] = vcf_sample
+          else:
+            warning(' Sample ' + vcf_sample + ' is listed as non-sequenced, but appears in the vcf header. It will be ignored')
         else:
           missing_samples.append(vcf_sample)
       if args.verbose_output:
@@ -195,7 +221,7 @@ def main():
     if missing_samples:
       warning(' The following samples are in the vcf file, but not in the project:\n  ' + '\n  '.join(missing_samples))
     if samples_with_no_vcf:
-      fail(' The following samples do not appear in the vcf header:\n  ' + '\n  '.join(samples_with_no_vcf))
+      fail(' The following samples do not appear in the vcf header:\n  ' + '\n  '.join(samples_with_no_vcf) + '\nIf these samples have no sequencing data, list them with --non_sequenced_samples (-ns)')
 
   # If the vcf wasn't specified on the command line, get it from the Mosaic project
   else:
@@ -203,6 +229,10 @@ def main():
 
     # Loop over all the samples
     for sample in mosaic_samples:
+
+      # Skip samples with no sequencing data
+      if not mosaic_samples[sample]['sequenced']:
+        continue
       vcf_files = {}
       sample_id = mosaic_samples[sample]['id']
       for sample_file in project.get_sample_files(sample_id):
@@ -246,7 +276,7 @@ def main():
       fail('Multiple vcf files for the samples. Calypso requires a single multi sample vcf. The following vcf files were found:\n  ' + '\n  '.join(all_vcfs))
 
     # Store the name of the vcf file
-    vcf = mosaic_samples[list(mosaic_samples.keys())[0]]['vcf_file']
+    vcf = mosaic_samples[proband]['vcf_file']
     index_file = vcf + '.tbi'
 
   # If the ped file has not been defined, generate a bed file from pedigree information in Mosaic
@@ -291,10 +321,14 @@ def main():
         sex = pedigree_line['pedigree']['sex']
         affection_status = pedigree_line['pedigree']['affection_status']
   
-        # The ped file must use the names as they appear in the vcf file, so use the sample_id to get the vcf_sample_name
+        # The ped file must use the names as they appear in the vcf file, so use the sample_id to get the vcf_sample_name.
+        # Samples that do not appear in the vcf (e.g. non-sequenced relatives) are excluded, and are set to unknown (0)
+        # if they are the parent of a sample in the vcf
         sample_vcf_id = mosaic_samples[sample_id]['vcf_sample_name']
-        paternal_vcf_id = mosaic_samples[paternal_id]['vcf_sample_name'] if paternal_id != 0 else 0
-        maternal_vcf_id = mosaic_samples[maternal_id]['vcf_sample_name'] if maternal_id != 0 else 0
+        if not sample_vcf_id:
+          continue
+        paternal_vcf_id = (mosaic_samples[paternal_id]['vcf_sample_name'] or 0) if paternal_id != 0 else 0
+        maternal_vcf_id = (mosaic_samples[maternal_id]['vcf_sample_name'] or 0) if maternal_id != 0 else 0
         print(kindred_id, sample_vcf_id, paternal_vcf_id, maternal_vcf_id, sex, affection_status, sep = '\t', file = ped_file)
 
     # Close the ped file
@@ -363,11 +397,11 @@ def main():
   # Loop over all the samples. For each sample, get the header final header line from its associated vcf file (which
   # contains the list of all samples in the vcf) and determine at which position this sample appears
   for sample in mosaic_samples:
-    vcf = mosaic_samples[sample]['vcf_file']
+    sample_vcf = mosaic_samples[sample]['vcf_file']
     vcf_sample_name = mosaic_samples[sample]['vcf_sample_name']
 
     # Only process samples associated with vcf files
-    if vcf:
+    if sample_vcf:
 
 ####################
 ####################
@@ -375,11 +409,11 @@ def main():
 #################### DELETE
 ####################
 ####################
-      if vcf.startswith('s3://udn-joint-analysis/wgs/joint-by-family/'):
-        vcf = vcf.replace('s3://udn-joint-analysis/wgs/joint-by-family/', './')
+      if sample_vcf.startswith('s3://udn-joint-analysis/wgs/joint-by-family/'):
+        sample_vcf = sample_vcf.replace('s3://udn-joint-analysis/wgs/joint-by-family/', './')
 
       # Get the final header line
-      data = os.popen(str(resource_info['tools']['bcftools']) + ' view -h ' + str(vcf)).readlines()[-1].rstrip().split('\t')
+      data = os.popen(str(resource_info['tools']['bcftools']) + ' view -h ' + str(sample_vcf)).readlines()[-1].rstrip().split('\t')
 
       # Read through the samples and define the sample order
       for index, vcf_sample in enumerate(data[9:]):
@@ -388,7 +422,7 @@ def main():
 
   # Check that every sample in samples has vcf_position set
   for sample in mosaic_samples:
-    if vcf and 'vcf_position' not in mosaic_samples[sample]:
+    if mosaic_samples[sample]['vcf_file'] and 'vcf_position' not in mosaic_samples[sample]:
       fail('Sample ' + str(sample) + ' is listed in the ped file, but does not appear in the vcf header')
 
   # If the HPO terms are not specified on the command line, get them from the project. If they are specified on the command
@@ -1000,6 +1034,7 @@ def parse_command_line():
   # Required arguments
   directories.add_argument('--data_directory', '-d', required = False, metavar = 'string', help = 'The path to the directory where the resources live')
   directories.add_argument('--tools_directory', '-s', required = False, metavar = 'string', help = 'The path to the directory where the tools to use live')
+  case_arguments.add_argument('--non_sequenced_samples', '-ns', required = False, metavar = 'string', help = 'A comma separated list of Mosaic sample names with no sequencing data (e.g. relatives added only to connect the pedigree). These samples are ignored by the pipeline')
   case_arguments.add_argument('--ped', '-e', required = False, metavar = 'string', help = 'The pedigree file for the family. Not required for singletons')
   mosaic_arguments.add_argument('--project_id', '-p', required = True, metavar = 'string', help = 'The project id that variants will be uploaded to')
 
