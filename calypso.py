@@ -882,9 +882,17 @@ def main():
                   'chr_format': chr_format,
                   'nochr_chr_map': str(resource_info['path']) + '/nochr_chr_map.txt',
                   'proband': exomiser_proband}
+  # Each run uses a sample, analysis, and output yml. The analysis yml only depends on whether HPO terms are used, so
+  # is shared between runs
+  analysis_ymls = {}
   for run in exomiser_runs:
     run_vcf = merge_info['merged_vcf'] if run['merged'] else str(working_directory) + str(exomiser_vcf)
-    run['yml'] = generate_yml(working_directory, exomiser_proband, reference, run_vcf, args.ped, run['hpo'], run['suffix'])
+    run['sample_yml'] = generate_sample_yml(working_directory, exomiser_proband, reference, run_vcf, args.ped, run['hpo'], run['suffix'])
+    has_hpo = bool(run['hpo'])
+    if has_hpo not in analysis_ymls:
+      analysis_ymls[has_hpo] = generate_analysis_yml(working_directory, has_hpo)
+    run['analysis_yml'] = analysis_ymls[has_hpo]
+    run['output_yml'] = generate_output_yml(working_directory, exomiser_proband, run['suffix'])
   exomiser_script_name, exomiser_script = generate_exomiser_script(working_directory, args.tools_directory, exomiser_runs, merge_info, args.queue)
   print('complete')
 
@@ -1856,8 +1864,8 @@ def application_properties(working_dir, tools_dir, reference):
   # Close the application properties file
   properties_file.close()
 
-# Generate the yml file for running exomiser. The run is named by the suffix of its Mosaic annotation uids
-def generate_yml(working_dir, proband, reference, vcf, ped, hpo, suffix):
+# Generate the sample yml file for an exomiser run. The run is named by the suffix of its Mosaic annotation uids
+def generate_sample_yml(working_dir, proband, reference, vcf, ped, hpo, suffix):
 
   # Determine if exomiser should use resources for hg19 or hg38
   if reference == 'GRCh37':
@@ -1868,25 +1876,36 @@ def generate_yml(working_dir, proband, reference, vcf, ped, hpo, suffix):
     fail('Unknown reference for use with exomiser: ' + str(reference))
 
   # Generate a list of hpo terms, with the terms contained in single quotes
+  hpo_string = ''
   if hpo:
     hpo = hpo.split(',') if ',' in hpo else [hpo]
-    hpo_string = '\', \''.join(hpo)
+    hpo_string = '\'' + '\', \''.join(hpo) + '\''
 
   # Open a new yaml file
-  yml_name = 'exomiser_' + str(proband) + str(suffix) + '.yml'
+  yml_name = 'exomiser_sample' + str(suffix) + '.yml'
   yml = open(str(working_dir) + str(yml_name), 'w')
 
-  # Write the information about this project to the yml
-  print('# Exomiser analysis file for proband: ', proband, sep = '', file = yml)
-  print(file = yml)
-  print('analysis:', file = yml)
-  print('  genomeAssembly: ', str(exomiser_ref), sep = '', file = yml)
-  print('  vcf: ', vcf, sep = '', file = yml)
-  print('  ped: ', ped, sep = '', file = yml)
-  print('  proband: ', proband, sep = '', file = yml)
-  if hpo:
-    print('  hpoIds: [\'', hpo_string, '\']', sep = '', file = yml)
-  print(file = yml)
+  # Write the information about this sample to the yml
+  print('id: ', proband, sep = '', file = yml)
+  print('genomeAssembly: ', str(exomiser_ref), sep = '', file = yml)
+  print('vcf: ', vcf, sep = '', file = yml)
+  print('ped: ', ped, sep = '', file = yml)
+  print('proband: ', proband, sep = '', file = yml)
+  print('hpoIds: [', hpo_string, ']', sep = '', file = yml)
+
+  # Close the yml file
+  yml.close()
+
+  # Return the name of the yml file
+  return yml_name
+
+# Generate the analysis yml file for exomiser. The analysis only differs if HPO terms are used, in which case the
+# hiPhive prioritiser is included
+def generate_analysis_yml(working_dir, hpo):
+
+  # Open a new yaml file
+  yml_name = 'exomiser_analysis.yml' if hpo else 'exomiser_analysis_no_hpo.yml'
+  yml = open(str(working_dir) + str(yml_name), 'w')
 
   # Include the inheritance modes to consider
   # These are the default settings, with values representing the maximum minor allele frequency in percent (%) permitted for an
@@ -1894,102 +1913,114 @@ def generate_yml(working_dir, proband, reference, vcf, ped, hpo, suffix):
   # If you just want to analyse a sample under a single inheritance mode, delete/comment-out the others. For AUTOSOMAL_RECESSIVE
   # or X_RECESSIVE ensure *both* relevant HOM_ALT and COMP_HET modes are present.
   # In cases where you do not want any cut-offs applied an empty map should be used e.g. inheritanceModes: {}
-  print('  inheritanceModes: {', file = yml)
-  print('    AUTOSOMAL_DOMINANT: 0.1,', file = yml)
-  print('    AUTOSOMAL_RECESSIVE_HOM_ALT: 0.1,', file = yml)
-  print('    AUTOSOMAL_RECESSIVE_COMP_HET: 2.0,', file = yml)
-  print('    X_DOMINANT: 0.1,', file = yml)
-  print('    X_RECESSIVE_HOM_ALT: 0.1,', file = yml)
-  print('    X_RECESSIVE_COMP_HET: 2.0,', file = yml)
-  print('    MITOCHONDRIAL: 0.2', file = yml)
-  print('  }', file = yml)
+  print('inheritanceModes: {', file = yml)
+  print('  AUTOSOMAL_DOMINANT: 0.1,', file = yml)
+  print('  AUTOSOMAL_RECESSIVE_HOM_ALT: 0.1,', file = yml)
+  print('  AUTOSOMAL_RECESSIVE_COMP_HET: 2.0,', file = yml)
+  print('  X_DOMINANT: 0.1,', file = yml)
+  print('  X_RECESSIVE_HOM_ALT: 0.1,', file = yml)
+  print('  X_RECESSIVE_COMP_HET: 2.0,', file = yml)
+  print('  MITOCHONDRIAL: 0.2', file = yml)
+  print('}', file = yml)
   print(file = yml)
 
   # Use the PASS_ONLY analysis mode
-  print('  analysisMode: PASS_ONLY', file = yml)
+  print('analysisMode: PASS_ONLY', file = yml)
   print(file = yml)
 
   # Define the allele frequency sources to be used
-  print('  frequencySources: [', file = yml)
-  print('    THOUSAND_GENOMES,', file = yml)
-  print('    TOPMED,', file = yml)
-  print('    UK10K,', file = yml)
-  print('    ESP_AFRICAN_AMERICAN,', file = yml)
-  print('    ESP_EUROPEAN_AMERICAN,', file = yml)
-  print('    ESP_ALL,', file = yml)
-  print('    EXAC_AFRICAN_INC_AFRICAN_AMERICAN,', file = yml)
-  print('    EXAC_AMERICAN,', file = yml)
-  print('    EXAC_SOUTH_ASIAN,', file = yml)
-  print('    EXAC_EAST_ASIAN,', file = yml)
-  print('    EXAC_NON_FINNISH_EUROPEAN,', file = yml)
-  print('    GNOMAD_E_AFR,', file = yml)
-  print('    GNOMAD_E_AMR,', file = yml)
-  print('    GNOMAD_E_EAS,', file = yml)
-  print('    GNOMAD_E_FIN,', file = yml)
-  print('    GNOMAD_E_NFE,', file = yml)
-  print('    GNOMAD_E_SAS,', file = yml)
-  print('    GNOMAD_E_OTH,', file = yml)
-  print('    GNOMAD_G_AFR,', file = yml)
-  print('    GNOMAD_G_AMR,', file = yml)
-  print('    GNOMAD_G_EAS,', file = yml)
-  print('    GNOMAD_G_FIN,', file = yml)
-  print('    GNOMAD_G_NFE,', file = yml)
-  print('    GNOMAD_G_SAS,', file = yml)
-  print('    GNOMAD_G_OTH', file = yml)
-  print('  ]', file = yml)
+  print('frequencySources: [', file = yml)
+  print('  THOUSAND_GENOMES,', file = yml)
+  print('  TOPMED,', file = yml)
+  print('  UK10K,', file = yml)
+  print('  ESP_AFRICAN_AMERICAN,', file = yml)
+  print('  ESP_EUROPEAN_AMERICAN,', file = yml)
+  print('  ESP_ALL,', file = yml)
+  print('  EXAC_AFRICAN_INC_AFRICAN_AMERICAN,', file = yml)
+  print('  EXAC_AMERICAN,', file = yml)
+  print('  EXAC_SOUTH_ASIAN,', file = yml)
+  print('  EXAC_EAST_ASIAN,', file = yml)
+  print('  EXAC_NON_FINNISH_EUROPEAN,', file = yml)
+  print('  GNOMAD_E_AFR,', file = yml)
+  print('  GNOMAD_E_AMR,', file = yml)
+  print('  GNOMAD_E_EAS,', file = yml)
+  print('  GNOMAD_E_FIN,', file = yml)
+  print('  GNOMAD_E_NFE,', file = yml)
+  print('  GNOMAD_E_SAS,', file = yml)
+  print('  GNOMAD_E_OTH,', file = yml)
+  print('  GNOMAD_G_AFR,', file = yml)
+  print('  GNOMAD_G_AMR,', file = yml)
+  print('  GNOMAD_G_EAS,', file = yml)
+  print('  GNOMAD_G_FIN,', file = yml)
+  print('  GNOMAD_G_NFE,', file = yml)
+  print('  GNOMAD_G_SAS,', file = yml)
+  print('  GNOMAD_G_OTH', file = yml)
+  print(']', file = yml)
   print(file = yml)
 
   # Define the resources to be used for determining pathogenicity
-  print('  pathogenicitySources: [', file = yml)
-  print('    REVEL,', file = yml)
-  print('    MVP,', file = yml)
-  print('    ALPHA_MISSENSE,', file = yml)
-  print('    SPLICE_AI', file = yml)
-  print('  ]', file = yml)
+  print('pathogenicitySources: [', file = yml)
+  print('  REVEL,', file = yml)
+  print('  MVP,', file = yml)
+  print('  ALPHA_MISSENSE,', file = yml)
+  print('  SPLICE_AI', file = yml)
+  print(']', file = yml)
   print(file = yml)
 
   # Define the order of steps for exomiser to take
-  print('  steps: [', file = yml)
-  print('    failedVariantFilter: { },', file = yml)
-  print('    variantEffectFilter: {', file = yml)
-  print('      remove: [', file = yml)
-  print('        FIVE_PRIME_UTR_EXON_VARIANT,', file = yml)
-  print('        FIVE_PRIME_UTR_INTRON_VARIANT,', file = yml)
-  print('        THREE_PRIME_UTR_EXON_VARIANT,', file = yml)
-  print('        THREE_PRIME_UTR_INTRON_VARIANT,', file = yml)
-  print('        NON_CODING_TRANSCRIPT_EXON_VARIANT,', file = yml)
-  print('        NON_CODING_TRANSCRIPT_INTRON_VARIANT,', file = yml)
-  print('        CODING_TRANSCRIPT_INTRON_VARIANT,', file = yml)
-  print('        UPSTREAM_GENE_VARIANT,', file = yml)
-  print('        DOWNSTREAM_GENE_VARIANT,', file = yml)
-  print('        INTERGENIC_VARIANT,', file = yml)
-  print('        REGULATORY_REGION_VARIANT', file = yml)
-  print('      ]', file = yml)
-  print('    },', file = yml)
-  print('    frequencyFilter: {maxFrequency: 2.0},', file = yml)
-  print('    pathogenicityFilter: {keepNonPathogenic: true},', file = yml)
-  print('    inheritanceFilter: {},', file = yml)
-  print('    omimPrioritiser: {},', file = yml)
+  print('steps: [', file = yml)
+  print('  failedVariantFilter: { },', file = yml)
+  print('  variantEffectFilter: {', file = yml)
+  print('    remove: [', file = yml)
+  print('      FIVE_PRIME_UTR_EXON_VARIANT,', file = yml)
+  print('      FIVE_PRIME_UTR_INTRON_VARIANT,', file = yml)
+  print('      THREE_PRIME_UTR_EXON_VARIANT,', file = yml)
+  print('      THREE_PRIME_UTR_INTRON_VARIANT,', file = yml)
+  print('      NON_CODING_TRANSCRIPT_EXON_VARIANT,', file = yml)
+  print('      NON_CODING_TRANSCRIPT_INTRON_VARIANT,', file = yml)
+  print('      CODING_TRANSCRIPT_INTRON_VARIANT,', file = yml)
+  print('      UPSTREAM_GENE_VARIANT,', file = yml)
+  print('      DOWNSTREAM_GENE_VARIANT,', file = yml)
+  print('      INTERGENIC_VARIANT,', file = yml)
+  print('      REGULATORY_REGION_VARIANT', file = yml)
+  print('    ]', file = yml)
+  print('  },', file = yml)
+  print('  frequencyFilter: {maxFrequency: 2.0},', file = yml)
+  print('  pathogenicityFilter: {keepNonPathogenic: true},', file = yml)
+  print('  inheritanceFilter: {},', file = yml)
+  print('  omimPrioritiser: {},', file = yml)
   if hpo:
-    print('    hiPhivePrioritiser: {runParams: \'human\'},', file = yml)
-  print('  ]', file = yml)
-  print(file = yml)
-
-  # Define the output options
-  print('outputOptions:', file = yml)
-  print('  outputContributingVariantsOnly: false', file = yml)
-  print('  numGenes: 0', file = yml)
-  print('  outputDirectory: ', str(working_dir) + 'exomiser_results' + str(suffix), file = yml)
-  print('  outputFileName: ', str(proband), file = yml)
-  print('  outputFormats: [HTML, JSON, TSV_GENE, TSV_VARIANT, VCF]', file = yml)
+    print('  hiPhivePrioritiser: {runParams: \'human\'},', file = yml)
+  print(']', file = yml)
 
   # Close the yml file
   yml.close()
 
-  # Return the path and name of the yml file
+  # Return the name of the yml file
   return yml_name
 
-# Generate a script file to run exomiser. Each run is a dictionary with the yml file and the suffix naming the run. If
+# Generate the output yml file for an exomiser run. Each run writes to its own directory
+def generate_output_yml(working_dir, proband, suffix):
+
+  # Open a new yaml file
+  yml_name = 'exomiser_output' + str(suffix) + '.yml'
+  yml = open(str(working_dir) + str(yml_name), 'w')
+
+  # Define the output options
+  print('outputContributingVariantsOnly: false', file = yml)
+  print('numGenes: 0', file = yml)
+  print('outputDirectory: ', str(working_dir), 'exomiser_results', str(suffix), sep = '', file = yml)
+  print('outputFileName: ', str(proband), sep = '', file = yml)
+  print('outputFormats: [HTML, JSON, TSV_GENE, TSV_VARIANT, VCF]', file = yml)
+
+  # Close the yml file
+  yml.close()
+
+  # Return the name of the yml file
+  return yml_name
+
+# Generate a script file to run exomiser. Each run is a dictionary with its sample, analysis, and output yml files and
+# the suffix naming the run. If
 # merge_info is set, the filtered SNV / Indel vcf is first merged with the filtered SV and CNV vcfs for the SV runs
 def generate_exomiser_script(working_dir, tools_dir, runs, merge_info, use_queue):
 
@@ -2016,8 +2047,6 @@ def generate_exomiser_script(working_dir, tools_dir, runs, merge_info, use_queue
   print('TOOLS_PATH=', tools_dir, sep = '', file = script)
   print('WORKINGPATH=', working_dir, sep = '', file = script)
   print('EXOMISER=$TOOLS_PATH/exomiser-cli-', exomiser_version, '/exomiser-cli-', exomiser_version, '.jar', sep = '', file = script)
-  print('STDOUT=', working_dir, 'exomiser.stdout', sep = '', file = script)
-  print('STDERR=', working_dir, 'exomiser.stderr', sep = '', file = script)
   print(file = script)
 
   # Merge the filtered SNV / Indel vcf with the filtered SV and CNV vcfs
@@ -2033,10 +2062,17 @@ def generate_exomiser_script(working_dir, tools_dir, runs, merge_info, use_queue
 
   # Include the executable for running exomiser for each run
   for run in runs:
+    run_name = run['suffix'].lstrip('_').upper()
     print('# Run exomiser: ', run['description'], sep = '', file = script)
+    print('STDOUT_', run_name, '=$WORKINGPATH/exomiser', run['suffix'], '.stdout', sep = '', file = script)
+    print('STDERR_', run_name, '=$WORKINGPATH/exomiser', run['suffix'], '.stderr', sep = '', file = script)
     print('echo -n "Running exomiser (', run['description'], ')..."', sep = '', file = script)
-    print('if ! java -jar $EXOMISER --analysis $WORKINGPATH/', run['yml'], ' >> $STDOUT 2>> $STDERR; then', sep = '', file = script)
-    print('  echo "Exomiser script failed (', run['description'], '). Please check the stderr file"', sep = '', file = script)
+    print('if ! java -jar $EXOMISER analyse ', end = '', file = script)
+    print('--sample $WORKINGPATH/', run['sample_yml'], ' ', sep = '', end = '', file = script)
+    print('--analysis $WORKINGPATH/', run['analysis_yml'], ' ', sep = '', end = '', file = script)
+    print('--output $WORKINGPATH/', run['output_yml'], ' ', sep = '', end = '', file = script)
+    print('> $STDOUT_', run_name, ' 2> $STDERR_', run_name, '; then', sep = '', file = script)
+    print('  echo "Exomiser script failed (', run['description'], '). Please check $STDERR_', run_name, '"', sep = '', file = script)
     print('  exit 1', file = script)
     print('fi', file = script)
     print('echo "complete"', file = script)
