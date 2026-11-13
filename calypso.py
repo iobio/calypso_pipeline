@@ -71,6 +71,7 @@ def main():
 
   # Define paths to be used by Calypso
   set_working_directory(resource_info['version'], args.directory_prefix)
+  set_script_identifier(args.project_id)
 
   # Samples with no sequencing data (e.g. relatives added to the pedigree only to connect other family members) can be
   # listed on the command line. These samples are ignored when checking the vcf files and are excluded from the ped file
@@ -536,7 +537,7 @@ def main():
 #  has_parents = True if has_mother and has_father else False
 
   # Generate the bash script to run the annotation pipeline
-  bash_filename, bash_file = open_script(working_directory, '01_calypso_annotation_pipeline.sh')
+  bash_filename, bash_file = open_script(working_directory, 1, 'calypso_annotation_pipeline')
   annotated_vcf, filtered_vcf = bash_resources(args.queue, resource_info, working_directory, bash_file, vcf, chr_format, args.ped, lua_filename, toml_filename)
 
   # If the annotation step is to be skipped, set the ANNOTATEDVCF to the input VCF
@@ -648,7 +649,7 @@ def main():
         args.sv_filters_json = str(args.data_directory) + str(mosaic_info['sv_variant_filters'])
     # Subset the SV / CNV vcfs to the samples used from the SNV / Indel vcf
     vcf_sample_names = ','.join(mosaic_samples[x]['vcf_sample_name'] for x in mosaic_samples if mosaic_samples[x]['vcf_sample_name'])
-    sv_filename, sv_output_file = open_script(working_directory, '02_calypso_sv_annotation_pipeline.sh')
+    sv_filename, sv_output_file = open_script(working_directory, 2, 'calypso_sv_annotation_pipeline')
     filtered_sv_vcf = filter_sv_vcf(sv_output_file, working_directory, resource_info, sv_vcf, cnv_vcf, vcf_sample_names, mosaic_samples[proband]['vcf_sample_name'], args.queue)
     sv_output_file.close()
     make_executable = os.popen('chmod +x ' + sv_filename).read()
@@ -660,7 +661,7 @@ def main():
 
   # Generate the script to merge the filtered SNV / Indel vcf with the filtered SV / CNV vcf, and to generate the tsv
   # files for all annotations
-  tsv_filename, tsv_file = open_script(working_directory, '03_calypso_merge_and_generate_tsvs.sh')
+  tsv_filename, tsv_file = open_script(working_directory, 3, 'calypso_merge_and_generate_tsvs')
   if args.queue:
     queue_header(tsv_file, '24:00:00', 4)
   print('set -eou pipefail', file = tsv_file)
@@ -689,7 +690,7 @@ def main():
     print('# Check the filtered vcf files exist', file = tsv_file)
     print('for MERGE_INPUT in $FILTEREDVCF $SV_FILTERED_VCF; do', file = tsv_file)
     print('  if [[ ! -f $MERGE_INPUT ]]; then', file = tsv_file)
-    print('    echo "ERROR: $MERGE_INPUT does not exist. Run 01_calypso_annotation_pipeline.sh and 02_calypso_sv_annotation_pipeline.sh before this script"', file = tsv_file)
+    print('    echo "ERROR: $MERGE_INPUT does not exist. Run ', script_filename(1, 'calypso_annotation_pipeline'), ' and ', script_filename(2, 'calypso_sv_annotation_pipeline'), ' before this script"', sep = '', file = tsv_file)
     print('    exit 1', file = tsv_file)
     print('  fi', file = tsv_file)
     print('done', file = tsv_file)
@@ -867,7 +868,7 @@ def main():
   project.put_project_settings(selected_variant_annotation_version_ids = annotation_version_ids)
 
   # Generate the script to upload the filtered SNV / Indel and SV / CNV variants, and all the annotation tsvs, to Mosaic
-  upload_filename, upload_file = open_script(working_directory, '04_calypso_upload_variants_and_annotations.sh')
+  upload_filename, upload_file = open_script(working_directory, 4, 'calypso_upload_variants_and_annotations')
   if reference == 'GRCh37':
     try:
       annotation_project_id = api_store.get('Project ids', 'annotations_grch37')
@@ -1340,8 +1341,20 @@ def generate_lua_file(working_directory):
   # Return the name of the lua file
   return script_base
 
+# Every project generates the same set of scripts, so if they are submitted to a queue (e.g. slurm, which uses the
+# script name as the job name), jobs from different projects can't be distinguished. Add an identifier, unique to the
+# project, after the numerical prefix of each script name
+def set_script_identifier(project_id):
+  global script_identifier
+  script_identifier = 'p' + str(project_id)
+
+# Build the name of a pipeline script. The numerical prefix gives the order in which the scripts are to be run
+def script_filename(number, name):
+  return str(number).zfill(2) + '_' + str(script_identifier) + '_' + str(name) + '.sh'
+
 # Open a file to write a pipeline script to. The scripts are numbered in the order they are to be run
-def open_script(working_directory, script_name):
+def open_script(working_directory, number, name):
+  script_name = script_filename(number, name)
   filename = working_directory + script_name
   try:
     script = open(filename, 'w')
@@ -2034,7 +2047,7 @@ def generate_output_yml(working_dir, proband, suffix):
 def generate_exomiser_script(working_dir, tools_dir, runs, merged_vcf, use_queue):
 
   # Create script file for running exomiser
-  script_name, script = open_script(working_dir, '05_calypso_exomiser.sh')
+  script_name, script = open_script(working_dir, 5, 'calypso_exomiser')
 
   # Add the queue information if requested
   if use_queue:
@@ -2052,7 +2065,7 @@ def generate_exomiser_script(working_dir, tools_dir, runs, merged_vcf, use_queue
   # Check the merged vcf for the SV runs exists
   if merged_vcf:
     print('if [[ ! -f ', merged_vcf, ' ]]; then', sep = '', file = script)
-    print('  echo "ERROR: ', merged_vcf, ' does not exist. Run 03_calypso_merge_and_generate_tsvs.sh before this script"', sep = '', file = script)
+    print('  echo "ERROR: ', merged_vcf, ' does not exist. Run ', script_filename(3, 'calypso_merge_and_generate_tsvs'), ' before this script"', sep = '', file = script)
     print('  exit 1', file = script)
     print('fi', file = script)
     print(file = script)
@@ -2118,7 +2131,7 @@ def upload_exomiser_variants(working_dir, api_client, client_config, project_id,
 def exomiser_annotations(calypso_dir, working_dir, api_client, client_config, project_id, proband, filters_json, runs):
 
   # Open a script file
-  script_name = working_dir + '06_calypso_exomiser_annotations.sh'
+  script_name = working_dir + script_filename(6, 'calypso_exomiser_annotations')
   try:
     script = open(script_name, 'w')
   except:
